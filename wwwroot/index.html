@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hyper-V Inventory</title>
+<style>
+:root {
+  --bg:#0f172a; --bg-card:#1e293b; --bg-hover:#263347; --bg-input:#0f172a;
+  --border:#334155; --border-lt:#475569;
+  --text:#f1f5f9; --text2:#94a3b8; --text3:#64748b;
+  --blue:#3b82f6; --green:#22c55e; --yellow:#f59e0b; --red:#ef4444;
+  --purple:#8b5cf6; --cyan:#06b6d4;
+}
+[data-theme="light"] {
+  --bg:#f1f5f9; --bg-card:#ffffff; --bg-hover:#f8fafc; --bg-input:#ffffff;
+  --border:#e2e8f0; --border-lt:#cbd5e1;
+  --text:#0f172a; --text2:#475569; --text3:#94a3b8;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.5}
+.app{display:flex;flex-direction:column;height:100vh;overflow:hidden}
+
+/* Header */
+.hdr{display:flex;align-items:center;gap:12px;padding:0 20px;height:56px;background:var(--bg-card);border-bottom:1px solid var(--border);flex-shrink:0;z-index:100}
+.hdr-logo{display:flex;align-items:center;gap:8px;font-weight:700;font-size:15px;white-space:nowrap}
+.hdr-logo svg{color:var(--blue);flex-shrink:0}
+.hdr-sp{flex:1}
+.hdr-acts{display:flex;align-items:center;gap:6px}
+
+/* Cluster strip */
+.strip{display:flex;align-items:center;padding:0 20px;height:46px;background:var(--bg-card);border-bottom:1px solid var(--border);flex-shrink:0;overflow-x:auto;gap:0}
+.sstat{display:flex;align-items:center;gap:8px;padding:0 18px;border-right:1px solid var(--border);white-space:nowrap;flex-shrink:0}
+.sstat:first-child{padding-left:0}
+.sstat:last-child{border-right:none}
+.sstat-lbl{color:var(--text2);font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+.sstat-val{font-weight:600;font-size:14px}
+
+/* Body */
+.body{display:flex;flex:1;overflow:hidden}
+
+/* Sidebar */
+.sidebar{width:220px;flex-shrink:0;background:var(--bg-card);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto}
+.sb-nav{flex:1;padding:10px 8px}
+.sb-foot{padding:10px 8px;border-top:1px solid var(--border)}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:6px;cursor:pointer;color:var(--text2);font-size:13px;font-weight:500;transition:background .15s,color .15s;user-select:none}
+.nav-item:hover{background:var(--bg-hover);color:var(--text)}
+.nav-item.active{background:rgba(59,130,246,.12);color:var(--blue)}
+.nav-item svg{flex-shrink:0}
+
+/* Content */
+.content{flex:1;overflow-y:auto;padding:24px}
+
+/* Buttons */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:6px;border:none;font-size:13px;font-weight:500;cursor:pointer;transition:opacity .15s,background .15s;font-family:inherit}
+.btn:hover{opacity:.85}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn-primary{background:var(--blue);color:#fff}
+.btn-secondary{background:var(--bg-hover);color:var(--text);border:1px solid var(--border)}
+.btn-danger{background:var(--red);color:#fff}
+.btn-ghost{background:transparent;color:var(--text2);border:1px solid var(--border)}
+.btn-icon{padding:7px 9px}
+.btn-sm{padding:5px 10px;font-size:12px}
+
+/* Cards */
+.card{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+
+/* Host grid */
+.host-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px}
+.hcard{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;overflow:hidden;transition:border-color .2s}
+.hcard:hover{border-color:var(--border-lt)}
+.hcard-hdr{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--border)}
+.htitle{flex:1;min-width:0}
+.hname{font-weight:700;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hos{color:var(--text2);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.reach-icons{display:flex;gap:5px;align-items:center}
+.ricon{width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:bold;cursor:default;position:relative}
+.ricon.ok{background:rgba(34,197,94,.15);color:var(--green)}
+.ricon.fail{background:rgba(239,68,68,.15);color:var(--red)}
+.ricon.unk{background:rgba(148,163,184,.15);color:var(--text3)}
+.ricon:hover .tip{display:block}
+.tip{display:none;position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);background:#0f172a;border:1px solid var(--border);color:var(--text);font-size:11px;white-space:nowrap;padding:4px 8px;border-radius:4px;z-index:99}
+.hcard-body{padding:14px 16px}
+.hstats{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.hstat-lbl{color:var(--text2);font-size:11px;text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px}
+.hstat-val{font-weight:600;font-size:14px}
+.hcard-foot{display:flex;align-items:center;gap:8px;padding:10px 16px;border-top:1px solid var(--border);background:rgba(0,0,0,.08)}
+
+/* Scan badge */
+.sbadge{display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:500}
+.sbadge.idle{background:rgba(148,163,184,.1);color:var(--text3)}
+.sbadge.scanning{background:rgba(59,130,246,.12);color:var(--blue)}
+.sbadge.done{background:rgba(34,197,94,.1);color:var(--green)}
+.sbadge.error{background:rgba(239,68,68,.1);color:var(--red)}
+
+@keyframes spin{to{transform:rotate(360deg)}}
+.spin{width:12px;height:12px;border:2px solid transparent;border-top-color:currentColor;border-radius:50%;animation:spin .7s linear infinite}
+
+/* Charts */
+.charts-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:20px}
+.ccrd{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.ccrd-hdr{padding:14px 16px;border-bottom:1px solid var(--border);font-weight:600;display:flex;align-items:center;justify-content:space-between}
+.ccrd-body{padding:16px;display:flex;gap:16px;align-items:center}
+.legend{flex:1;min-width:0}
+.leg-item{display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px}
+.leg-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.leg-name{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.leg-val{color:var(--text2);white-space:nowrap}
+.leg-pct{color:var(--text3);font-size:11px;margin-left:3px}
+canvas.donut{display:block}
+
+/* Storage */
+.sto-sec{margin-bottom:28px}
+.sto-ttl{font-size:16px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.sto-rows{display:flex;flex-direction:column;gap:8px}
+.sto-row{display:flex;align-items:center;gap:12px}
+.sto-nm{width:160px;flex-shrink:0;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sto-bwrap{flex:1;position:relative;height:24px;background:var(--bg);border-radius:4px;overflow:hidden}
+.sto-thick{height:100%;border-radius:4px;background:rgba(34,197,94,.3);position:relative}
+.sto-actual{position:absolute;left:0;top:0;height:100%;background:#22c55e;border-radius:4px}
+.sto-lbl{width:140px;flex-shrink:0;font-size:12px;color:var(--text2);text-align:right;white-space:nowrap}
+
+/* VM Table */
+.vm-filters{display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
+.finput{background:var(--bg-input);border:1px solid var(--border);color:var(--text);padding:7px 12px;border-radius:6px;font-size:13px;outline:none;font-family:inherit}
+.finput:focus{border-color:var(--blue)}
+.finput::placeholder{color:var(--text3)}
+.twrap{overflow-x:auto;border:1px solid var(--border);border-radius:8px}
+table.dt{width:100%;border-collapse:collapse;font-size:13px}
+table.dt th{text-align:left;padding:10px 12px;background:var(--bg);border-bottom:1px solid var(--border);color:var(--text2);font-size:11px;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;cursor:pointer;user-select:none}
+table.dt th:hover{color:var(--text)}
+table.dt th.sorted{color:var(--blue)}
+table.dt td{padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:middle}
+table.dt tr:last-child td{border-bottom:none}
+table.dt tr:hover td{background:var(--bg-hover)}
+.vmst{display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border-radius:3px;font-size:11px;font-weight:500}
+.vmst.running{background:rgba(34,197,94,.1);color:var(--green)}
+.vmst.off{background:rgba(148,163,184,.1);color:var(--text3)}
+.vmst.saved{background:rgba(245,158,11,.1);color:var(--yellow)}
+.vmst.paused{background:rgba(139,92,246,.1);color:var(--purple)}
+
+/* Cluster stat cards */
+.clu-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:16px;margin-bottom:24px}
+.clu-card{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:16px}
+.clu-lbl{font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px}
+.clu-val{font-size:26px;font-weight:700}
+.clu-sub{font-size:12px;color:var(--text2);margin-top:2px}
+.rbar{height:4px;background:var(--border);border-radius:2px;margin-top:8px;overflow:hidden}
+.rfill{height:100%;border-radius:2px;background:var(--blue);transition:width .5s}
+.rfill.warn{background:var(--yellow)}
+.rfill.over{background:var(--red)}
+
+/* Diff panel */
+.diff-panel{background:rgba(59,130,246,.06);border:1px solid rgba(59,130,246,.2);border-radius:8px;padding:14px;margin-bottom:16px}
+.diff-ttl{font-size:13px;font-weight:600;color:var(--blue);margin-bottom:8px}
+.diff-item{font-size:12px;padding:2px 0}
+.diff-item.add{color:var(--green)}
+.diff-item.rem{color:var(--red)}
+.diff-item.chg{color:var(--yellow)}
+
+/* Modals */
+.moverlay{display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.6);backdrop-filter:blur(2px);align-items:center;justify-content:center}
+.moverlay.show{display:flex}
+.modal{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:24px;width:480px;max-width:95vw;max-height:90vh;overflow-y:auto}
+.modal-ttl{font-size:17px;font-weight:700;margin-bottom:20px}
+.fgrp{margin-bottom:14px}
+.flbl{display:block;font-size:12px;color:var(--text2);font-weight:500;margin-bottom:5px}
+.finp{width:100%;background:var(--bg-input);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:6px;font-size:13px;outline:none;font-family:inherit}
+.finp:focus{border-color:var(--blue)}
+textarea.finp{resize:vertical;min-height:80px}
+.fcheck{display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;margin-bottom:14px}
+.fcheck input{width:15px;height:15px;cursor:pointer;accent-color:var(--blue)}
+.macts{display:flex;gap:8px;margin-top:20px;justify-content:flex-end}
+
+/* Creds overlay */
+.creds-ov{position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.8);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center}
+
+/* Toasts */
+.toast-c{position:fixed;bottom:20px;right:20px;display:flex;flex-direction:column;gap:8px;z-index:3000}
+.toast{background:var(--bg-card);border:1px solid var(--border);padding:12px 16px;border-radius:8px;font-size:13px;box-shadow:0 4px 24px rgba(0,0,0,.4);animation:slideIn .2s ease;display:flex;align-items:center;gap:8px;max-width:320px}
+@keyframes slideIn{from{transform:translateX(20px);opacity:0}to{transform:translateX(0);opacity:1}}
+.toast.success{border-left:3px solid var(--green)}
+.toast.error{border-left:3px solid var(--red)}
+.toast.info{border-left:3px solid var(--blue)}
+
+/* Empty state */
+.empty{text-align:center;padding:60px 20px;color:var(--text2)}
+.empty-ico{font-size:48px;margin-bottom:16px;opacity:.3}
+.empty-ttl{font-size:18px;font-weight:600;color:var(--text);margin-bottom:8px}
+.empty-txt{font-size:14px;margin-bottom:20px}
+
+.sec-ttl{font-size:18px;font-weight:700;margin-bottom:16px}
+
+/* Scrollbar */
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--border-lt)}
+
+/* Export dropdown */
+.drop-menu{position:absolute;top:100%;right:0;margin-top:4px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;overflow:hidden;z-index:200;min-width:160px;box-shadow:0 4px 16px rgba(0,0,0,.3)}
+.drop-item{padding:10px 14px;cursor:pointer;font-size:13px;color:var(--text)}
+.drop-item:hover{background:var(--bg-hover)}
+.drop-item+.drop-item{border-top:1px solid var(--border)}
+
+@media(max-width:768px){.sidebar{width:52px}.nav-item span{display:none}.content{padding:16px}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="hdr">
+    <div class="hdr-logo">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/><path d="M7 8h.01M7 11h.01"/><rect x="11" y="7" width="6" height="5" rx="1"/></svg>
+      Hyper-V Inventory
+    </div>
+    <div class="hdr-sp"></div>
+    <div class="hdr-acts">
+      <button class="btn btn-ghost btn-sm" onclick="showAddHostModal()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg>
+        Add Host
+      </button>
+      <button class="btn btn-primary btn-sm" id="btn-scan" onclick="triggerScan()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+        Scan All
+      </button>
+      <div style="position:relative">
+        <button class="btn btn-ghost btn-sm" id="btn-export" onclick="toggleDrop()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Export
+        </button>
+        <div id="drop-menu" class="drop-menu" style="display:none">
+          <div class="drop-item" onclick="exportData('json')">JSON (full data)</div>
+          <div class="drop-item" onclick="exportData('csv')">CSV zip</div>
+        </div>
+      </div>
+      <button class="btn btn-ghost btn-icon btn-sm" onclick="toggleTheme()" title="Toggle theme" id="btn-theme">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="strip">
+    <div class="sstat"><span class="sstat-lbl">Hosts</span><span class="sstat-val" id="s-hosts">—</span></div>
+    <div class="sstat"><span class="sstat-lbl">Cores</span><span class="sstat-val" id="s-cores">—</span></div>
+    <div class="sstat"><span class="sstat-lbl">Host RAM</span><span class="sstat-val" id="s-ram">—</span></div>
+    <div class="sstat"><span class="sstat-lbl">vCPU</span><span class="sstat-val" id="s-vcpu">—</span></div>
+    <div class="sstat"><span class="sstat-lbl">VM RAM</span><span class="sstat-val" id="s-vmram">—</span></div>
+    <div class="sstat"><span class="sstat-lbl">RAM Commit</span><span class="sstat-val" id="s-rr">—</span></div>
+    <div class="sstat"><span class="sstat-lbl">CPU Commit</span><span class="sstat-val" id="s-cr">—</span></div>
+  </div>
+
+  <div class="body">
+    <nav class="sidebar">
+      <div class="sb-nav">
+        <div class="nav-item active" data-view="overview" onclick="switchView('overview')">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+          <span>Overview</span>
+        </div>
+        <div class="nav-item" data-view="ram" onclick="switchView('ram')">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+          <span>RAM Charts</span>
+        </div>
+        <div class="nav-item" data-view="cpu" onclick="switchView('cpu')">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3"/></svg>
+          <span>CPU Charts</span>
+        </div>
+        <div class="nav-item" data-view="storage" onclick="switchView('storage')">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+          <span>Storage</span>
+        </div>
+        <div class="nav-item" data-view="vms" onclick="switchView('vms')">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+          <span>VM Table</span>
+        </div>
+        <div class="nav-item" data-view="cluster" onclick="switchView('cluster')">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+          <span>Cluster Stats</span>
+        </div>
+      </div>
+      <div class="sb-foot">
+        <div class="nav-item" style="color:var(--red)" onclick="showEndSession()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          <span>End Session</span>
+        </div>
+      </div>
+    </nav>
+    <main class="content" id="main"></main>
+  </div>
+</div>
+
+<!-- Credentials overlay -->
+<div class="creds-ov" id="creds-ov" style="display:none">
+  <div class="modal" style="width:420px">
+    <div class="modal-ttl" style="display:flex;align-items:center;gap:10px">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      Connect to Hyper-V Hosts
+    </div>
+    <p style="color:var(--text2);font-size:13px;margin-bottom:20px;line-height:1.6">Enter credentials for WinRM auth (Negotiate — Kerberos/NTLM). Held in memory only, wiped on exit.</p>
+    <div class="fgrp">
+      <label class="flbl">Username (DOMAIN\user or user@domain)</label>
+      <input type="text" id="cu" class="finp" placeholder="CORP\administrator" autocomplete="username">
+    </div>
+    <div class="fgrp">
+      <label class="flbl">Password</label>
+      <input type="password" id="cp" class="finp" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <div class="macts">
+      <button class="btn btn-primary" onclick="submitCreds()">Set Credentials</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add host modal -->
+<div class="moverlay" id="m-add">
+  <div class="modal">
+    <div class="modal-ttl">Add Hyper-V Host(s)</div>
+    <div class="fgrp">
+      <label class="flbl">Hostname(s) or IP(s)</label>
+      <textarea id="ah-addr" class="finp" placeholder="hv-prod-01&#10;hv-prod-02&#10;192.168.1.10" rows="4"></textarea>
+      <div style="font-size:11px;color:var(--text3);margin-top:4px">Newline, comma, or semicolon separated</div>
+    </div>
+    <label class="fcheck">
+      <input type="checkbox" id="ah-global" checked onchange="togglePerHostCreds()">
+      <span style="font-size:13px">Use global credentials</span>
+    </label>
+    <div id="ah-creds" style="display:none">
+      <div class="fgrp"><label class="flbl">Username</label><input type="text" id="ah-user" class="finp" placeholder="CORP\admin"></div>
+      <div class="fgrp"><label class="flbl">Password</label><input type="password" id="ah-pass" class="finp" placeholder="••••••••"></div>
+    </div>
+    <div class="macts">
+      <button class="btn btn-ghost" onclick="closeModal('m-add')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitAddHosts()">Add Host(s)</button>
+    </div>
+  </div>
+</div>
+
+<!-- Remove host modal -->
+<div class="moverlay" id="m-remove">
+  <div class="modal" style="width:400px">
+    <div class="modal-ttl">Remove Host</div>
+    <p style="color:var(--text2);font-size:13px;margin-bottom:20px">Remove <strong id="rm-name" style="color:var(--text)"></strong>? This discards all in-memory scan data.</p>
+    <div class="macts">
+      <button class="btn btn-ghost" onclick="closeModal('m-remove')">Cancel</button>
+      <button class="btn btn-danger" onclick="confirmRemove()">Remove</button>
+    </div>
+  </div>
+</div>
+
+<!-- End session modal -->
+<div class="moverlay" id="m-end">
+  <div class="modal" style="width:440px">
+    <div class="modal-ttl">End Session</div>
+    <p style="color:var(--text2);font-size:13px;margin-bottom:20px">All in-memory data and credentials will be wiped.</p>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <button class="btn btn-danger" style="justify-content:flex-start;padding:12px 16px;text-align:left" onclick="quitSession(false)">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex-shrink:0"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+        <div><div>Close and purge data</div><div style="font-size:11px;opacity:.7;font-weight:400">Wipe all data and shut down</div></div>
+      </button>
+      <button class="btn btn-primary" style="justify-content:flex-start;padding:12px 16px;text-align:left" onclick="quitSession(true)">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex-shrink:0"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        <div><div>Export then purge</div><div style="font-size:11px;opacity:.7;font-weight:400">Download JSON, then wipe and shut down</div></div>
+      </button>
+      <button class="btn btn-ghost" style="justify-content:flex-start;padding:12px 16px" onclick="closeModal('m-end')">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex-shrink:0"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-.38-4.5"/></svg>
+        Keep running
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-c" id="toast-c"></div>
+
+<script>
+const COLORS=['#3b82f6','#22c55e','#f59e0b','#8b5cf6','#ef4444','#06b6d4','#ec4899','#14b8a6','#f97316','#84cc16'];
+const st={
+  token:new URLSearchParams(location.search).get('token')||'',
+  hosts:[],totals:{},diff:{},
+  view:'overview',
+  credSet:false,mock:false,
+  rmId:null,
+  vmSort:{col:'name',dir:1},
+  vmF:{host:'',state:'',name:''},
+};
+
+// ── API ───────────────────────────────────────────────────────────────────────
+async function api(m,path,body){
+  const r=await fetch(path,{method:m,headers:{'Content-Type':'application/json','X-Session-Token':st.token},body:body?JSON.stringify(body):undefined});
+  if(!r.ok)throw new Error(await r.text());
+  return r.json();
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+async function init(){
+  if(!st.token){
+    document.getElementById('main').innerHTML=`<div class="empty"><div class="empty-ico">🔒</div><div class="empty-ttl">Token missing</div><div class="empty-txt">Open the URL shown in the console window.</div></div>`;
+    return;
+  }
+  await loadState();
+  setupSSE();
+  renderView(st.view);
+  if(!st.credSet&&!st.mock) document.getElementById('creds-ov').style.display='flex';
+  setInterval(loadState,5000);
+}
+
+async function loadState(){
+  try{
+    const d=await api('GET','/api/state');
+    st.hosts=d.hosts||[];st.totals=d.totals||{};st.diff=d.diff||{};
+    st.credSet=d.credentialsSet;st.mock=d.mockMode;
+    updateStrip();
+    renderView(st.view,false);
+  }catch{}
+}
+
+// ── SSE ───────────────────────────────────────────────────────────────────────
+function setupSSE(){
+  const es=new EventSource(`/api/events?token=${encodeURIComponent(st.token)}`);
+  const on=(t,fn)=>es.addEventListener(t,e=>fn(JSON.parse(e.data)));
+  on('reachability',d=>{const h=st.hosts.find(x=>x.id===d.hostId);if(h){h.reachability=d.reachability;renderView(st.view,false);}});
+  on('scanProgress',d=>{
+    const h=st.hosts.find(x=>x.id===d.hostId);
+    if(h){h.scanState=d.state;h.scanError=d.error||'';if(d.host)Object.assign(h,d.host);}
+    renderView(st.view,false);
+  });
+  on('scanComplete',d=>{
+    if(d.totals)st.totals=d.totals;if(d.diff)st.diff=d.diff;
+    const b=document.getElementById('btn-scan');
+    b.disabled=false;b.innerHTML='<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg> Scan All';
+    updateStrip();toast('Scan complete','success');renderView(st.view,false);
+  });
+  on('hostAdded',d=>{if(!st.hosts.find(h=>h.id===d.id))st.hosts.push(d);updateStrip();renderView(st.view,false);});
+  on('hostRemoved',d=>{st.hosts=st.hosts.filter(h=>h.id!==d.hostId);updateStrip();renderView(st.view,false);});
+  on('credentialsSet',()=>{st.credSet=true;document.getElementById('creds-ov').style.display='none';toast('Credentials saved (memory only)','success');});
+}
+
+// ── Strip ─────────────────────────────────────────────────────────────────────
+function updateStrip(){
+  const t=st.totals;
+  set('s-hosts',t.hostCount??'—');set('s-cores',t.totalCores??'—');
+  set('s-ram',t.totalRamGb?fmtGb(t.totalRamGb):'—');
+  set('s-vcpu',t.totalVCpu??'—');
+  set('s-vmram',t.totalVmRamGb?fmtGb(t.totalVmRamGb):'—');
+  set('s-rr',t.ramCommitRatio!=null?`${(t.ramCommitRatio*100).toFixed(0)}%`:'—');
+  set('s-cr',t.cpuCommitRatio!=null?`${t.cpuCommitRatio.toFixed(2)}x`:'—');
+}
+
+// ── Views ─────────────────────────────────────────────────────────────────────
+function switchView(v){
+  st.view=v;
+  document.querySelectorAll('.nav-item[data-view]').forEach(el=>el.classList.toggle('active',el.dataset.view===v));
+  renderView(v,true);
+}
+
+function renderView(v,scroll=false){
+  const el=document.getElementById('main');
+  switch(v){
+    case'overview':el.innerHTML=vOverview();break;
+    case'ram':el.innerHTML=vRam();break;
+    case'cpu':el.innerHTML=vCpu();break;
+    case'storage':el.innerHTML=vStorage();break;
+    case'vms':el.innerHTML=vVmTable();break;
+    case'cluster':el.innerHTML=vCluster();break;
+  }
+  if(scroll)el.scrollTop=0;
+  if(v==='ram')drawCharts('ram');
+  if(v==='cpu')drawCharts('cpu');
+  if(v==='cluster')drawClusterCharts();
+}
+
+// ── Overview ──────────────────────────────────────────────────────────────────
+function vOverview(){
+  let out=diffBanner();
+  if(!st.hosts.length)return out+`<div class="empty"><div class="empty-ico">🖥️</div><div class="empty-ttl">No hosts yet</div><div class="empty-txt">Add a Hyper-V host to get started.</div><button class="btn btn-primary" onclick="showAddHostModal()">Add Host</button></div>`;
+  out+=`<div class="sec-ttl">Host Overview</div><div class="host-grid">`;
+  for(const h of st.hosts){
+    const r=h.reachability||{};
+    out+=`<div class="hcard">
+      <div class="hcard-hdr">
+        <div class="htitle">
+          <div class="hname" title="${x(h.fqdn||h.address)}">${x(h.fqdn||h.address)}</div>
+          <div class="hos">${x(h.osCaption||'Unknown OS')}</div>
+        </div>
+        <div class="reach-icons">
+          ${ri('I',r.icmp,'ICMP')}${ri('W',r.winRm,'WinRM')}${ai(r.auth)}
+        </div>
+        <button class="btn btn-ghost btn-icon btn-sm" onclick="promptRemove('${h.id}','${x(h.fqdn||h.address)}')" title="Remove" style="margin-left:4px">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+        </button>
+      </div>
+      <div class="hcard-body">
+        ${h.addError&&r.auth!=='Ok'?`<div style="display:flex;align-items:center;gap:5px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);color:var(--yellow);font-size:11px;padding:5px 8px;border-radius:4px;margin-bottom:10px">⚠ ${x(h.addError)}</div>`:''}
+        <div class="hstats">
+          <div><div class="hstat-lbl">CPU</div><div class="hstat-val">${h.totalCores?`${h.totalCores} cores`:'—'}</div></div>
+          <div><div class="hstat-lbl">RAM</div><div class="hstat-val">${h.totalRamGb?fmtGb(h.totalRamGb):'—'}</div></div>
+          <div><div class="hstat-lbl">VMs</div><div class="hstat-val">${h.vms?.length??'—'}</div></div>
+          <div><div class="hstat-lbl">Model</div><div class="hstat-val" style="font-size:12px;font-weight:400;color:var(--text2)">${x(h.model||'—')}</div></div>
+        </div>
+      </div>
+      <div class="hcard-foot">
+        <span class="sbadge ${(h.scanState||'idle').toLowerCase()}">${scanLabel(h)}</span>
+        <div style="flex:1"></div>
+        ${r.winRm&&r.auth==='Failed'?`<span style="font-size:11px;color:var(--red)">Auth failed</span>`:''}
+      </div>
+    </div>`;
+  }
+  return out+'</div>';
+}
+
+// ── RAM Charts ────────────────────────────────────────────────────────────────
+function vRam(){
+  const sc=st.hosts.filter(h=>h.scanState==='Done'&&h.totalRamGb>0);
+  if(!sc.length)return noData('RAM Allocation','Run a scan to see RAM allocation charts.');
+  let out=`<div class="sec-ttl">RAM Allocation</div><div class="charts-grid">`;
+  for(const h of sc){
+    const segs=ramSegs(h);
+    const used=h.vms.filter(v=>v.assignedRamMb>0).reduce((s,v)=>s+v.assignedRamMb/1024,0);
+    out+=chartCard(`ram-${h.id}`,`${x(h.fqdn||h.address)}`,`${fmtGb(h.totalRamGb)} total`,segs,fmtGb(used),'allocated',h.totalRamGb);
+  }
+  return out+'</div>';
+}
+
+function vCpu(){
+  const sc=st.hosts.filter(h=>h.scanState==='Done'&&h.totalCores>0);
+  if(!sc.length)return noData('CPU Allocation','Run a scan to see CPU allocation charts.');
+  let out=`<div class="sec-ttl">CPU Allocation</div><div class="charts-grid">`;
+  for(const h of sc){
+    const segs=cpuSegs(h);
+    const totalV=h.vms.reduce((s,v)=>s+v.vCpuCount,0);
+    const ratio=(totalV/h.totalCores).toFixed(2);
+    const rc=ratio>4?'var(--red)':ratio>2?'var(--yellow)':'var(--text2)';
+    out+=chartCard(`cpu-${h.id}`,`${x(h.fqdn||h.address)}`,`${h.totalCores} cores`,segs,`${totalV} vCPU`,`of ${h.totalCores}`,h.totalCores,`<span style="font-size:12px;color:${rc}">Commit ${ratio}x</span>`);
+  }
+  return out+'</div>';
+}
+
+function chartCard(id,title,sub,segs,ct,cs,total,extra=''){
+  const leg=segs.map((s,i)=>`<div class="leg-item"><div class="leg-dot" style="background:${s.color}"></div><div class="leg-name" title="${x(s.label)}">${x(s.label)}</div><div class="leg-val">${typeof s.value==='number'&&s.value<100?s.value.toFixed(1):s.value}${s.unit||''}<span class="leg-pct">${pct(s.raw??s.value,total)}</span></div></div>`).join('');
+  return `<div class="ccrd"><div class="ccrd-hdr"><span>${title} <span style="font-weight:400;color:var(--text2);font-size:12px">— ${sub}</span></span>${extra}</div>
+    <div class="ccrd-body">
+      <div style="flex-shrink:0"><canvas id="c-${id}" class="donut" width="180" height="180"></canvas></div>
+      <div class="legend">${leg}</div>
+    </div></div>`;
+}
+
+function ramSegs(h){
+  const s=h.vms.filter(v=>v.assignedRamMb>0).map((v,i)=>({label:v.name,value:v.assignedRamMb/1024,raw:v.assignedRamMb/1024,unit:' GB',color:COLORS[i%COLORS.length]}));
+  const used=s.reduce((a,x)=>a+x.raw,0);
+  const free=Math.max(0,h.totalRamGb-used);
+  if(free>0.1)s.push({label:'Unallocated',value:free,raw:free,unit:' GB',color:'#334155'});
+  return s;
+}
+function cpuSegs(h){
+  return h.vms.filter(v=>v.vCpuCount>0).map((v,i)=>({label:v.name,value:v.vCpuCount,raw:v.vCpuCount,unit:' vCPU',color:COLORS[i%COLORS.length]}));
+}
+
+function drawCharts(type){
+  st.hosts.filter(h=>h.scanState==='Done').forEach(h=>{
+    const c=document.getElementById(`c-${type}-${h.id}`);
+    if(!c)return;
+    const segs=type==='ram'?ramSegs(h):cpuSegs(h);
+    const total=type==='ram'?h.totalRamGb:h.totalCores;
+    const ct=type==='ram'?fmtGb(segs.filter(s=>s.label!=='Unallocated').reduce((a,s)=>a+s.raw,0)):String(h.vms.reduce((s,v)=>s+v.vCpuCount,0));
+    const cs=type==='ram'?'allocated':`of ${h.totalCores}`;
+    donut(c,segs,total,ct,cs);
+  });
+}
+
+function drawClusterCharts(){
+  const sc=st.hosts.filter(h=>h.scanState==='Done');
+  const rc=document.getElementById('c-clu-ram');
+  if(rc&&sc.length){
+    const s=sc.map((h,i)=>({label:h.fqdn||h.address,value:h.vms.reduce((a,v)=>a+v.assignedRamMb/1024,0),raw:0,unit:' GB',color:COLORS[i%COLORS.length]}));
+    s.forEach(x=>x.raw=x.value);
+    donut(rc,s,st.totals.totalRamGb||s.reduce((a,x)=>a+x.value,0),fmtGb(s.reduce((a,x)=>a+x.value,0)),'VM RAM');
+  }
+  const cc=document.getElementById('c-clu-cpu');
+  if(cc&&sc.length){
+    const s=sc.map((h,i)=>({label:h.fqdn||h.address,value:h.vms.reduce((a,v)=>a+v.vCpuCount,0),raw:0,color:COLORS[i%COLORS.length]}));
+    s.forEach(x=>x.raw=x.value);
+    const tot=s.reduce((a,x)=>a+x.value,0);
+    donut(cc,s,st.totals.totalCores||tot,String(tot),'vCPU');
+  }
+}
+
+function donut(canvas,segs,total,ct,cs){
+  const dpr=window.devicePixelRatio||1;
+  const w=180,h=180;
+  canvas.width=w*dpr;canvas.height=h*dpr;
+  canvas.style.width=w+'px';canvas.style.height=h+'px';
+  const ctx=canvas.getContext('2d');
+  ctx.scale(dpr,dpr);
+  const cx=w/2,cy=h/2,or=Math.min(cx,cy)-8,ir=or*.62,gap=.015;
+  ctx.clearRect(0,0,w,h);
+  const cssVar=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  if(!segs.length||!total){
+    ctx.beginPath();ctx.arc(cx,cy,or,0,Math.PI*2);
+    ctx.strokeStyle='rgba(148,163,184,.15)';ctx.lineWidth=or-ir;ctx.stroke();
+  }else{
+    let a=-Math.PI/2;
+    for(const s of segs){
+      const sw=Math.max(0,(s.raw??s.value)/total*Math.PI*2-gap);
+      if(sw<=0)continue;
+      ctx.beginPath();
+      ctx.arc(cx,cy,or,a+gap/2,a+sw+gap/2);
+      ctx.arc(cx,cy,ir,a+sw+gap/2,a+gap/2,true);
+      ctx.closePath();ctx.fillStyle=s.color;ctx.fill();
+      a+=sw+gap;
+    }
+  }
+  ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillStyle=cssVar('--text');
+  ctx.font=`bold ${Math.round(or*.26)}px -apple-system,sans-serif`;
+  ctx.fillText(ct,cx,cy-or*.1);
+  ctx.fillStyle=cssVar('--text2');
+  ctx.font=`${Math.round(or*.15)}px -apple-system,sans-serif`;
+  ctx.fillText(cs,cx,cy+or*.18);
+}
+
+// ── Storage ───────────────────────────────────────────────────────────────────
+function vStorage(){
+  const sc=st.hosts.filter(h=>h.scanState==='Done'&&h.vms.length>0);
+  if(!sc.length)return noData('Storage Allocation','Run a scan to see storage usage.');
+  let out=`<div class="sec-ttl">Storage Allocation</div>
+  <div style="display:flex;gap:20px;margin-bottom:20px;font-size:12px;color:var(--text2)">
+    <div style="display:flex;align-items:center;gap:6px"><div style="width:14px;height:14px;background:rgba(34,197,94,.3);border-radius:3px"></div>Thick provisioned</div>
+    <div style="display:flex;align-items:center;gap:6px"><div style="width:14px;height:14px;background:#22c55e;border-radius:3px"></div>Actual on-disk</div>
+  </div>`;
+  for(const h of sc){
+    const vms=h.vms;
+    const maxT=Math.max(...vms.map(v=>(v.vhds||[]).reduce((s,d)=>s+d.thickGb,0)),1);
+    const totT=vms.reduce((s,v)=>(v.vhds||[]).reduce((a,d)=>a+d.thickGb,0)+s,0);
+    const totA=vms.reduce((s,v)=>(v.vhds||[]).reduce((a,d)=>a+d.actualGb,0)+s,0);
+    out+=`<div class="sto-sec"><div class="sto-ttl">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+      ${x(h.fqdn||h.address)}</div><div class="sto-rows">
+      ${stoBar('Total (host)',totT,totA,maxT,true)}
+      ${vms.map(v=>{
+        const t=(v.vhds||[]).reduce((s,d)=>s+d.thickGb,0);
+        const a=(v.vhds||[]).reduce((s,d)=>s+d.actualGb,0);
+        return stoBar(v.name,t,a,maxT);
+      }).join('')}
+    </div></div>`;
+  }
+  return out;
+}
+
+function stoBar(name,t,a,max,isTotal=false){
+  const tp=max>0?Math.min(100,t/max*100):0;
+  const ap=t>0?Math.min(100,a/t*100):0;
+  return `<div class="sto-row" ${isTotal?'style="border-top:1px solid var(--border);padding-top:8px;margin-bottom:4px"':''}>
+    <div class="sto-nm" title="${x(name)}" ${isTotal?'style="font-weight:600"':''}>${x(name)}</div>
+    <div class="sto-bwrap"><div class="sto-thick" style="width:${tp}%"><div class="sto-actual" style="width:${ap}%"></div></div></div>
+    <div class="sto-lbl">${a.toFixed(1)} / ${t.toFixed(1)} GB</div>
+  </div>`;
+}
+
+// ── VM Table ──────────────────────────────────────────────────────────────────
+function vVmTable(){
+  const all=st.hosts.flatMap(h=>(h.vms||[]).map(v=>({...v,_h:h})));
+  let rows=all;
+  if(st.vmF.host)rows=rows.filter(v=>v.hostId===st.vmF.host);
+  if(st.vmF.state)rows=rows.filter(v=>v.state===st.vmF.state);
+  if(st.vmF.name)rows=rows.filter(v=>v.name.toLowerCase().includes(st.vmF.name.toLowerCase()));
+  const{col,dir}=st.vmSort;
+  rows.sort((a,b)=>{
+    let va=col==='host'?(a._h?.fqdn||''):a[col]??'';
+    let vb=col==='host'?(b._h?.fqdn||''):b[col]??'';
+    if(typeof va==='string')va=va.toLowerCase();if(typeof vb==='string')vb=vb.toLowerCase();
+    return va<vb?-dir:va>vb?dir:0;
+  });
+  const hopts=st.hosts.map(h=>`<option value="${h.id}" ${st.vmF.host===h.id?'selected':''}>${x(h.fqdn||h.address)}</option>`).join('');
+  const sopts=['Running','Off','Saved','Paused'].map(s=>`<option value="${s}" ${st.vmF.state===s?'selected':''}>${s}</option>`).join('');
+  const th=(c,lbl)=>{const s=st.vmSort.col===c;return`<th class="${s?'sorted':''}" onclick="sortVm('${c}')">${lbl} <span style="opacity:${s?.8:.3}">${s?(dir===1?'↑':'↓'):'↕'}</span></th>`;};
+  const trows=rows.map(v=>{
+    const t=(v.vhds||[]).reduce((s,d)=>s+d.thickGb,0);
+    const a=(v.vhds||[]).reduce((s,d)=>s+d.actualGb,0);
+    return `<tr>
+      <td style="color:var(--text2)">${x(v._h?.fqdn||v.hostId)}</td>
+      <td style="font-weight:500">${x(v.name)}</td>
+      <td><span class="vmst ${(v.state||'').toLowerCase()}">${x(v.state)}</span></td>
+      <td>${v.vCpuCount}</td>
+      <td>${fmtMb(v.assignedRamMb)}</td>
+      <td>${t.toFixed(1)} GB</td>
+      <td>${a.toFixed(1)} GB</td>
+      <td>${v.nicCount}</td>
+      <td style="color:var(--text2)">${x(v.uptime||'—')}</td>
+    </tr>`;
+  }).join('');
+  return `<div class="sec-ttl">VM Table <span style="font-weight:400;font-size:14px;color:var(--text2)">(${rows.length} of ${all.length})</span></div>
+  <div class="vm-filters">
+    <input class="finput" type="search" placeholder="Search VM…" value="${x(st.vmF.name)}" oninput="fltVm('name',this.value)" style="width:200px">
+    <select class="finput" onchange="fltVm('host',this.value)"><option value="">All hosts</option>${hopts}</select>
+    <select class="finput" onchange="fltVm('state',this.value)"><option value="">All states</option>${sopts}</select>
+  </div>
+  <div class="twrap"><table class="dt"><thead><tr>
+    ${th('host','Host')}${th('name','Name')}${th('state','State')}
+    ${th('vCpuCount','vCPU')}${th('assignedRamMb','RAM')}
+    <th>Disk (thick)</th><th>Disk (actual)</th><th>NICs</th>${th('uptime','Uptime')}
+  </tr></thead><tbody>${trows||'<tr><td colspan="9" style="text-align:center;color:var(--text3);padding:32px">No VMs match filters</td></tr>'}</tbody></table></div>`;
+}
+
+function sortVm(c){if(st.vmSort.col===c)st.vmSort.dir*=-1;else{st.vmSort.col=c;st.vmSort.dir=1;}renderView('vms',false);}
+function fltVm(k,v){st.vmF[k]=v;renderView('vms',false);}
+
+// ── Cluster ───────────────────────────────────────────────────────────────────
+function vCluster(){
+  const t=st.totals;
+  if(!t.hostCount)return noData('Cluster Statistics','Add hosts and run a scan.');
+  const sc=st.hosts.filter(h=>h.scanState==='Done');
+  const cc=(lbl,val,sub,r)=>`<div class="clu-card">
+    <div class="clu-lbl">${lbl}</div><div class="clu-val">${val}</div>
+    ${sub?`<div class="clu-sub">${sub}</div>`:''}
+    ${r!==undefined?`<div class="rbar"><div class="rfill ${r>1?'over':r>.7?'warn':''}" style="width:${Math.min(100,r*100)}%"></div></div>`:''}
+  </div>`;
+  const ramLeg=sc.map((h,i)=>{const v=h.vms.reduce((s,vm)=>s+vm.assignedRamMb/1024,0);return`<div class="leg-item"><div class="leg-dot" style="background:${COLORS[i%COLORS.length]}"></div><div class="leg-name">${x(h.fqdn||h.address)}</div><div class="leg-val">${fmtGb(v)}</div></div>`;}).join('');
+  const cpuLeg=sc.map((h,i)=>{const v=h.vms.reduce((s,vm)=>s+vm.vCpuCount,0);return`<div class="leg-item"><div class="leg-dot" style="background:${COLORS[i%COLORS.length]}"></div><div class="leg-name">${x(h.fqdn||h.address)}</div><div class="leg-val">${v} vCPU</div></div>`;}).join('');
+  return `<div class="sec-ttl">Cluster Statistics</div>
+  <div class="clu-cards">
+    ${cc('Total Hosts',t.hostCount??'—',`${sc.length} scanned`)}
+    ${cc('Physical Cores',t.totalCores??'—',`${st.hosts.length} hosts`)}
+    ${cc('Host RAM',fmtGb(t.totalRamGb??0),'total physical')}
+    ${cc('vCPU Allocated',t.totalVCpu??'—',`${(t.cpuCommitRatio||0).toFixed(2)}x commit`,t.cpuCommitRatio?Math.min(1,(t.cpuCommitRatio/4)):0)}
+    ${cc('VM RAM',fmtGb(t.totalVmRamGb??0),`${((t.ramCommitRatio||0)*100).toFixed(0)}% of host RAM`,t.ramCommitRatio??0)}
+    ${cc('RAM Commit',`${((t.ramCommitRatio||0)*100).toFixed(1)}%`,t.ramCommitRatio>1?'Overcommitted':'Headroom available',t.ramCommitRatio??0)}
+  </div>
+  <div class="charts-grid">
+    <div class="ccrd"><div class="ccrd-hdr">VM RAM by Host</div>
+      <div class="ccrd-body"><div style="flex-shrink:0"><canvas id="c-clu-ram" class="donut" width="180" height="180"></canvas></div><div class="legend">${ramLeg}</div></div></div>
+    <div class="ccrd"><div class="ccrd-hdr">vCPU by Host</div>
+      <div class="ccrd-body"><div style="flex-shrink:0"><canvas id="c-clu-cpu" class="donut" width="180" height="180"></canvas></div><div class="legend">${cpuLeg}</div></div></div>
+  </div>`;
+}
+
+// ── Actions ───────────────────────────────────────────────────────────────────
+async function submitCreds(){
+  const u=document.getElementById('cu').value.trim(),p=document.getElementById('cp').value;
+  if(!u||!p){toast('Username and password required','error');return;}
+  try{await api('POST','/api/credentials',{username:u,password:p});}
+  catch(e){toast('Failed: '+e.message,'error');}
+}
+
+function showAddHostModal(){openModal('m-add');}
+function togglePerHostCreds(){document.getElementById('ah-creds').style.display=document.getElementById('ah-global').checked?'none':'block';}
+
+async function submitAddHosts(){
+  const addr=document.getElementById('ah-addr').value.trim();
+  if(!addr){toast('Enter at least one address','error');return;}
+  const useG=document.getElementById('ah-global').checked;
+  closeModal('m-add');toast('Adding host(s)…','info');
+  try{
+    const r=await api('POST','/api/hosts',{addresses:addr,useGlobalCreds:useG,username:useG?null:document.getElementById('ah-user').value,password:useG?null:document.getElementById('ah-pass').value});
+    toast(`Added ${r.added} host(s)`,'success');
+  }catch(e){toast('Failed: '+e.message,'error');}
+}
+
+function promptRemove(id,name){st.rmId=id;document.getElementById('rm-name').textContent=name;openModal('m-remove');}
+async function confirmRemove(){
+  if(!st.rmId)return;
+  try{await api('DELETE',`/api/hosts/${st.rmId}`);closeModal('m-remove');st.rmId=null;}
+  catch(e){toast('Remove failed: '+e.message,'error');}
+}
+
+async function triggerScan(){
+  const b=document.getElementById('btn-scan');
+  b.disabled=true;b.innerHTML='<div class="spin"></div> Scanning…';
+  try{
+    const r=await api('POST','/api/scan',{});
+    if(!r.ok){toast(r.message||'Scan not started','error');b.disabled=false;b.innerHTML='Scan All';}
+    else toast(`Scanning ${r.scanning||''} host(s)…`,'info');
+  }catch(e){toast('Scan failed: '+e.message,'error');b.disabled=false;b.innerHTML='Scan All';}
+}
+
+async function exportData(type){
+  closeDrop();
+  const url=`/api/export/${type}?token=${encodeURIComponent(st.token)}`;
+  const name=`hyper-inventory-${new Date().toISOString().slice(0,10)}.${type==='csv'?'zip':'json'}`;
+  if('showSaveFilePicker' in window){
+    try{
+      const h=await window.showSaveFilePicker({suggestedName:name,types:[{description:type.toUpperCase(),accept:{[type==='csv'?'application/zip':'application/json']:['.'+( type==='csv'?'zip':'json')]}}]});
+      const resp=await fetch(url,{headers:{'X-Session-Token':st.token}});
+      const w=await h.createWritable();await resp.body.pipeTo(w);
+      toast(`Exported ${type.toUpperCase()}`,'success');return;
+    }catch(e){if(e.name==='AbortError')return;}
+  }
+  const a=document.createElement('a');a.href=url;a.download=name;a.click();
+}
+
+function showEndSession(){openModal('m-end');}
+async function quitSession(exp){
+  closeModal('m-end');
+  if(exp)await exportData('json');
+  try{await api('POST','/api/quit',{});}catch{}
+  document.body.innerHTML='<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;color:#94a3b8;background:#0f172a;font-size:16px">Session ended. Close this tab.</div>';
+}
+
+function toggleTheme(){
+  const cur=document.documentElement.getAttribute('data-theme')||'dark';
+  const nxt=cur==='dark'?'light':'dark';
+  document.documentElement.setAttribute('data-theme',nxt);
+  document.getElementById('btn-theme').innerHTML=nxt==='dark'
+    ?'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>'
+    :'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>';
+  setTimeout(()=>{if(st.view==='ram')drawCharts('ram');if(st.view==='cpu')drawCharts('cpu');if(st.view==='cluster')drawClusterCharts();},20);
+}
+
+// ── Modals ────────────────────────────────────────────────────────────────────
+function openModal(id){document.getElementById(id).classList.add('show');}
+function closeModal(id){document.getElementById(id).classList.remove('show');}
+function toggleDrop(){const m=document.getElementById('drop-menu');m.style.display=m.style.display==='none'?'':'none';}
+function closeDrop(){document.getElementById('drop-menu').style.display='none';}
+document.addEventListener('click',e=>{if(!e.target.closest('#btn-export')&&!e.target.closest('#drop-menu'))closeDrop();});
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function ri(l,ok,label){const c=ok?'ok':'fail';return`<div class="ricon ${c}" title="${label}: ${ok?'OK':'Fail'}">${ok?'✓':'✗'}<div class="tip">${label}: ${ok?'Reachable':'Not reachable'}</div></div>`;}
+function ai(auth){const map={Ok:['ok','✓','Auth OK'],Failed:['fail','✗','Auth Failed'],Unknown:['unk','?','Auth Unknown']};const[c,s,l]=map[auth]||map.Unknown;return`<div class="ricon ${c}" title="${l}"><span style="font-size:9px;font-weight:700">${s}</span><div class="tip">${l}</div></div>`;}
+function scanLabel(h){
+  switch(h.scanState){
+    case'Scanning':return'<div class="spin"></div> Scanning…';
+    case'Done':return h.lastScanned?`Scanned ${ago(h.lastScanned)}`:'Scanned';
+    case'Error':return`Error: ${x(h.scanError||'unknown')}`;
+    default:return'Not scanned';
+  }
+}
+function diffBanner(){
+  const d=st.diff;
+  if(!d.added?.length&&!d.removed?.length&&!d.changed?.length)return'';
+  return`<div class="diff-panel"><div class="diff-ttl">Changes since last scan</div>
+    ${(d.added||[]).map(e=>`<div class="diff-item add">+ VM added: ${x(e.vmName)}</div>`).join('')}
+    ${(d.removed||[]).map(e=>`<div class="diff-item rem">− VM removed: ${x(e.vmName)}</div>`).join('')}
+    ${(d.changed||[]).map(e=>`<div class="diff-item chg">~ ${x(e.vmName)}: ${e.field} ${x(e.oldVal)} → ${x(e.newVal)}</div>`).join('')}
+  </div>`;
+}
+function noData(t,m){return`<div class="sec-ttl">${t}</div><div class="empty"><div class="empty-ico">📊</div><div class="empty-ttl">No data yet</div><div class="empty-txt">${m}</div><button class="btn btn-primary" onclick="triggerScan()">Scan Now</button></div>`;}
+function fmtGb(g){if(g>=1024)return`${(g/1024).toFixed(1)} TB`;return`${g.toFixed(1)} GB`;}
+function fmtMb(m){if(!m)return'—';if(m>=1024)return`${(m/1024).toFixed(1)} GB`;return`${m} MB`;}
+function pct(v,t){return t>0?` (${((v/t)*100).toFixed(0)}%)`:''}
+function x(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function set(id,v){const e=document.getElementById(id);if(e)e.textContent=v;}
+function ago(iso){const s=Math.floor((Date.now()-new Date(iso).getTime())/1000);if(s<60)return`${s}s ago`;if(s<3600)return`${Math.floor(s/60)}m ago`;return`${Math.floor(s/3600)}h ago`;}
+
+function toast(msg,type='info',dur=3500){
+  const c=document.getElementById('toast-c');
+  const t=document.createElement('div');t.className=`toast ${type}`;t.textContent=msg;
+  c.appendChild(t);setTimeout(()=>t.remove(),dur);
+}
+
+window.addEventListener('beforeunload',e=>{e.preventDefault();e.returnValue='Session still running in console (Q to quit).';});
+
+init();
+</script>
+</body>
+</html>

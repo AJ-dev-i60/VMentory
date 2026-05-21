@@ -1,0 +1,14 @@
+## .NET
+bin/
+obj/
+*.user
+.vs/
+
+## Build output
+dist/
+
+## VMentory runtime files
+errors.log
+VMentory-update.exe
+VMentory-update.tmp
+VMentory.bak.exe
