@@ -22,6 +22,8 @@ Single-exe Windows tool that inventories Hyper-V hosts over WinRM and serves a l
 | `Exporter.cs` | CSV zip + JSON export |
 | `Updater.cs` | GitHub Releases auto-update: apply-on-launch + background download |
 | `wwwroot/index.html` | Entire SPA (CSS + JS inline, ~1600 lines) |
+| `DevLog.cs` | Dev/verbose console logger — gated by `--verbose` flag, zero cost when off |
+| `app.manifest` | UAC manifest: requests `requireAdministrator` on exe launch |
 | `HyperInventory.csproj` | SDK Web project; `AssemblyName=VMentory`; `Version` defaults to `1.0.0` |
 | `build.ps1` | Release build: `dotnet publish` win-x64 single-file → `dist\VMentory.exe` |
 | `.github/workflows/release.yml` | CI: push `v*` tag → build → GitHub Release with `VMentory.exe` asset |
@@ -32,18 +34,36 @@ Single-exe Windows tool that inventories Hyper-V hosts over WinRM and serves a l
 
 ```powershell
 dotnet run -- --mock                # dev mode: 5 fake hosts, no real WinRM
+dotnet run -- --mock --verbose      # same + color-coded diagnostic logging
 dotnet run -- --mock --no-update    # same, skip GitHub update check
 dotnet build                        # compile check
 .\build.ps1                         # release exe → dist\VMentory.exe
 .\build.ps1 -Version 1.2.0          # embed specific version number
 ```
 
-## Release workflow
+> **Real hosts require admin.** `app.manifest` triggers UAC automatically on the release exe.
+> For `dotnet run`, launch the terminal as Administrator first.
+
+## Branch workflow
+
+All work happens on `dev`. Merge to `master` only when a feature/fix is complete.
 
 ```powershell
-git add -p && git commit -m "feat: ..."
-git tag v1.2.0
+git checkout dev                    # always develop here
+
+# when ready to ship:
+git checkout master
+git merge dev --no-ff
+git tag v1.x.y
 git push && git push --tags         # Actions builds and publishes the release automatically
+git checkout dev                    # back to dev
+```
+
+## Release workflow (quick reference)
+
+```powershell
+git tag v1.2.0
+git push && git push --tags
 ```
 
 ---
@@ -79,3 +99,9 @@ All `/api/*` routes require `X-Session-Token` header or `?token=` query param.
 5. **Publish flags are CLI-only** — adding `-r win-x64` to the csproj breaks offline `dotnet restore`. Always pass via `build.ps1` or explicit `dotnet publish` flags.
 
 6. **Auto-update skips dev mode** — `Updater` checks `Path.GetFileName(ProcessPath) == "VMentory.exe"`; `dotnet run` never triggers update logic.
+
+7. **PowerShell scripts must use `-File` not `-Command -`** — PowerShell 5.1 silently drops all stdout/stderr when WinRM errors occur if the script is piped via stdin. `RunPowerShellAsync` writes a temp `.ps1` file and uses `-File` to avoid this. Never revert to stdin.
+
+8. **Local WinRM service must be running** — `EnsureWinRmServiceAsync()` starts it at launch. The `WSMan:\` provider (needed to set TrustedHosts) is unavailable if the service is stopped. `EnsureTrustedHostAsync()` is called before every auth attempt to add the host IP to TrustedHosts (requires admin).
+
+9. **stdout and stderr must be read concurrently** — reading stdout with `ReadToEndAsync` before draining stderr can deadlock if the process fills the stderr pipe buffer. Always start both tasks before `WaitForExitAsync`.
