@@ -11,6 +11,7 @@ public static class Scanner
     public static async Task<(bool Ok, string Error)> QuickConnectAsync(
         Host host, Credentials creds, int winrmPort, CancellationToken ct = default)
     {
+        DevLog.Step($"[QUICK] quick-connect to {host.Address}");
         var script = BuildRemoteWrapper(host.Address, creds, winrmPort, QuickInfoScript);
 
         try
@@ -19,10 +20,21 @@ public static class Scanner
                 script, TimeSpan.FromSeconds(15), ct);
 
             var json = ExtractJson(raw);
-            if (json == null) return (false, "No JSON in response");
+            if (json == null)
+            {
+                DevLog.Err($"[QUICK] no JSON in response for {host.Address}. Raw: {raw[..Math.Min(300, raw.Length)]}");
+                return (false, "No JSON in response");
+            }
 
             var node = JsonNode.Parse(json);
-            if (node == null) return (false, "Invalid JSON");
+            if (node == null) { DevLog.Err($"[QUICK] JSON parse failed"); return (false, "Invalid JSON"); }
+
+            if (node["Error"] is JsonNode errNode)
+            {
+                var errMsg = errNode.GetValue<string>();
+                DevLog.Err($"[QUICK] remote error: {errMsg}");
+                return (false, errMsg);
+            }
 
             host.Fqdn = node["FQDN"]?.GetValue<string>() ?? host.Address;
             host.OsCaption = node["OSCaption"]?.GetValue<string>() ?? "";
@@ -30,10 +42,12 @@ public static class Scanner
             host.Manufacturer = node["Manufacturer"]?.GetValue<string>() ?? "";
             host.Model = node["Model"]?.GetValue<string>() ?? "";
 
+            DevLog.Ok($"[QUICK] {host.Address} → FQDN={host.Fqdn}, OS={host.OsCaption}");
             return (true, "");
         }
         catch (Exception ex)
         {
+            DevLog.Err($"[QUICK] exception: {ex}");
             return (false, ex.Message);
         }
     }
@@ -42,6 +56,7 @@ public static class Scanner
     public static async Task<(bool Ok, string Error)> ScanHostAsync(
         Host host, Credentials creds, int winrmPort, CancellationToken ct = default)
     {
+        DevLog.Step($"[SCAN] full scan of {host.Address}");
         var script = BuildRemoteWrapper(host.Address, creds, winrmPort, FullInventoryScript);
 
         try
@@ -51,23 +66,34 @@ public static class Scanner
 
             var json = ExtractJson(raw);
             if (json == null)
-                return (false, string.IsNullOrWhiteSpace(raw) ? "No output from host" : $"Unexpected output: {raw[..Math.Min(200, raw.Length)]}");
+            {
+                var msg = string.IsNullOrWhiteSpace(raw) ? "No output from host" : $"Unexpected output: {raw[..Math.Min(200, raw.Length)]}";
+                DevLog.Err($"[SCAN] {host.Address} — {msg}");
+                return (false, msg);
+            }
 
             var node = JsonNode.Parse(json);
-            if (node == null) return (false, "Could not parse response JSON");
+            if (node == null) { DevLog.Err($"[SCAN] JSON parse failed"); return (false, "Could not parse response JSON"); }
 
             if (node["Error"] is JsonNode errNode)
-                return (false, errNode.GetValue<string>());
+            {
+                var errMsg = errNode.GetValue<string>();
+                DevLog.Err($"[SCAN] remote error from {host.Address}: {errMsg}");
+                return (false, errMsg);
+            }
 
             MapInventory(host, node);
+            DevLog.Ok($"[SCAN] {host.Address} done — {host.Vms.Count} VMs, {host.TotalCores} cores, {host.TotalRamGb:F1} GB RAM");
             return (true, "");
         }
         catch (OperationCanceledException)
         {
+            DevLog.Err($"[SCAN] {host.Address} timed out (60s)");
             return (false, "Scan timed out (60s)");
         }
         catch (Exception ex)
         {
+            DevLog.Err($"[SCAN] exception for {host.Address}: {ex}");
             return (false, ex.Message);
         }
     }

@@ -20,10 +20,13 @@ var config = new AppConfig
 {
     MockMode = args.Contains("--mock"),
     NoUpdate = args.Contains("--no-update"),
+    VerboseMode = args.Contains("--verbose"),
     Port = FindFreePort(),
     Token = GenerateToken(),
     WinRmPort = 5985,
 };
+
+DevLog.Verbose = config.VerboseMode;
 
 // ── Services ─────────────────────────────────────────────────────────────────
 
@@ -149,10 +152,12 @@ app.MapPost("/api/hosts", async (HttpContext ctx, Store s, EventHub h, AppConfig
             host.PerHostCreds = new Credentials(body.Username!, body.Password ?? "");
 
         // DNS check
+        DevLog.Step($"[ADD]  resolving DNS for {addr}");
         var (resolved, fqdn, dnsErr) = await ReachabilityChecker.ResolveFqdnAsync(addr);
         host.Fqdn = fqdn;
         if (!resolved)
         {
+            DevLog.Err($"[ADD]  DNS failed for {addr}: {dnsErr}");
             host.AddError = $"DNS resolution failed: {dnsErr}";
             host.Reachability.CheckedAt = DateTimeOffset.UtcNow;
             s.AddHost(host);
@@ -160,6 +165,7 @@ app.MapPost("/api/hosts", async (HttpContext ctx, Store s, EventHub h, AppConfig
             added.Add(new { host.Id, host.Address, error = host.AddError });
             continue;
         }
+        DevLog.Ok($"[ADD]  DNS OK → {fqdn}");
 
         // Reachability checks
         host.Reachability.CheckedAt = DateTimeOffset.UtcNow;
@@ -171,8 +177,10 @@ app.MapPost("/api/hosts", async (HttpContext ctx, Store s, EventHub h, AppConfig
             var creds = s.GetEffectiveCreds(host);
             if (creds != null)
             {
+                DevLog.Step($"[ADD]  using creds: username='{creds.Username}', useGlobal={host.UseGlobalCreds}");
+                await ReachabilityChecker.EnsureTrustedHostAsync(addr);
                 var (authState, authErr) = await ReachabilityChecker.TestWinRmAuthAsync(
-                    addr, creds, cfg.WinRmPort, TimeSpan.FromSeconds(10));
+                    addr, creds, cfg.WinRmPort, TimeSpan.FromSeconds(30));
                 host.Reachability.Auth = authState;
                 host.Reachability.ErrorDetail = authErr;
 
@@ -184,10 +192,12 @@ app.MapPost("/api/hosts", async (HttpContext ctx, Store s, EventHub h, AppConfig
                 else
                 {
                     host.AddError = $"Authentication failed: {authErr}";
+                    DevLog.Err($"[ADD]  auth failed for {addr}: {authErr}");
                 }
             }
             else
             {
+                DevLog.Warn($"[ADD]  no credentials available for {addr}");
                 host.Reachability.Auth = AuthState.Unknown;
                 host.AddError = "No credentials configured — set global credentials first";
             }
@@ -197,6 +207,7 @@ app.MapPost("/api/hosts", async (HttpContext ctx, Store s, EventHub h, AppConfig
             host.Reachability.Auth = AuthState.Unknown;
             if (!host.Reachability.Icmp) host.AddError = "Host unreachable (ICMP failed)";
             else host.AddError = "WinRM port not responding";
+            DevLog.Warn($"[ADD]  {addr} — ICMP={host.Reachability.Icmp}, WinRM={host.Reachability.WinRm}");
         }
 
         s.AddHost(host);
@@ -365,12 +376,22 @@ if (config.MockMode)
     Console.WriteLine("  [MOCK MODE] — using simulated data, no real WinRM calls");
     Console.ResetColor();
 }
+if (config.VerboseMode)
+{
+    Console.ForegroundColor = ConsoleColor.Magenta;
+    Console.WriteLine("  [VERBOSE] — full diagnostic logging enabled");
+    Console.ResetColor();
+}
 Console.WriteLine($"\n  URL   : {url}");
 Console.WriteLine($"  Token : {config.Token}");
 Console.WriteLine("\n  Press Q to quit and purge data");
 Console.WriteLine("  Press R to re-open browser\n");
 
 await app.StartAsync();
+
+// Ensure local WinRM service is running so WSMan:\ provider and TrustedHosts work.
+if (!config.MockMode)
+    await ReachabilityChecker.EnsureWinRmServiceAsync();
 
 Updater.StartBackgroundCheck(config, logWriter);
 
@@ -449,6 +470,7 @@ public class AppConfig
 {
     public bool MockMode { get; init; }
     public bool NoUpdate { get; init; }
+    public bool VerboseMode { get; init; }
     public int Port { get; init; }
     public string Token { get; init; } = "";
     public int WinRmPort { get; set; } = 5985;
