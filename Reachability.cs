@@ -47,6 +47,55 @@ public static class ReachabilityChecker
         catch (Exception ex) { DevLog.Warn($"[TCP]  {address}:{port} closed/timeout — {ex.Message}"); return false; }
     }
 
+    // Ensures the local WinRM service is running (needed for WSMan:\ provider and outbound auth).
+    // Requires admin. Safe to call repeatedly — no-ops if already running.
+    public static async Task EnsureWinRmServiceAsync(CancellationToken ct = default)
+    {
+        DevLog.Step("[WINRM] checking local WinRM service…");
+        const string script =
+            "$svc = Get-Service WinRM -ErrorAction SilentlyContinue\r\n" +
+            "if (-not $svc) { Write-Output 'NOT_FOUND'; exit }\r\n" +
+            "if ($svc.Status -eq 'Running') { Write-Output 'RUNNING'; exit }\r\n" +
+            "Set-Service WinRM -StartupType Automatic -ErrorAction Stop\r\n" +
+            "Start-Service WinRM -ErrorAction Stop\r\n" +
+            "Write-Output 'STARTED'";
+        try
+        {
+            var result = await RunPowerShellAsync(script, TimeSpan.FromSeconds(15), ct);
+            if (result.Contains("STARTED"))       DevLog.Ok("[WINRM] WinRM service started");
+            else if (result.Contains("RUNNING"))  DevLog.Ok("[WINRM] WinRM service already running");
+            else if (result.Contains("NOT_FOUND")) DevLog.Warn("[WINRM] WinRM service not found on this machine");
+            else DevLog.Warn($"[WINRM] unexpected: {result.Trim()}");
+        }
+        catch (Exception ex) { DevLog.Err($"[WINRM] failed to start service (not admin?): {ex.Message}"); }
+    }
+
+    // Ensures the address is in the local WinRM TrustedHosts list. Requires admin.
+    public static async Task EnsureTrustedHostAsync(string address, CancellationToken ct = default)
+    {
+        DevLog.Step($"[TRUST] ensuring '{address}' is in TrustedHosts");
+        var script = string.Format(
+            "$cur = (Get-Item WSMan:\\localhost\\Client\\TrustedHosts -ErrorAction SilentlyContinue).Value\r\n" +
+            "if ($cur -notlike '*{0}*') {{\r\n" +
+            "  Set-Item WSMan:\\localhost\\Client\\TrustedHosts -Value '{0}' -Concatenate -Force\r\n" +
+            "  Write-Output 'ADDED'\r\n" +
+            "}} else {{\r\n" +
+            "  Write-Output 'ALREADY'\r\n" +
+            "}}",
+            EscapePs(address));
+        try
+        {
+            var result = await RunPowerShellAsync(script, TimeSpan.FromSeconds(10), ct);
+            if (result.Contains("ADDED")) DevLog.Ok($"[TRUST] added '{address}' to TrustedHosts");
+            else if (result.Contains("ALREADY")) DevLog.Ok($"[TRUST] '{address}' already in TrustedHosts");
+            else DevLog.Warn($"[TRUST] unexpected result: {result.Trim()}");
+        }
+        catch (Exception ex)
+        {
+            DevLog.Err($"[TRUST] failed (not admin?): {ex.Message}");
+        }
+    }
+
     // Tests WinRM auth via PowerShell Negotiate auth. Returns AuthState + optional error.
     public static async Task<(AuthState State, string? Error)> TestWinRmAuthAsync(
         string address, Credentials creds, int port, TimeSpan timeout, CancellationToken ct = default)
@@ -73,6 +122,9 @@ public static class ReachabilityChecker
             var result = await RunPowerShellAsync(script, timeout, ct);
             DevLog.Step($"[AUTH] raw result: {result.Trim()}");
 
+            if (result.Contains("TRUSTED_FAIL:"))
+                DevLog.Warn($"[AUTH] TrustedHosts update failed (not admin?): {result}");
+
             if (result.Contains("AUTH_OK"))
             {
                 DevLog.Ok($"[AUTH] success for {address}");
@@ -97,7 +149,9 @@ public static class ReachabilityChecker
         }
     }
 
-    // Runs a PowerShell script via stdin and returns stdout.
+    // Runs a PowerShell script via a temp file and returns stdout.
+    // Using -File instead of -Command - avoids a PowerShell 5.1 bug where WinRM errors
+    // silently swallow all output when the script is piped via stdin.
     public static async Task<string> RunPowerShellAsync(string script, TimeSpan timeout, CancellationToken ct = default)
     {
         var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -105,34 +159,42 @@ public static class ReachabilityChecker
 
         DevLog.Script(script);
 
-        var psi = new ProcessStartInfo("powershell.exe", "-NonInteractive -NoProfile -Command -")
+        var tmp = Path.Combine(Path.GetTempPath(), $"vmentory_{Guid.NewGuid():N}.ps1");
+        try
         {
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
+            await File.WriteAllTextAsync(tmp, script, System.Text.Encoding.UTF8, cts.Token);
 
-        using var proc = Process.Start(psi)!;
-        await proc.StandardInput.WriteAsync(script.AsMemory(), cts.Token);
-        proc.StandardInput.Close();
+            var psi = new ProcessStartInfo(
+                "powershell.exe",
+                $"-NonInteractive -NoProfile -ExecutionPolicy Bypass -File \"{tmp}\"")
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
 
-        // Read stdout and stderr concurrently — reading only stdout can deadlock if PS
-        // fills the stderr pipe buffer before we drain it.
-        var stdoutTask = proc.StandardOutput.ReadToEndAsync(cts.Token);
-        var stderrTask = proc.StandardError.ReadToEndAsync(cts.Token);
+            using var proc = Process.Start(psi)!;
 
-        await proc.WaitForExitAsync(cts.Token);
+            // Read stdout and stderr concurrently to avoid deadlock if either pipe fills.
+            var stdoutTask = proc.StandardOutput.ReadToEndAsync(cts.Token);
+            var stderrTask = proc.StandardError.ReadToEndAsync(cts.Token);
 
-        var stdout = await stdoutTask;
-        var stderr = await stderrTask;
+            await proc.WaitForExitAsync(cts.Token);
 
-        DevLog.PsOut(stdout);
-        DevLog.PsErr(stderr);
-        DevLog.ExitCode(proc.ExitCode);
+            var stdout = await stdoutTask;
+            var stderr = await stderrTask;
 
-        return stdout;
+            DevLog.PsOut(stdout);
+            DevLog.PsErr(stderr);
+            DevLog.ExitCode(proc.ExitCode);
+
+            return stdout;
+        }
+        finally
+        {
+            try { File.Delete(tmp); } catch { }
+        }
     }
 
     // Resolve hostname DNS at add-time.

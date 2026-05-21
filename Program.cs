@@ -178,8 +178,9 @@ app.MapPost("/api/hosts", async (HttpContext ctx, Store s, EventHub h, AppConfig
             if (creds != null)
             {
                 DevLog.Step($"[ADD]  using creds: username='{creds.Username}', useGlobal={host.UseGlobalCreds}");
+                await ReachabilityChecker.EnsureTrustedHostAsync(addr);
                 var (authState, authErr) = await ReachabilityChecker.TestWinRmAuthAsync(
-                    addr, creds, cfg.WinRmPort, TimeSpan.FromSeconds(10));
+                    addr, creds, cfg.WinRmPort, TimeSpan.FromSeconds(30));
                 host.Reachability.Auth = authState;
                 host.Reachability.ErrorDetail = authErr;
 
@@ -387,6 +388,10 @@ Console.WriteLine("\n  Press Q to quit and purge data");
 Console.WriteLine("  Press R to re-open browser\n");
 
 await app.StartAsync();
+
+// Ensure local WinRM service is running so WSMan:\ provider and TrustedHosts work.
+if (!config.MockMode)
+    await ReachabilityChecker.EnsureWinRmServiceAsync();
 
 Updater.StartBackgroundCheck(config, logWriter);
 
