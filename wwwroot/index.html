@@ -66,13 +66,13 @@ html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Ro
 .card{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;overflow:hidden}
 
 /* Host grid */
-.host-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px}
+.host-grid{display:grid;grid-template-columns:1fr;gap:16px}
 .hcard{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;overflow:hidden;transition:border-color .2s}
 .hcard:hover{border-color:var(--border-lt)}
 .hcard-hdr{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--border)}
 .htitle{flex:1;min-width:0}
 .hname{font-weight:700;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.hos{color:var(--text2);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hos{color:var(--text2);font-size:12px;display:flex;align-items:center;gap:4px;min-width:0;overflow:hidden}
 .reach-icons{display:flex;gap:5px;align-items:center}
 .ricon{width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:bold;cursor:default;position:relative}
 .ricon.ok{background:rgba(34,197,94,.15);color:var(--green)}
@@ -298,11 +298,11 @@ textarea.finp{resize:vertical;min-height:80px}
     <p style="color:var(--text2);font-size:13px;margin-bottom:20px;line-height:1.6">Enter credentials for WinRM auth (Negotiate — Kerberos/NTLM). Held in memory only, wiped on exit.</p>
     <div class="fgrp">
       <label class="flbl">Username (DOMAIN\user or user@domain)</label>
-      <input type="text" id="cu" class="finp" placeholder="CORP\administrator" autocomplete="username">
+      <input type="text" id="cu" class="finp" placeholder="CORP\administrator" autocomplete="username" onkeydown="if(event.key==='Enter')document.getElementById('cp').focus()">
     </div>
     <div class="fgrp">
       <label class="flbl">Password</label>
-      <input type="password" id="cp" class="finp" placeholder="••••••••" autocomplete="current-password">
+      <input type="password" id="cp" class="finp" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitCreds()">
     </div>
     <div class="macts">
       <button class="btn btn-primary" onclick="submitCreds()">Set Credentials</button>
@@ -324,8 +324,8 @@ textarea.finp{resize:vertical;min-height:80px}
       <span style="font-size:13px">Use global credentials</span>
     </label>
     <div id="ah-creds" style="display:none">
-      <div class="fgrp"><label class="flbl">Username</label><input type="text" id="ah-user" class="finp" placeholder="CORP\admin"></div>
-      <div class="fgrp"><label class="flbl">Password</label><input type="password" id="ah-pass" class="finp" placeholder="••••••••"></div>
+      <div class="fgrp"><label class="flbl">Username</label><input type="text" id="ah-user" class="finp" placeholder="CORP\admin" onkeydown="if(event.key==='Enter')document.getElementById('ah-pass').focus()"></div>
+      <div class="fgrp"><label class="flbl">Password</label><input type="password" id="ah-pass" class="finp" placeholder="••••••••" onkeydown="if(event.key==='Enter')submitAddHosts()"></div>
     </div>
     <div class="macts">
       <button class="btn btn-ghost" onclick="closeModal('m-add')">Cancel</button>
@@ -479,7 +479,7 @@ function vOverview(){
       <div class="hcard-hdr">
         <div class="htitle">
           <div class="hname" title="${x(h.fqdn||h.address)}">${x(h.fqdn||h.address)}</div>
-          <div class="hos">${x(h.osCaption||'Unknown OS')}</div>
+          <div class="hos">${osDisplay(h.osCaption)}</div>
         </div>
         <div class="reach-icons">
           ${ri('I',r.icmp,'ICMP')}${ri('W',r.winRm,'WinRM')}${ai(r.auth)}
@@ -490,12 +490,21 @@ function vOverview(){
       </div>
       <div class="hcard-body">
         ${h.addError&&r.auth!=='Ok'?`<div style="display:flex;align-items:center;gap:5px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);color:var(--yellow);font-size:11px;padding:5px 8px;border-radius:4px;margin-bottom:10px">⚠ ${x(h.addError)}</div>`:''}
-        ${h.scanState==='Done'?`<div class="hstats">
-          <div><div class="hstat-lbl">CPU</div><div class="hstat-val">${h.totalCores?`${h.totalCores} cores`:'N/A'}</div></div>
-          <div><div class="hstat-lbl">RAM</div><div class="hstat-val">${h.totalRamGb?fmtGb(h.totalRamGb):'N/A'}</div></div>
+        ${h.scanState==='Done'?`<div class="hstats" style="grid-template-columns:repeat(4,1fr)">
+          <div><div class="hstat-lbl">Cores</div><div class="hstat-val">${h.totalCores||'—'}</div></div>
+          <div><div class="hstat-lbl">RAM</div><div class="hstat-val">${h.totalRamGb?fmtGb(h.totalRamGb):'—'}</div></div>
           <div><div class="hstat-lbl">VMs</div><div class="hstat-val">${h.vms?.length??'—'}</div></div>
-          <div><div class="hstat-lbl">Model</div><div class="hstat-val" style="font-size:12px;font-weight:400;color:var(--text2)">${x(h.model||'—')}</div></div>
-        </div>`:`<div style="display:flex;align-items:center;justify-content:center;gap:8px;padding:16px 0;color:var(--text3);font-size:12px">${h.connecting?'<div class="spin" style="border-color:transparent;border-top-color:var(--text3)"></div>Connecting…':'Ready to scan'}</div>`}
+          <div><div class="hstat-lbl">vCPU</div><div class="hstat-val">${(h.vms||[]).reduce((s,v)=>s+v.vCpuCount,0)||'—'}</div></div>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:16px;padding-top:10px;margin-top:10px;border-top:1px solid var(--border);font-size:12px;color:var(--text2)">
+          ${h.cpuModel?`<span><span style="color:var(--text3);font-size:10px;text-transform:uppercase;letter-spacing:.05em">CPU  </span>${x(h.cpuModel)}</span>`:''}
+          ${h.model?`<span><span style="color:var(--text3);font-size:10px;text-transform:uppercase;letter-spacing:.05em">Model  </span>${x(h.model)}</span>`:''}
+          ${h.serial?`<span><span style="color:var(--text3);font-size:10px;text-transform:uppercase;letter-spacing:.05em">S/N  </span>${x(h.serial)}</span>`:''}
+          ${h.lastBoot?`<span style="margin-left:auto"><span style="color:var(--text3);font-size:10px;text-transform:uppercase;letter-spacing:.05em">Boot  </span>${ago(h.lastBoot)}</span>`:''}
+        </div>`:`<div style="display:flex;align-items:center;gap:16px;padding:12px 0;color:var(--text3);font-size:12px">
+          ${h.connecting?`<div style="display:flex;align-items:center;gap:8px"><div class="spin" style="border-color:transparent;border-top-color:var(--text3)"></div>Connecting…</div>`:`<span>Ready to scan</span>`}
+          ${!h.connecting&&(h.manufacturer||h.model)?`<span style="margin-left:auto;color:var(--text2)">${x([h.manufacturer,h.model].filter(Boolean).join(' '))}</span>`:''}
+        </div>`}
       </div>
       <div class="hcard-foot">
         <span class="sbadge ${h.connecting?'scanning':(h.scanState||'idle').toLowerCase()}">${scanLabel(h)}</span>
@@ -747,10 +756,15 @@ async function submitAddHosts(){
   const addr=document.getElementById('ah-addr').value.trim();
   if(!addr){toast('Enter at least one address','error');return;}
   const useG=document.getElementById('ah-global').checked;
+  const existing=new Set(st.hosts.map(h=>(h.address||'').toLowerCase().trim()));
+  const all=addr.split(/[\n,;]+/).map(a=>a.trim()).filter(Boolean);
+  const newOnes=all.filter(a=>!existing.has(a.toLowerCase()));
+  const skipped=all.length-newOnes.length;
+  if(!newOnes.length){toast(skipped?'All those hosts are already added':'No addresses entered','info');closeModal('m-add');return;}
   closeModal('m-add');toast('Adding host(s)…','info');
   try{
-    const r=await api('POST','/api/hosts',{addresses:addr,useGlobalCreds:useG,username:useG?null:document.getElementById('ah-user').value,password:useG?null:document.getElementById('ah-pass').value});
-    toast(`Added ${r.added} host(s)`,'success');
+    const r=await api('POST','/api/hosts',{addresses:newOnes.join('\n'),useGlobalCreds:useG,username:useG?null:document.getElementById('ah-user').value,password:useG?null:document.getElementById('ah-pass').value});
+    toast(skipped?`Added ${r.added} host(s) — ${skipped} already existed`:`Added ${r.added} host(s)`,'success');
   }catch(e){toast('Failed: '+e.message,'error');}
 }
 
@@ -814,6 +828,30 @@ document.addEventListener('click',e=>{if(!e.target.closest('#btn-export')&&!e.ta
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function ri(l,ok,label){const c=ok?'ok':'fail';return`<div class="ricon ${c}" title="${label}: ${ok?'OK':'Fail'}">${ok?'✓':'✗'}<div class="tip">${label}: ${ok?'Reachable':'Not reachable'}</div></div>`;}
 function ai(auth){const map={Ok:['ok','✓','Auth OK'],Failed:['fail','✗','Auth Failed'],Unknown:['unk','?','Auth Unknown']};const[c,s,l]=map[auth]||map.Unknown;return`<div class="ricon ${c}" title="${l}"><span style="font-size:9px;font-weight:700">${s}</span><div class="tip">${l}</div></div>`;}
+function osDisplay(caption){
+  if(!caption)return'<span style="color:var(--text3)">Unknown OS</span>';
+  let icon,short;
+  if(/windows/i.test(caption)){
+    icon=`<svg width="13" height="13" viewBox="0 0 22 22" style="flex-shrink:0"><rect x="0" y="0" width="10" height="10" rx="1" fill="#3b82f6"/><rect x="12" y="0" width="10" height="10" rx="1" fill="#3b82f6"/><rect x="0" y="12" width="10" height="10" rx="1" fill="#3b82f6"/><rect x="12" y="12" width="10" height="10" rx="1" fill="#3b82f6"/></svg>`;
+    short=caption.replace(/^Microsoft\s+Windows\s*/i,'').trim()||'Windows';
+  }else if(/ubuntu/i.test(caption)){
+    icon=`<svg width="13" height="13" viewBox="0 0 22 22" style="flex-shrink:0"><circle cx="11" cy="11" r="10" fill="#e95420"/><circle cx="11" cy="3.5" r="2.2" fill="white"/><circle cx="17.5" cy="14.5" r="2.2" fill="white"/><circle cx="4.5" cy="14.5" r="2.2" fill="white"/></svg>`;
+    short=caption.replace(/^Ubuntu\s*/i,'').trim()||'Ubuntu';
+  }else if(/debian/i.test(caption)){
+    icon=`<svg width="13" height="13" viewBox="0 0 22 22" style="flex-shrink:0"><circle cx="11" cy="11" r="10" fill="#d70a53"/><path d="M11 4 Q17 7 11 14 Q8 10 11 4Z" fill="white"/></svg>`;
+    short=caption.replace(/^Debian\s*/i,'').trim()||'Debian';
+  }else if(/red hat|rhel/i.test(caption)){
+    icon=`<svg width="13" height="13" viewBox="0 0 22 22" style="flex-shrink:0"><circle cx="11" cy="11" r="10" fill="#cc0000"/><path d="M6 11 Q11 6 16 11 Q11 16 6 11Z" fill="white"/></svg>`;
+    short=caption.replace(/^Red Hat Enterprise Linux\s*/i,'').replace(/^RHEL\s*/i,'').trim()||caption;
+  }else if(/centos/i.test(caption)){
+    icon=`<svg width="13" height="13" viewBox="0 0 22 22" style="flex-shrink:0"><circle cx="11" cy="11" r="10" fill="#932279"/><path d="M11 2L11 20M2 11L20 11" stroke="white" stroke-width="2"/></svg>`;
+    short=caption.replace(/^CentOS\s*/i,'').trim()||'CentOS';
+  }else{
+    icon=`<svg width="13" height="13" viewBox="0 0 22 22" fill="none" stroke="var(--text3)" stroke-width="1.5" style="flex-shrink:0"><rect x="2" y="3" width="18" height="13" rx="2"/><path d="M6 9l3 3-3 3"/><path d="M13 15h4"/></svg>`;
+    short=caption;
+  }
+  return icon+`<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${x(short)}</span>`;
+}
 function scanLabel(h){
   if(h.connecting)return'<div class="spin"></div> Connecting…';
   switch(h.scanState){

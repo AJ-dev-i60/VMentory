@@ -139,8 +139,13 @@ app.MapPost("/api/hosts", async (HttpContext ctx, Store s, EventHub h, AppConfig
     if (cfg.MockMode)
         return Results.Ok(new { added = 0, message = "Mock mode: use pre-loaded mock hosts" });
 
+    var existingAddresses = s.GetAllHosts()
+        .Select(h => h.Address.Trim().ToLowerInvariant())
+        .ToHashSet();
+
     var addresses = body.Addresses
         .Split(['\n', ',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Where(a => !existingAddresses.Contains(a.Trim().ToLowerInvariant()))
         .Distinct()
         .ToList();
 
