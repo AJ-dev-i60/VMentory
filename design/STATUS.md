@@ -6,12 +6,12 @@ Live state of design proposals. Newest at the top of each section.
 *(none)*
 
 ## In progress
-| Date | Title | Mockup | Request | Notes |
-|---|---|---|---|---|
-| 2026-05-22 | Host overview — dense list (Option 1) | `mockups/2026-05-22-overview-dense.html` | `requests/from-design/2026-05-22-overview-redesign.md` | Dev picked Option 1 on 2026-05-22. Spec updated to drop "depending on direction" hedging. 3 open questions remain — codebase side should drop them into `requests/from-codebase/` if the answer blocks implementation. Cards + health-hero mockups retained as reference. |
+*(none)*
 
 ## Awaiting design
 *(none)*
 
 ## Shipped
-*(none yet)*
+| Date | Title | Commit | Notes |
+|---|---|---|---|
+| 2026-05-22 | Host overview — dense list (Option 1) | TBD | Dense list with health dots, filter chips, search, P/T/W reach labels, uptime staleness (60d→yellow), vCPU oversubscription flag, OS icons, responsive collapse at 1100px. Open questions (utilisation data, uptime threshold, sort) deferred — used 60d default. |
