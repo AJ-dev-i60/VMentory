@@ -8,7 +8,9 @@ Live state of design proposals. Newest at the top of each section.
 | 2026-05-22 | Per-host allocation section — three alternative directions | `mockups/2026-05-22-allocation-{bars,matrix,compact}.html` | *(none yet — pick a direction first)* | Three alternatives for how the vCPU / RAM / Storage allocation section is visualised on the per-host page. A: bars-all-the-way (extend storage idiom). B: resource matrix (single VM-centric dense table). C: compact donuts + unified allocation table. Proposal in `proposals/2026-05-22-allocation-redesign.md`. Awaiting human pick before request is written. |
 
 ## Ready to implement
-*(none)*
+| Date | Title | Mockup | Request | Notes |
+|---|---|---|---|---|
+| 2026-05-22 | Per-host allocation — switch to hybrid (compact donuts + matrix table) | `mockups/2026-05-22-allocation-hybrid.html` | `requests/from-design/2026-05-22-allocation-hybrid.md` | Replaces the two large donut cards + storage card + VM table on the per-host page with: 1) a row of three compact donuts (vCPU / RAM / Storage), 2) a single matrix table where vCPU / RAM / Disk cells get inline share-of-host mini bars (green/yellow/red by 25%/50% thresholds). Per-VM thick-vs-actual storage visual is dropped. Pure frontend — all derivations from existing `/api/state` data. |
 
 ## In progress
 *(none)*
