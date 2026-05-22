@@ -10,6 +10,7 @@ Live state of design proposals. Newest at the top of each section.
 |---|---|---|---|---|
 | 2026-05-22 | Replace "Changes since last scan" panel with toast notice | *(behavior change, no mockup)* | `requests/from-design/2026-05-22-scan-changes-toast.md` | Drop the inline `.diff-panel`; enrich existing `toast('Scan complete', ...)` with a short counts summary. No open questions. |
 | 2026-05-22 | Per-host stats page (replaces RAM/CPU/Storage tabs) | `mockups/2026-05-22-per-host-stats.html` | `requests/from-design/2026-05-22-per-host-stats.md` | Click hostname on overview → dedicated host page combining vCPU donut + RAM donut + Storage bars + filtered VM table. Sidebar drops RAM/CPU/Storage items. All 4 open questions resolved by dev (hash routing yes, whole-row click yes, Cluster Stats untouched, per-host re-scan API supported). Empty-state behavior specced inline. |
+| 2026-05-22 | Value formatting (duration, GB/TB, disk usage) | mockup `2026-05-22-per-host-stats.html` reflects new formatting | `requests/from-design/2026-05-22-value-formatting.md` | Adds `fmtDuration`, `fmtGB`, `fmtDiskUse` helpers. Collapses VM Table's two Disk columns into one. Apply at every render site (Overview row, top-level VM Table, per-host page). Pure frontend. VM guest-OS icon **not** included — depends on backend change (awaiting dev decision). |
 
 ## In progress
 *(none)*
