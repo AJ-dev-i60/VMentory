@@ -168,15 +168,32 @@ public static class Scanner
         }
     }
 
-    // Extract the last JSON object from PowerShell output (may contain other lines).
+    // Extract the first complete JSON object/array from PowerShell output (may contain other lines).
+    // Scans forward, tracking string boundaries and nesting depth, so nested {} inside the JSON
+    // are handled correctly — the old backward scan would return a fragment starting at the
+    // innermost { and ending at the last } in the entire output.
     private static string? ExtractJson(string raw)
     {
-        for (int i = raw.Length - 1; i >= 0; i--)
+        for (int start = 0; start < raw.Length; start++)
         {
-            if (raw[i] == '{' || raw[i] == '[')
+            char open = raw[start];
+            if (open != '{' && open != '[') continue;
+            char close = open == '{' ? '}' : ']';
+
+            int depth = 0;
+            bool inString = false;
+            bool escaped = false;
+
+            for (int i = start; i < raw.Length; i++)
             {
-                var end = raw.LastIndexOf(raw[i] == '{' ? '}' : ']');
-                if (end > i) return raw[i..(end + 1)];
+                char c = raw[i];
+                if (escaped) { escaped = false; continue; }
+                if (c == '\\' && inString) { escaped = true; continue; }
+                if (c == '"') { inString = !inString; continue; }
+                if (inString) continue;
+                if (c == open) depth++;
+                else if (c == close && --depth == 0)
+                    return raw[start..(i + 1)];
             }
         }
         return null;
