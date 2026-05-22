@@ -2,7 +2,7 @@
 
 **Mockup:** `design/mockups/2026-05-22-per-host-stats.html`
 **Proposal (rationale):** `design/proposals/2026-05-22-per-host-stats.md`
-**Status:** Proposed — confirm direction before implementing (3 open questions in the proposal)
+**Status:** Ready to implement — all open questions resolved by dev on 2026-05-22
 **Touches:** `wwwroot/index.html`
   - Sidebar nav: remove the `ram` / `cpu` / `storage` `.nav-item` entries (~lines 287–297).
   - Switch view: add a new view type `host` to `switchView()` / `renderView()` flow (~lines 480–490).
@@ -49,17 +49,23 @@ If the refactor is too invasive in one go, ship `vHost()` as a duplicate first a
 2. **Sidebar simplification** — remove the three nav items as listed above. Don't reshuffle the remaining ones.
 3. **Re-scan button on the host page** — calls the existing scan endpoint scoped to this single host. If the API only supports "scan all", drop the per-host re-scan and label the button `Re-scan all` instead (or open a from-codebase question about it).
 
+## Empty-state behavior (added on lock-in)
+
+- **Host added but never scanned** — render the page anyway. Header + reach dots + IP show as normal. Quick-facts strip shows `—` for Cores / Host RAM / VMs / vCPU / VM RAM / Uptime / Last scan. Donut cards and Storage card render a short placeholder body (`Run a scan to populate this view.`). VM card hides entirely. The **Re-scan** button stays enabled and prominent — that's the next action.
+- **Host unreachable at scan time** — show the last known data (whatever's in the store) but add a small `Last scan failed N min ago` note under the page subline in `var(--red)`. Don't hide anything.
+- **Host has 0 VMs** — donuts render a single grey "Free = 100%" slice; Storage card shows only the `Total (host)` row; VM card shows "No VMs on this host."
+
 ## Out of scope
 
-- Cluster Stats restyle (still TBD what it currently shows).
+- Cluster Stats restyle (dev not concerned with it this pass — leave untouched).
 - Adding inline gauges to the overview rows.
 - "Compare two hosts" view.
 - Removing or changing `st.diff` plumbing — the scan-changes-toast request handles its own concern.
 - Light theme polish (verify the mockup tokens still resolve cleanly in light; raise from-codebase if not).
 
-## Open questions to confirm with the dev (or via `requests/from-codebase/`)
+## Resolved open questions (locked in 2026-05-22 by dev)
 
-1. **Hash routing** OK?
-2. **Whole-row click** vs hostname-only click on the overview list?
-3. **Cluster Stats** content — does it overlap with what this proposal does? If so, what stays?
-4. **Per-host re-scan** — does the API support it, or only `Scan All`?
+1. **Hash routing** → yes, use `#host/<id>` with `hashchange` listener and boot-time hash read.
+2. **Click target on overview row** → **whole row** is clickable. Per-row action buttons (`re-scan`, `remove`) must `event.stopPropagation()`.
+3. **Cluster Stats** → leave it alone for this pass.
+4. **Per-host re-scan API** → supported. The header's `Re-scan` button on the per-host page scans only this host. The global `Scan All` button on the top bar still scans every host.
