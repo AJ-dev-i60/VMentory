@@ -12,3 +12,9 @@ errors.log
 VMentory-update.exe
 VMentory-update.tmp
 VMentory.bak.exe
+
+## Secrets / local config — never commit these
+.env
+.env.*
+appsettings.Development.json
+secrets.json

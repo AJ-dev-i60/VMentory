@@ -265,6 +265,8 @@ textarea.finp{resize:vertical;min-height:80px}
 .vm-hdr{padding:13px 16px;border-bottom:1px solid var(--border);font-weight:600;font-size:13.5px;display:flex;justify-content:space-between;align-items:center}
 .vm-count{color:var(--text3);font-weight:500;font-size:12px;margin-left:6px}
 .vm-os-fallback{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:3px;background:rgba(148,163,184,.12);color:var(--text3);font-size:10px;font-weight:700}
+.thost-link{color:var(--text2);cursor:pointer;text-decoration:none}
+.thost-link:hover{color:var(--blue);text-decoration:underline}
 /* Hybrid per-host allocation — compact donut row */
 .donut-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px}
 @media(max-width:900px){.donut-row{grid-template-columns:1fr}}
@@ -912,7 +914,7 @@ function vHost(hostId){
         const ramCell=ramOff?`<div class="rc"><div class="rc-val" style="color:var(--text3)">—</div><div class="rc-bar"></div></div>`:rc(fmtGB(v.assignedRamMb/1024),ramShare);
         const diskCell=`<div class="rc"><div class="rc-val">${fmtDiskUse(a,t)}<span class="pct">${diskPct}%</span></div><div class="rc-bar"><div class="rc-fill ${barCls(diskPct)}" style="width:${Math.min(100,diskPct)}%"></div></div></div>`;
         return`<tr>
-          <td style="text-align:center;width:28px;padding:9px 6px">${vmOsIcon(v.guestOs)}</td>
+          <td style="text-align:center;width:28px;padding:9px 6px">${vmOsIcon(v.guestOs,v.name)}</td>
           <td style="font-weight:600;white-space:nowrap">${x(v.name)}</td>
           <td><span class="vmst ${(v.state||'').toLowerCase()}">${x(v.state)}</span></td>
           <td style="text-align:right">${rc(v.vCpuCount,cpuShare)}</td>
@@ -954,18 +956,19 @@ function drawHostCharts(hostId){
   }
 }
 
-function vmOsIcon(guestOs){
-  if(!guestOs)return`<span class="vm-os-fallback" title="Unknown OS">?</span>`;
-  if(/windows/i.test(guestOs)){
-    if(/2022|windows\s*11\b/i.test(guestOs))return`<svg width="14" height="14" viewBox="0 0 22 22"><rect x="1" y="1" width="20" height="20" rx="3" fill="#0078d4"/><rect x="3.5" y="3.5" width="7" height="7" rx="1" fill="white" fill-opacity=".9"/><rect x="11.5" y="3.5" width="7" height="7" rx="1" fill="white" fill-opacity=".9"/><rect x="3.5" y="11.5" width="7" height="7" rx="1" fill="white" fill-opacity=".9"/><rect x="11.5" y="11.5" width="7" height="7" rx="1" fill="white" fill-opacity=".9"/></svg>`;
+function vmOsIcon(guestOs,vmName=''){
+  const src=guestOs||(vmName||'');
+  if(!src)return`<span class="vm-os-fallback" title="Unknown OS">?</span>`;
+  if(/windows/i.test(src)){
+    if(/2022|windows\s*11\b/i.test(src))return`<svg width="14" height="14" viewBox="0 0 22 22"><rect x="1" y="1" width="20" height="20" rx="3" fill="#0078d4"/><rect x="3.5" y="3.5" width="7" height="7" rx="1" fill="white" fill-opacity=".9"/><rect x="11.5" y="3.5" width="7" height="7" rx="1" fill="white" fill-opacity=".9"/><rect x="3.5" y="11.5" width="7" height="7" rx="1" fill="white" fill-opacity=".9"/><rect x="11.5" y="11.5" width="7" height="7" rx="1" fill="white" fill-opacity=".9"/></svg>`;
     return`<svg width="14" height="14" viewBox="0 0 22 22"><rect x="0" y="0" width="10" height="10" rx="1" fill="#3b82f6"/><rect x="12" y="0" width="10" height="10" rx="1" fill="#3b82f6"/><rect x="0" y="12" width="10" height="10" rx="1" fill="#3b82f6"/><rect x="12" y="12" width="10" height="10" rx="1" fill="#3b82f6"/></svg>`;
   }
-  if(/ubuntu/i.test(guestOs))return`<svg width="14" height="14" viewBox="0 0 22 22"><circle cx="11" cy="11" r="10" fill="#e95420"/><circle cx="11" cy="3.5" r="2.2" fill="white"/><circle cx="17.5" cy="14.5" r="2.2" fill="white"/><circle cx="4.5" cy="14.5" r="2.2" fill="white"/></svg>`;
-  if(/debian/i.test(guestOs))return`<svg width="14" height="14" viewBox="0 0 22 22"><circle cx="11" cy="11" r="10" fill="#d70a53"/><path d="M11 4 Q17 7 11 14 Q8 10 11 4Z" fill="white"/></svg>`;
-  if(/red hat|rhel/i.test(guestOs))return`<svg width="14" height="14" viewBox="0 0 22 22"><circle cx="11" cy="11" r="10" fill="#cc0000"/><path d="M6 11 Q11 6 16 11 Q11 16 6 11Z" fill="white"/></svg>`;
-  if(/centos/i.test(guestOs))return`<svg width="14" height="14" viewBox="0 0 22 22"><circle cx="11" cy="11" r="10" fill="#932279"/><path d="M11 2L11 20M2 11L20 11" stroke="white" stroke-width="2"/></svg>`;
-  if(/linux/i.test(guestOs))return`<svg width="14" height="14" viewBox="0 0 22 22"><circle cx="11" cy="11" r="10" fill="#fcc624"/><circle cx="11" cy="8" r="4.5" fill="#0f172a"/><ellipse cx="11" cy="16" rx="5.5" ry="5" fill="#0f172a"/><ellipse cx="11" cy="16.5" rx="3" ry="3.5" fill="white"/><circle cx="8.5" cy="6.5" r="1.1" fill="white"/><circle cx="13.5" cy="6.5" r="1.1" fill="white"/><path d="M9.5 9.5L12.5 9.5L11 11.5Z" fill="#f97316"/></svg>`;
-  return`<span class="vm-os-fallback" title="${x(guestOs)}">?</span>`;
+  if(/ubuntu/i.test(src))return`<svg width="14" height="14" viewBox="0 0 22 22"><circle cx="11" cy="11" r="10" fill="#e95420"/><circle cx="11" cy="3.5" r="2.2" fill="white"/><circle cx="17.5" cy="14.5" r="2.2" fill="white"/><circle cx="4.5" cy="14.5" r="2.2" fill="white"/></svg>`;
+  if(/debian/i.test(src))return`<svg width="14" height="14" viewBox="0 0 22 22"><circle cx="11" cy="11" r="10" fill="#d70a53"/><path d="M11 4 Q17 7 11 14 Q8 10 11 4Z" fill="white"/></svg>`;
+  if(/red hat|rhel/i.test(src))return`<svg width="14" height="14" viewBox="0 0 22 22"><circle cx="11" cy="11" r="10" fill="#cc0000"/><path d="M6 11 Q11 6 16 11 Q11 16 6 11Z" fill="white"/></svg>`;
+  if(/centos/i.test(src))return`<svg width="14" height="14" viewBox="0 0 22 22"><circle cx="11" cy="11" r="10" fill="#932279"/><path d="M11 2L11 20M2 11L20 11" stroke="white" stroke-width="2"/></svg>`;
+  if(/linux/i.test(src))return`<svg width="14" height="14" viewBox="0 0 22 22"><circle cx="11" cy="11" r="10" fill="#fcc624"/><circle cx="11" cy="8" r="4.5" fill="#0f172a"/><ellipse cx="11" cy="16" rx="5.5" ry="5" fill="#0f172a"/><ellipse cx="11" cy="16.5" rx="3" ry="3.5" fill="white"/><circle cx="8.5" cy="6.5" r="1.1" fill="white"/><circle cx="13.5" cy="6.5" r="1.1" fill="white"/><path d="M9.5 9.5L12.5 9.5L11 11.5Z" fill="#f97316"/></svg>`;
+  return`<span class="vm-os-fallback" title="${x(src)}">?</span>`;
 }
 
 function setHostVmSearch(q){st.hostVmSearch=q;renderView('host',false);}
@@ -991,9 +994,9 @@ function vVmTable(){
     const t=(v.vhds||[]).reduce((s,d)=>s+d.thickGb,0);
     const a=(v.vhds||[]).reduce((s,d)=>s+d.actualGb,0);
     return `<tr>
-      <td style="text-align:center;width:28px;padding:10px 4px">${vmOsIcon(v.guestOs)}</td>
-      <td style="color:var(--text2)" title="${x(v._h?.fqdn||v.hostId)}">${x(v._h?hostLabel(v._h):v.hostId)}</td>
-      <td style="font-weight:500">${x(v.name)}</td>
+      <td style="text-align:center;width:28px;padding:10px 4px">${vmOsIcon(v.guestOs,v.name)}</td>
+      <td title="${x(v._h?.fqdn||v.hostId)}"><span class="thost-link" onclick="switchView('host','${v.hostId}')">${x(v._h?hostLabel(v._h):v.hostId)}</span></td>
+      <td><span style="display:inline-flex;align-items:center;gap:6px;font-weight:500">${vmOsIcon(v.guestOs,v.name)}<span>${x(v.name)}</span></span></td>
       <td><span class="vmst ${(v.state||'').toLowerCase()}">${x(v.state)}</span></td>
       <td>${v.vCpuCount}</td>
       <td>${fmtGB(v.assignedRamMb/1024)}</td>
@@ -1004,7 +1007,7 @@ function vVmTable(){
   }).join('');
   return `<div class="sec-ttl">VM Table <span style="font-weight:400;font-size:14px;color:var(--text2)">(${rows.length} of ${all.length})</span></div>
   <div class="vm-filters">
-    <input class="finput" type="search" placeholder="Search VM…" value="${x(st.vmF.name)}" oninput="fltVm('name',this.value)" style="width:200px">
+    <input id="vm-name-search" class="finput" type="search" placeholder="Search VM…" value="${x(st.vmF.name)}" oninput="fltVm('name',this.value)" style="width:200px">
     <select class="finput" onchange="fltVm('host',this.value)"><option value="">All hosts</option>${hopts}</select>
     <select class="finput" onchange="fltVm('state',this.value)"><option value="">All states</option>${sopts}</select>
   </div>
@@ -1017,7 +1020,7 @@ function vVmTable(){
 }
 
 function sortVm(c){if(st.vmSort.col===c)st.vmSort.dir*=-1;else{st.vmSort.col=c;st.vmSort.dir=1;}renderView('vms',false);}
-function fltVm(k,v){st.vmF[k]=v;renderView('vms',false);}
+function fltVm(k,v){st.vmF[k]=v;renderView('vms',false);if(k==='name'){const el=document.getElementById('vm-name-search');if(el){el.focus();const l=el.value.length;el.setSelectionRange(l,l);}}}
 
 // ── Cluster ───────────────────────────────────────────────────────────────────
 function vCluster(){
