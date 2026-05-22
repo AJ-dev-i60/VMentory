@@ -429,6 +429,7 @@ function setupSSE(){
     updateStrip();toast('Scan complete','success');renderView(st.view,false);
   });
   on('hostAdded',d=>{if(!st.hosts.find(h=>h.id===d.id))st.hosts.push(d);updateStrip();renderView(st.view,false);});
+  on('hostUpdated',d=>{const idx=st.hosts.findIndex(h=>h.id===d.id);if(idx>=0)st.hosts[idx]=d;else st.hosts.push(d);updateStrip();renderView(st.view,false);});
   on('hostRemoved',d=>{st.hosts=st.hosts.filter(h=>h.id!==d.hostId);updateStrip();renderView(st.view,false);});
   on('credentialsSet',()=>{st.credSet=true;document.getElementById('creds-ov').style.display='none';toast('Credentials saved (memory only)','success');});
 }
@@ -489,15 +490,15 @@ function vOverview(){
       </div>
       <div class="hcard-body">
         ${h.addError&&r.auth!=='Ok'?`<div style="display:flex;align-items:center;gap:5px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);color:var(--yellow);font-size:11px;padding:5px 8px;border-radius:4px;margin-bottom:10px">⚠ ${x(h.addError)}</div>`:''}
-        <div class="hstats">
-          <div><div class="hstat-lbl">CPU</div><div class="hstat-val">${h.totalCores?`${h.totalCores} cores`:'—'}</div></div>
-          <div><div class="hstat-lbl">RAM</div><div class="hstat-val">${h.totalRamGb?fmtGb(h.totalRamGb):'—'}</div></div>
+        ${h.scanState==='Done'?`<div class="hstats">
+          <div><div class="hstat-lbl">CPU</div><div class="hstat-val">${h.totalCores?`${h.totalCores} cores`:'N/A'}</div></div>
+          <div><div class="hstat-lbl">RAM</div><div class="hstat-val">${h.totalRamGb?fmtGb(h.totalRamGb):'N/A'}</div></div>
           <div><div class="hstat-lbl">VMs</div><div class="hstat-val">${h.vms?.length??'—'}</div></div>
           <div><div class="hstat-lbl">Model</div><div class="hstat-val" style="font-size:12px;font-weight:400;color:var(--text2)">${x(h.model||'—')}</div></div>
-        </div>
+        </div>`:`<div style="display:flex;align-items:center;justify-content:center;gap:8px;padding:16px 0;color:var(--text3);font-size:12px">${h.connecting?'<div class="spin" style="border-color:transparent;border-top-color:var(--text3)"></div>Connecting…':'Ready to scan'}</div>`}
       </div>
       <div class="hcard-foot">
-        <span class="sbadge ${(h.scanState||'idle').toLowerCase()}">${scanLabel(h)}</span>
+        <span class="sbadge ${h.connecting?'scanning':(h.scanState||'idle').toLowerCase()}">${scanLabel(h)}</span>
         <div style="flex:1"></div>
         ${r.winRm&&r.auth==='Failed'?`<span style="font-size:11px;color:var(--red)">Auth failed</span>`:''}
       </div>
@@ -814,11 +815,12 @@ document.addEventListener('click',e=>{if(!e.target.closest('#btn-export')&&!e.ta
 function ri(l,ok,label){const c=ok?'ok':'fail';return`<div class="ricon ${c}" title="${label}: ${ok?'OK':'Fail'}">${ok?'✓':'✗'}<div class="tip">${label}: ${ok?'Reachable':'Not reachable'}</div></div>`;}
 function ai(auth){const map={Ok:['ok','✓','Auth OK'],Failed:['fail','✗','Auth Failed'],Unknown:['unk','?','Auth Unknown']};const[c,s,l]=map[auth]||map.Unknown;return`<div class="ricon ${c}" title="${l}"><span style="font-size:9px;font-weight:700">${s}</span><div class="tip">${l}</div></div>`;}
 function scanLabel(h){
+  if(h.connecting)return'<div class="spin"></div> Connecting…';
   switch(h.scanState){
     case'Scanning':return'<div class="spin"></div> Scanning…';
     case'Done':return h.lastScanned?`Scanned ${ago(h.lastScanned)}`:'Scanned';
     case'Error':return`Error: ${x(h.scanError||'unknown')}`;
-    default:return'Not scanned';
+    default:return'Ready to scan';
   }
 }
 function diffBanner(){

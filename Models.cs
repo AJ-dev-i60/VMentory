@@ -76,6 +76,7 @@ public class Host
     public DateTimeOffset? LastScanned { get; set; }
     public bool UseGlobalCreds { get; set; } = true;
     public string AddError { get; set; } = "";
+    public bool Connecting { get; set; }
 
     [JsonIgnore]
     public Credentials? PerHostCreds { get; set; }
