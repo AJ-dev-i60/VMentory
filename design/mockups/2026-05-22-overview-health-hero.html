@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<title>VMentory — Health Hero (mockup)</title>
+<style>
+:root {
+  --bg:#0f172a; --bg-card:#1e293b; --bg-hover:#263347;
+  --border:#334155; --border-lt:#475569;
+  --text:#f1f5f9; --text2:#94a3b8; --text3:#64748b;
+  --blue:#3b82f6; --green:#22c55e; --yellow:#f59e0b; --red:#ef4444;
+  --purple:#8b5cf6; --cyan:#06b6d4;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.5;padding:24px}
+
+.page-hdr{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:18px}
+.page-ttl{font-size:18px;font-weight:700}
+.page-sub{color:var(--text3);font-size:12px;margin-top:2px}
+.btn-primary{background:var(--blue);color:#fff;border:none;border-radius:6px;padding:7px 14px;font-weight:500;cursor:pointer;font-size:13px}
+
+/* Hero — single big status panel */
+.hero{background:linear-gradient(180deg,rgba(34,197,94,.06),transparent),var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:18px 22px;margin-bottom:18px;display:flex;align-items:center;gap:28px}
+.hero-ring{position:relative;width:120px;height:120px;flex-shrink:0}
+.hero-ring svg{width:100%;height:100%;transform:rotate(-90deg)}
+.hero-ring-text{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+.hero-ring-num{font-size:30px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
+.hero-ring-lbl{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-top:4px}
+
+.hero-stats{flex:1;display:grid;grid-template-columns:repeat(4,1fr);gap:24px}
+.hs-col{display:flex;flex-direction:column;gap:2px}
+.hs-lbl{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;font-weight:600}
+.hs-val{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.15}
+.hs-sub{font-size:11.5px;color:var(--text2)}
+.hs-sub.warn{color:var(--yellow)}
+.hs-sub.bad{color:var(--red)}
+
+/* Section grouping */
+.sec{margin-bottom:22px}
+.sec-hdr{display:flex;align-items:center;gap:10px;margin-bottom:10px;padding:0 2px}
+.sec-pip{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.sec-pip.ok{background:var(--green);box-shadow:0 0 0 3px rgba(34,197,94,.18)}
+.sec-pip.warn{background:var(--yellow);box-shadow:0 0 0 3px rgba(245,158,11,.18)}
+.sec-pip.bad{background:var(--red);box-shadow:0 0 0 3px rgba(239,68,68,.18)}
+.sec-ttl{font-weight:600;font-size:13px}
+.sec-cnt{color:var(--text3);font-size:12px}
+.sec-line{flex:1;height:1px;background:var(--border)}
+
+/* Compact host rows in each section */
+.hlist{display:flex;flex-direction:column;gap:6px}
+.hrow{background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:11px 14px;display:grid;grid-template-columns:1.5fr 80px 100px 60px 80px 1fr auto;gap:14px;align-items:center;cursor:pointer;transition:border-color .12s,transform .1s}
+.hrow:hover{border-color:var(--border-lt)}
+.hrow.warn{border-left:3px solid var(--yellow);padding-left:12px}
+.hrow.bad{border-left:3px solid var(--red);padding-left:12px;opacity:.85}
+
+.hname-cell{display:flex;align-items:center;gap:9px;min-width:0}
+.os-icon{width:14px;height:14px;flex-shrink:0}
+.hname{font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hsub-row{display:flex;gap:6px;align-items:center;color:var(--text3);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+
+.m{font-variant-numeric:tabular-nums;font-size:13px;font-weight:600}
+.m .unit{color:var(--text3);font-size:10.5px;font-weight:500;margin-left:2px}
+.m-lbl{font-size:9.5px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-top:1px;font-weight:600}
+
+.bar-wrap{display:flex;flex-direction:column;gap:3px;min-width:0}
+.bar-row{display:flex;justify-content:space-between;align-items:baseline}
+.bar-lbl{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;font-weight:600}
+.bar-val{font-size:11.5px;font-variant-numeric:tabular-nums;font-weight:600}
+.bar-val.over{color:var(--yellow)}
+.bar{height:4px;background:var(--bg);border-radius:2px;overflow:hidden}
+.bar-fill{height:100%;background:var(--green)}
+.bar-fill.warn{background:var(--yellow)}
+.bar-fill.over{background:linear-gradient(90deg,var(--yellow) 0,var(--red) 100%)}
+
+.boot-cell{font-variant-numeric:tabular-nums;color:var(--text2);font-size:12px;text-align:right}
+.boot-cell.stale{color:var(--yellow)}
+.boot-cell .micro{display:block;font-size:9.5px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;font-weight:600;margin-top:1px}
+
+.recheck{display:flex;gap:3px;justify-self:end}
+.dot{width:16px;height:16px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700}
+.dot.ok{background:rgba(34,197,94,.15);color:var(--green)}
+.dot.fail{background:rgba(239,68,68,.15);color:var(--red)}
+
+.hrow.bad .placeholder{grid-column:2 / -2;color:var(--text3);font-size:12px;text-align:center}
+</style>
+</head>
+<body>
+
+<div class="page-hdr">
+  <div>
+    <div class="page-ttl">Host Overview</div>
+    <div class="page-sub">Cluster health · last scan 2m ago</div>
+  </div>
+  <button class="btn-primary">+ Add host</button>
+</div>
+
+<div class="hero">
+  <div class="hero-ring">
+    <svg viewBox="0 0 100 100">
+      <circle cx="50" cy="50" r="42" fill="none" stroke="var(--bg)" stroke-width="10"/>
+      <circle cx="50" cy="50" r="42" fill="none" stroke="var(--green)" stroke-width="10" stroke-dasharray="158 264" stroke-linecap="round"/>
+      <circle cx="50" cy="50" r="42" fill="none" stroke="var(--yellow)" stroke-width="10" stroke-dasharray="53 264" stroke-dashoffset="-158" stroke-linecap="round"/>
+      <circle cx="50" cy="50" r="42" fill="none" stroke="var(--red)" stroke-width="10" stroke-dasharray="53 264" stroke-dashoffset="-211" stroke-linecap="round"/>
+    </svg>
+    <div class="hero-ring-text">
+      <div class="hero-ring-num">4<span style="color:var(--text3);font-size:18px">/5</span></div>
+      <div class="hero-ring-lbl">Hosts up</div>
+    </div>
+  </div>
+  <div class="hero-stats">
+    <div class="hs-col">
+      <div class="hs-lbl">Total VMs</div>
+      <div class="hs-val">11</div>
+      <div class="hs-sub">10 running · 1 off</div>
+    </div>
+    <div class="hs-col">
+      <div class="hs-lbl">vCPU / Cores</div>
+      <div class="hs-val">90 <span style="color:var(--text3);font-weight:500;font-size:14px">/ 88</span></div>
+      <div class="hs-sub warn">1 host oversubscribed</div>
+    </div>
+    <div class="hs-col">
+      <div class="hs-lbl">RAM allocated</div>
+      <div class="hs-val">480 <span style="color:var(--text3);font-weight:500;font-size:14px">/ 1152 GB</span></div>
+      <div class="hs-sub">42% used</div>
+    </div>
+    <div class="hs-col">
+      <div class="hs-lbl">Issues</div>
+      <div class="hs-val" style="color:var(--red)">2</div>
+      <div class="hs-sub bad">1 unreachable · 1 stale</div>
+    </div>
+  </div>
+</div>
+
+<!-- Healthy section -->
+<div class="sec">
+  <div class="sec-hdr">
+    <span class="sec-pip ok"></span>
+    <span class="sec-ttl">Healthy</span>
+    <span class="sec-cnt">3 hosts</span>
+    <span class="sec-line"></span>
+  </div>
+  <div class="hlist">
+
+    <div class="hrow">
+      <div class="hname-cell">
+        <svg class="os-icon" viewBox="0 0 24 24" fill="#3b82f6"><path d="M0 3.45 9.8 2.1v9.45H0M10.95 1.95 24 0v11.5H10.95M0 12.6h9.8v9.45L0 20.7M10.95 12.65H24V24l-13-1.85"/></svg>
+        <div style="min-width:0">
+          <div class="hname">Orion_20.i60.local</div>
+          <div class="hsub-row">Server 2019 · PowerEdge R820 · 10.0.20.20</div>
+        </div>
+      </div>
+      <div><div class="m">24<span class="unit">cr</span></div><div class="m-lbl">Cores</div></div>
+      <div><div class="m">256<span class="unit">GB</span></div><div class="m-lbl">RAM</div></div>
+      <div><div class="m">3</div><div class="m-lbl">VMs</div></div>
+      <div><div class="m">22<span class="unit">/24</span></div><div class="m-lbl">vCPU</div></div>
+      <div class="bar-wrap">
+        <div class="bar-row"><span class="bar-lbl">vCPU</span><span class="bar-val">92%</span></div>
+        <div class="bar"><div class="bar-fill" style="width:92%"></div></div>
+      </div>
+      <div class="recheck"><span class="dot ok">P</span><span class="dot ok">T</span><span class="dot ok">W</span></div>
+    </div>
+
+    <div class="hrow">
+      <div class="hname-cell">
+        <svg class="os-icon" viewBox="0 0 24 24" fill="#3b82f6"><path d="M0 3.45 9.8 2.1v9.45H0M10.95 1.95 24 0v11.5H10.95M0 12.6h9.8v9.45L0 20.7M10.95 12.65H24V24l-13-1.85"/></svg>
+        <div style="min-width:0">
+          <div class="hname">Pleiades_01.i60.local</div>
+          <div class="hsub-row">Server 2022 · PowerEdge R740 · 10.0.20.1</div>
+        </div>
+      </div>
+      <div><div class="m">32<span class="unit">cr</span></div><div class="m-lbl">Cores</div></div>
+      <div><div class="m">512<span class="unit">GB</span></div><div class="m-lbl">RAM</div></div>
+      <div><div class="m">5</div><div class="m-lbl">VMs</div></div>
+      <div><div class="m">28<span class="unit">/32</span></div><div class="m-lbl">vCPU</div></div>
+      <div class="bar-wrap">
+        <div class="bar-row"><span class="bar-lbl">vCPU</span><span class="bar-val">88%</span></div>
+        <div class="bar"><div class="bar-fill" style="width:88%"></div></div>
+      </div>
+      <div class="recheck"><span class="dot ok">P</span><span class="dot ok">T</span><span class="dot ok">W</span></div>
+    </div>
+
+    <div class="hrow">
+      <div class="hname-cell">
+        <svg class="os-icon" viewBox="0 0 24 24" fill="#3b82f6"><path d="M0 3.45 9.8 2.1v9.45H0M10.95 1.95 24 0v11.5H10.95M0 12.6h9.8v9.45L0 20.7M10.95 12.65H24V24l-13-1.85"/></svg>
+        <div style="min-width:0">
+          <div class="hname">Atlas_07.i60.local</div>
+          <div class="hsub-row">Server 2022 · PowerEdge R630 · 10.0.20.7</div>
+        </div>
+      </div>
+      <div><div class="m">16<span class="unit">cr</span></div><div class="m-lbl">Cores</div></div>
+      <div><div class="m">256<span class="unit">GB</span></div><div class="m-lbl">RAM</div></div>
+      <div><div class="m">0</div><div class="m-lbl">VMs</div></div>
+      <div><div class="m">0<span class="unit">/16</span></div><div class="m-lbl">vCPU</div></div>
+      <div class="bar-wrap">
+        <div class="bar-row"><span class="bar-lbl">vCPU</span><span class="bar-val" style="color:var(--text3)">idle</span></div>
+        <div class="bar"><div class="bar-fill" style="width:0%"></div></div>
+      </div>
+      <div class="recheck"><span class="dot ok">P</span><span class="dot ok">T</span><span class="dot ok">W</span></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Warning section -->
+<div class="sec">
+  <div class="sec-hdr">
+    <span class="sec-pip warn"></span>
+    <span class="sec-ttl">Warning</span>
+    <span class="sec-cnt">1 host · vCPU oversubscribed, uptime stale</span>
+    <span class="sec-line"></span>
+  </div>
+  <div class="hlist">
+
+    <div class="hrow warn">
+      <div class="hname-cell">
+        <svg class="os-icon" viewBox="0 0 24 24" fill="#3b82f6"><path d="M0 3.45 9.8 2.1v9.45H0M10.95 1.95 24 0v11.5H10.95M0 12.6h9.8v9.45L0 20.7M10.95 12.65H24V24l-13-1.85"/></svg>
+        <div style="min-width:0">
+          <div class="hname">Rhea_11.i60.local</div>
+          <div class="hsub-row" style="color:var(--yellow)">↑ 254d · 40 vCPU on 16 cores</div>
+        </div>
+      </div>
+      <div><div class="m">16<span class="unit">cr</span></div><div class="m-lbl">Cores</div></div>
+      <div><div class="m">128<span class="unit">GB</span></div><div class="m-lbl">RAM</div></div>
+      <div><div class="m">3</div><div class="m-lbl">VMs</div></div>
+      <div><div class="m" style="color:var(--yellow)">40<span class="unit">/16</span></div><div class="m-lbl">vCPU</div></div>
+      <div class="bar-wrap">
+        <div class="bar-row"><span class="bar-lbl">vCPU</span><span class="bar-val over">250%</span></div>
+        <div class="bar"><div class="bar-fill over" style="width:100%"></div></div>
+      </div>
+      <div class="recheck"><span class="dot ok">P</span><span class="dot ok">T</span><span class="dot ok">W</span></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Unreachable section -->
+<div class="sec">
+  <div class="sec-hdr">
+    <span class="sec-pip bad"></span>
+    <span class="sec-ttl">Unreachable</span>
+    <span class="sec-cnt">1 host</span>
+    <span class="sec-line"></span>
+  </div>
+  <div class="hlist">
+
+    <div class="hrow bad">
+      <div class="hname-cell">
+        <svg class="os-icon" viewBox="0 0 24 24" fill="#64748b" style="opacity:.4"><path d="M0 3.45 9.8 2.1v9.45H0M10.95 1.95 24 0v11.5H10.95M0 12.6h9.8v9.45L0 20.7M10.95 12.65H24V24l-13-1.85"/></svg>
+        <div style="min-width:0">
+          <div class="hname" style="color:var(--text2)">Helios_03.i60.local</div>
+          <div class="hsub-row" style="color:var(--red)">WinRM unreachable · ping ok · 10.0.20.3</div>
+        </div>
+      </div>
+      <div class="placeholder">Last scan 2 days ago — PowerEdge R720 · E5-2670</div>
+      <div class="recheck"><span class="dot ok">P</span><span class="dot ok">T</span><span class="dot fail">W</span></div>
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>
