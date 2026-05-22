@@ -19,6 +19,8 @@ Live state of design proposals. Newest at the top of each section.
 ## Shipped
 | Date | Title | Commit | Notes |
 |---|---|---|---|
+| 2026-05-22 | FQDN truncation + font size + OS icon polish | 5a6eee7 | `hostLabel()` strips domain suffix everywhere (full FQDN kept as tooltip). Font-size 14→15px. Linux Tux icon (yellow circle, visible on both themes). Win2022/11 gets rounded-rect icon; Win2019/other keeps 4-square icon. |
+| 2026-05-22 | Capacity column on host overview | 7a94f0c | RAM% and Disk% mini bars per host in overview table (`hostCapCell()`). warn/crit colour thresholds at 70%/90%. |
 | 2026-05-22 | VM guest OS — backend collect + leftmost icon column | d986660 | `Vm.GuestOs` added; KVP query per-VM in `Scanner.cs` (wrapped try/catch, OSName→OSFullName fallback); `vmOsIcon()` helper + leftmost column on both VM tables. |
 | 2026-05-22 | Per-host stats page (replaces RAM/CPU/Storage tabs) | d986660 | Hash routing `#host/<id>`; whole-row click on overview; breadcrumb, facts strip, hardware line, CPU donut, RAM donut, storage card, filtered VM table; sidebar drops RAM/CPU/Storage items; per-host re-scan via `hostId` body param. |
 | 2026-05-22 | Value formatting (duration, GB/TB, disk usage) | d986660 | `fmtDuration`, `fmtGB`, `fmtDiskUse` helpers; VM table's two Disk columns collapsed into one; applied at every render site. |
