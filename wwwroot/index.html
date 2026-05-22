@@ -265,6 +265,34 @@ textarea.finp{resize:vertical;min-height:80px}
 .vm-hdr{padding:13px 16px;border-bottom:1px solid var(--border);font-weight:600;font-size:13.5px;display:flex;justify-content:space-between;align-items:center}
 .vm-count{color:var(--text3);font-weight:500;font-size:12px;margin-left:6px}
 .vm-os-fallback{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:3px;background:rgba(148,163,184,.12);color:var(--text3);font-size:10px;font-weight:700}
+/* Hybrid per-host allocation — compact donut row */
+.donut-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px}
+@media(max-width:900px){.donut-row{grid-template-columns:1fr}}
+.dcrd{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:14px 16px;display:flex;align-items:center;gap:16px}
+.dcrd .donut{width:84px;height:84px;flex-shrink:0;position:relative}
+.dcrd .donut svg{width:100%;height:100%;transform:rotate(-90deg)}
+.donut-ctr{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+.donut-num{font-size:17px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
+.donut-num.warn{color:var(--yellow)}.donut-num.bad{color:var(--red)}
+.donut-lbl{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-top:2px}
+.dcrd-name{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;font-weight:600;margin-bottom:3px}
+.dcrd-big{font-size:18px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.1}
+.dcrd-big .unit{color:var(--text3);font-weight:500;font-size:12px;margin-left:3px}
+.dcrd-sub{font-size:11.5px;color:var(--text2);margin-top:4px}
+.dcrd-sub.warn{color:var(--yellow)}.dcrd-sub.bad{color:var(--red);font-weight:600}
+/* Matrix table */
+.mtbl{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:18px}
+.mtbl-hdr{padding:12px 16px;border-bottom:1px solid var(--border);font-weight:600;font-size:13.5px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+.mtbl-hdr .ct{color:var(--text3);font-weight:500;font-size:12px;margin-left:6px}
+.legend-mini{display:flex;gap:12px;font-size:10.5px;color:var(--text3);font-weight:500;text-transform:uppercase;letter-spacing:.05em}
+.legend-mini span{display:inline-flex;align-items:center;gap:5px}
+.legend-mini .sq{width:9px;height:9px;border-radius:2px;display:inline-block}
+.rc{display:flex;flex-direction:column;align-items:flex-end;gap:3px;min-width:80px}
+.rc-val{font-size:12.5px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.rc-val .pct{color:var(--text3);font-size:10.5px;font-weight:500;margin-left:4px}
+.rc-bar{width:100%;height:5px;background:rgba(0,0,0,.2);border-radius:3px;overflow:hidden}
+.rc-fill{height:100%;border-radius:3px}
+.rc-fill.green{background:var(--green)}.rc-fill.yellow{background:var(--yellow)}.rc-fill.red{background:var(--red)}
 </style>
 </head>
 <body>
@@ -541,8 +569,8 @@ function renderView(v,scroll=false){
   if(v==='ram')drawCharts('ram');
   if(v==='cpu')drawCharts('cpu');
   if(v==='cluster')drawClusterCharts();
-  if(v==='host')drawHostCharts(st.viewArg);
 }
+
 
 // ── Overview ──────────────────────────────────────────────────────────────────
 function vOverview(){
@@ -790,6 +818,11 @@ function stoBar(name,t,a,max,isTotal=false,valStr=null){
 }
 
 // ── Per-host stats page ────────────────────────────────────────────────────────
+function miniDonut(pct,color){
+  const c=251.3,d=(Math.min(1,Math.max(0,pct))*c).toFixed(1);
+  return`<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="none" stroke="var(--bg)" stroke-width="12"/><circle cx="50" cy="50" r="40" fill="none" stroke="${color}" stroke-width="12" stroke-dasharray="${d} ${c}" stroke-linecap="round"/></svg>`;
+}
+
 function vHost(hostId){
   const h=st.hosts.find(hh=>hh.id===hostId);
   if(!h)return`<div class="page-hdr"><div class="page-ttl">Host not found</div><div class="page-sub">The requested host is no longer available.</div></div>`;
@@ -832,45 +865,68 @@ function vHost(hostId){
   if(h.serial)hwParts.push(`<span><span class="hw-key">S/N</span>${x(h.serial)}</span>`);
   if(h.lastBoot)hwParts.push(`<span><span class="hw-key">Boot</span>${x(h.lastBoot.slice(0,16).replace('T',' '))}</span>`);
   const hw=hwParts.length?`<div class="hw-line">${hwParts.join('')}</div>`:'';
-  const ph=`<div class="ccrd"><div class="ccrd-hdr"><span>vCPU Allocation</span></div><div class="ccrd-body" style="padding:20px 16px;color:var(--text3);font-size:13px">Run a scan to populate this view.</div></div>`;
-  const pr=`<div class="ccrd"><div class="ccrd-hdr"><span>VM RAM Allocation</span></div><div class="ccrd-body" style="padding:20px 16px;color:var(--text3);font-size:13px">Run a scan to populate this view.</div></div>`;
-  let cpuCard=ph,ramCard=pr;
-  if(scanned){
-    const cpuSegs=cpuSegsWithFree(h);
-    const cpuRatio=(commitRatio).toFixed(2);
-    const cpuBadge=commitRatio>1?'warn':'ok';
-    const cpuLeg=cpuSegs.map(s=>`<div class="leg-item"><div class="leg-dot" style="background:${s.color}"></div><div class="leg-name">${x(s.label)}</div><div class="leg-val">${s.value} vCPU <span class="leg-pct">(${Math.round(s.value/h.totalCores*100)}%)</span></div></div>`).join('');
-    cpuCard=`<div class="ccrd"><div class="ccrd-hdr"><span>vCPU Allocation <span style="font-weight:400;color:var(--text2);font-size:12px">— ${vCpu} of ${h.totalCores} cores</span></span><span class="commit-badge ${cpuBadge}">Commit ${cpuRatio}×</span></div><div class="ccrd-body"><div style="flex-shrink:0"><canvas id="c-host-cpu" class="donut" width="180" height="180"></canvas></div><div class="legend">${cpuLeg}</div></div></div>`;
-    const ramSegsH=ramSegs(h);
-    const ramLeg=ramSegsH.map(s=>`<div class="leg-item"><div class="leg-dot" style="background:${s.color}"></div><div class="leg-name">${x(s.label)}</div><div class="leg-val">${fmtGB(s.raw)} <span class="leg-pct">(${h.totalRamGb>0?Math.round(s.raw/h.totalRamGb*100):0}%)</span></div></div>`).join('');
-    const ramPct=h.totalRamGb>0?`${Math.round(vmRam/h.totalRamGb*100)}% allocated`:'';
-    ramCard=`<div class="ccrd"><div class="ccrd-hdr"><span>VM RAM Allocation <span style="font-weight:400;color:var(--text2);font-size:12px">— ${fmtGB(vmRam)} of ${fmtGB(h.totalRamGb)}</span></span><span style="font-size:11.5px;color:var(--text2)">${ramPct}</span></div><div class="ccrd-body"><div style="flex-shrink:0"><canvas id="c-host-ram" class="donut" width="180" height="180"></canvas></div><div class="legend">${ramLeg}</div></div></div>`;
-  }
-  let stoHtml='';
+  // Compact donut row
+  let allocRow;
   if(!scanned){
-    stoHtml=`<div class="sto-card"><div class="sto-hdr"><span>Storage</span></div><div class="sto-body" style="padding:24px;text-align:center;color:var(--text3);font-size:13px">Run a scan to populate this view.</div></div>`;
-  }else if(vms.length===0){
-    stoHtml=`<div class="sto-card"><div class="sto-hdr"><span>Storage</span></div><div class="sto-body" style="padding:24px;text-align:center;color:var(--text3);font-size:13px">No VMs on this host.</div></div>`;
+    const ph=lbl=>`<div class="dcrd" style="justify-content:center;padding:24px;color:var(--text3);font-size:12px">Run a scan to see ${lbl}.</div>`;
+    allocRow=`<div class="donut-row">${ph('vCPU allocation')}${ph('RAM allocation')}${ph('Storage usage')}</div>`;
   }else{
-    const maxT=Math.max(...vms.map(v=>(v.vhds||[]).reduce((s,d)=>s+d.thickGb,0)),totT,1);
-    const vmRows=vms.map(v=>{const t=(v.vhds||[]).reduce((s,d)=>s+d.thickGb,0);const a=(v.vhds||[]).reduce((s,d)=>s+d.actualGb,0);return stoBar(v.name,t,a,maxT);}).join('');
-    stoHtml=`<div class="sto-card"><div class="sto-hdr"><span>Storage — ${fmtDiskUse(totA,totT)}</span><div class="sto-hdr-leg"><span><span class="sto-hdr-sq" style="background:rgba(34,197,94,.3)"></span>Thick provisioned</span><span><span class="sto-hdr-sq" style="background:#22c55e"></span>Actual on-disk</span></div></div><div class="sto-body"><div class="sto-rows">${stoBar('Total (host)',totT,totA,Math.max(totT,1),true)}${vmRows}</div></div></div>`;
+    const cpuPct=h.totalCores>0?vCpu/h.totalCores:0;
+    const cpuColor=commitRatio>1?'var(--red)':commitRatio>0.7?'var(--yellow)':'var(--green)';
+    const freeCores=Math.max(0,h.totalCores-vCpu);
+    const cpuCard=`<div class="dcrd">
+      <div class="donut">${miniDonut(cpuPct,cpuColor)}<div class="donut-ctr"><div class="donut-num${commitRatio>1?' bad':commitRatio>0.7?' warn':''}">${vCpu}</div><div class="donut-lbl">of ${h.totalCores}</div></div></div>
+      <div class="donut-meta"><div class="dcrd-name">vCPU</div><div class="dcrd-big">${commitRatio.toFixed(2)}<span class="unit">× commit</span></div><div class="dcrd-sub${commitRatio>1?' bad':''}">${commitRatio>1?'Oversubscribed':freeCores+' free core'+(freeCores!==1?'s':'')}</div></div>
+    </div>`;
+    const ramPctVal=h.totalRamGb>0?vmRam/h.totalRamGb:0;
+    const freeRam=Math.max(0,h.totalRamGb-vmRam);
+    const ramCard=`<div class="dcrd">
+      <div class="donut">${miniDonut(ramPctVal,'var(--green)')}<div class="donut-ctr"><div class="donut-num">${Math.round(ramPctVal*100)}<span style="font-size:11px;color:var(--text3);font-weight:500">%</span></div><div class="donut-lbl">allocated</div></div></div>
+      <div class="donut-meta"><div class="dcrd-name">VM RAM</div><div class="dcrd-big">${fmtGB(vmRam)}<span class="unit">/ ${fmtGB(h.totalRamGb)}</span></div><div class="dcrd-sub">${fmtGB(freeRam)} unallocated</div></div>
+    </div>`;
+    const totVolGb=(h.volumes||[]).reduce((s,v)=>s+v.totalGb,0);
+    const stoActualGb=vms.reduce((s,v)=>(v.vhds||[]).reduce((a,d)=>a+d.actualGb,0)+s,0);
+    const stoPct=totVolGb>0?stoActualGb/totVolGb:0;
+    const stoCard=`<div class="dcrd">
+      <div class="donut">${miniDonut(stoPct,'var(--green)')}<div class="donut-ctr"><div class="donut-num">${Math.round(stoPct*100)}<span style="font-size:11px;color:var(--text3);font-weight:500">%</span></div><div class="donut-lbl">used</div></div></div>
+      <div class="donut-meta"><div class="dcrd-name">Storage</div><div class="dcrd-big">${fmtGB(stoActualGb)}<span class="unit">/ ${fmtGB(totVolGb)}</span></div><div class="dcrd-sub">thick provisioned</div></div>
+    </div>`;
+    allocRow=`<div class="donut-row">${cpuCard}${ramCard}${stoCard}</div>`;
   }
-  let vmCardHtml='';
+
+  // Matrix table
+  let matrixHtml='';
   if(scanned){
     if(vms.length===0){
-      vmCardHtml=`<div class="vm-card"><div class="vm-hdr"><span>VMs</span></div><div style="padding:24px;text-align:center;color:var(--text3);font-size:13px">No VMs on this host.</div></div>`;
+      matrixHtml=`<div class="mtbl"><div class="mtbl-hdr"><span>VMs</span></div><div style="padding:24px;text-align:center;color:var(--text3);font-size:13px">No VMs on this host.</div></div>`;
     }else{
+      const barCls=p=>p>=50?'red':p>=25?'yellow':'green';
+      const rc=(val,pct)=>`<div class="rc"><div class="rc-val">${val}<span class="pct">${pct}%</span></div><div class="rc-bar"><div class="rc-fill ${barCls(pct)}" style="width:${Math.min(100,pct)}%"></div></div></div>`;
       const vmRows=filteredVms.map(v=>{
         const t=(v.vhds||[]).reduce((s,d)=>s+d.thickGb,0);
         const a=(v.vhds||[]).reduce((s,d)=>s+d.actualGb,0);
-        return`<tr><td style="text-align:center;width:28px;padding:10px 4px">${vmOsIcon(v.guestOs)}</td><td style="font-weight:600">${x(v.name)}</td><td><span class="vmst ${(v.state||'').toLowerCase()}">${x(v.state)}</span></td><td style="text-align:right">${v.vCpuCount}</td><td style="text-align:right">${fmtGB(v.assignedRamMb/1024)}</td><td style="text-align:right">${fmtDiskUse(a,t)}</td><td style="text-align:right">${v.nicCount}</td><td style="text-align:right;color:var(--text2)">${fmtDuration(v.uptime)}</td></tr>`;
+        const cpuShare=h.totalCores>0?Math.round(v.vCpuCount/h.totalCores*100):0;
+        const ramShare=h.totalRamGb>0?Math.round((v.assignedRamMb/1024)/h.totalRamGb*100):0;
+        const diskPct=t>0?Math.round(a/t*100):0;
+        const ramOff=v.state==='Off'&&v.assignedRamMb===0;
+        const ramCell=ramOff?`<div class="rc"><div class="rc-val" style="color:var(--text3)">—</div><div class="rc-bar"></div></div>`:rc(fmtGB(v.assignedRamMb/1024),ramShare);
+        const diskCell=`<div class="rc"><div class="rc-val">${fmtDiskUse(a,t)}<span class="pct">${diskPct}%</span></div><div class="rc-bar"><div class="rc-fill ${barCls(diskPct)}" style="width:${Math.min(100,diskPct)}%"></div></div></div>`;
+        return`<tr>
+          <td style="text-align:center;width:28px;padding:9px 6px">${vmOsIcon(v.guestOs)}</td>
+          <td style="font-weight:600;white-space:nowrap">${x(v.name)}</td>
+          <td><span class="vmst ${(v.state||'').toLowerCase()}">${x(v.state)}</span></td>
+          <td style="text-align:right">${rc(v.vCpuCount,cpuShare)}</td>
+          <td style="text-align:right">${ramCell}</td>
+          <td style="text-align:right">${diskCell}</td>
+          <td style="text-align:right;color:var(--text2)">${v.nicCount}</td>
+          <td style="text-align:right;color:var(--text2)">${fmtDuration(v.uptime)}</td>
+        </tr>`;
       }).join('');
       const noMatch=`<tr><td colspan="8" style="text-align:center;color:var(--text3);padding:24px">No VMs match search</td></tr>`;
-      vmCardHtml=`<div class="vm-card"><div class="vm-hdr"><span>VMs<span class="vm-count">${vms.length} on this host</span></span><input class="finput" type="search" placeholder="Search VMs…" value="${x(st.hostVmSearch)}" oninput="setHostVmSearch(this.value)" style="width:200px"></div><div class="twrap"><table class="dt"><thead><tr><th style="width:28px;padding:10px 4px"></th><th>Name</th><th>State</th><th style="text-align:right">vCPU</th><th style="text-align:right">RAM</th><th style="text-align:right">Disk</th><th style="text-align:right">NICs</th><th style="text-align:right">Uptime</th></tr></thead><tbody>${vmRows||noMatch}</tbody></table></div></div>`;
+      matrixHtml=`<div class="mtbl"><div class="mtbl-hdr"><span>VMs<span class="ct">${vms.length} on this host · bar = share of host capacity</span></span><div style="display:flex;align-items:center;gap:12px"><div class="legend-mini"><span><span class="sq" style="background:var(--green)"></span>&lt;25%</span><span><span class="sq" style="background:var(--yellow)"></span>25–49%</span><span><span class="sq" style="background:var(--red)"></span>≥50%</span></div><input class="finput" type="search" placeholder="Search VMs…" value="${x(st.hostVmSearch)}" oninput="setHostVmSearch(this.value)" style="width:180px"></div></div><div class="twrap"><table class="dt"><thead><tr><th style="width:28px;padding:9px 6px"></th><th>Name</th><th>State</th><th style="text-align:right">vCPU</th><th style="text-align:right">RAM</th><th style="text-align:right">Disk (used / thick)</th><th style="text-align:right">NICs</th><th style="text-align:right">Uptime</th></tr></thead><tbody>${vmRows||noMatch}</tbody></table></div></div>`;
     }
   }
-  return crumb+phdr+facts+hw+`<div class="donut-grid">${cpuCard}${ramCard}</div>`+stoHtml+vmCardHtml;
+  return crumb+phdr+facts+hw+allocRow+matrixHtml;
 }
 
 function cpuSegsWithFree(h){
@@ -1066,7 +1122,7 @@ function toggleTheme(){
   document.getElementById('btn-theme').innerHTML=nxt==='dark'
     ?'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>'
     :'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>';
-  setTimeout(()=>{if(st.view==='ram')drawCharts('ram');if(st.view==='cpu')drawCharts('cpu');if(st.view==='cluster')drawClusterCharts();if(st.view==='host')drawHostCharts(st.viewArg);},20);
+  setTimeout(()=>{if(st.view==='ram')drawCharts('ram');if(st.view==='cpu')drawCharts('cpu');if(st.view==='cluster')drawClusterCharts();},20);
 }
 
 // ── Modals ────────────────────────────────────────────────────────────────────
