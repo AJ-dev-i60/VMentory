@@ -80,7 +80,7 @@ html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Ro
 .search:focus{border-color:var(--blue)}
 .search::placeholder{color:var(--text3)}
 .hlist{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;overflow:hidden}
-.hrow{display:grid;grid-template-columns:20px 1.6fr 60px 60px 50px 60px 1.4fr 70px 90px 56px;gap:12px;align-items:center;padding:11px 16px;border-bottom:1px solid var(--border);transition:background .12s}
+.hrow{display:grid;grid-template-columns:20px 1.6fr 60px 60px 50px 60px 1.4fr 70px 100px 90px 56px;gap:12px;align-items:center;padding:11px 16px;border-bottom:1px solid var(--border);transition:background .12s}
 .hrow:last-child{border-bottom:none}
 .hrow:hover{background:var(--bg-hover)}
 .hrow.head{background:rgba(0,0,0,.18);padding-top:8px;padding-bottom:8px;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);font-weight:600}
@@ -146,6 +146,16 @@ canvas.donut{display:block}
 .sto-thick{height:100%;border-radius:4px;background:rgba(34,197,94,.3);position:relative}
 .sto-actual{position:absolute;left:0;top:0;height:100%;background:#22c55e;border-radius:4px}
 .sto-lbl{width:140px;flex-shrink:0;font-size:12px;color:var(--text2);text-align:right;white-space:nowrap}
+
+/* Host capacity mini-bars */
+.cap-cell{display:flex;flex-direction:column;gap:3px}
+.cap-row{display:flex;align-items:center;gap:4px}
+.cap-lbl{width:24px;flex-shrink:0;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.03em}
+.cap-bar{flex:1;height:4px;background:var(--border);border-radius:2px;overflow:hidden;min-width:28px}
+.cap-fill{height:100%;border-radius:2px}
+.cap-pct{width:30px;text-align:right;flex-shrink:0;font-size:10.5px;font-variant-numeric:tabular-nums;color:var(--text2)}
+.cap-pct.warn{color:var(--yellow)}
+.cap-pct.crit{color:var(--red)}
 
 /* VM Table */
 .vm-filters{display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
@@ -222,7 +232,7 @@ textarea.finp{resize:vertical;min-height:80px}
 .drop-item:hover{background:var(--bg-hover)}
 .drop-item+.drop-item{border-top:1px solid var(--border)}
 
-@media(max-width:1100px){.hrow{grid-template-columns:20px 1.4fr 60px 60px 50px 1.2fr 70px 56px}.col-vcpu,.col-scan{display:none}}
+@media(max-width:1100px){.hrow{grid-template-columns:20px 1.4fr 60px 60px 50px 1.2fr 70px 100px 56px}.col-vcpu,.col-scan{display:none}}
 @media(max-width:768px){.sidebar{width:52px}.nav-item span{display:none}.content{padding:16px}}
 
 /* Per-host stats page */
@@ -585,6 +595,7 @@ function vOverview(){
       <div class="col-vcpu">vCPU</div>
       <div>Hardware</div>
       <div style="text-align:right">Uptime</div>
+      <div>Capacity</div>
       <div class="col-scan">Scan</div>
       <div></div>
     </div>`;
@@ -617,6 +628,7 @@ function vOverview(){
         <div class="metric col-vcpu">${scanned?`<span ${oversub?`style="color:var(--yellow)" title="vCPU exceeds physical cores"`:''}>${vCpu}<span class="metric-sub" style="margin-left:2px">/${h.totalCores}</span></span>`:'—'}</div>
         <div class="hardware" title="${x(fullHw)}">${dim?`<span style="color:var(--text3)">last seen: ${x(h.model||'—')}</span>`:hw||'—'}</div>
         <div class="boot${up.stale?' stale':''}" title="${up.stale?`No reboot in ${up.days} days`:''}">${scanned||h.lastBoot?up.text:'—'}</div>
+        ${hostCapCell(h)}
         <div class="col-scan">${rowScanBadge(h)}</div>
         <div class="actions">
           <button class="act-btn" title="Re-scan" onclick="event.stopPropagation();reScan('${h.id}')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg></button>
@@ -1153,6 +1165,23 @@ function rowScanBadge(h){
 }
 function setHlFilter(f){st.hlF.filter=f;renderView('overview',false);}
 function setHlSearch(q){st.hlF.search=q;renderView('overview',false);}
+function hostCapCell(h){
+  if(h.scanState!=='Done')return'<div>—</div>';
+  const vmRam=(h.vms||[]).reduce((s,v)=>s+v.assignedRamMb/1024,0);
+  const ramPct=h.totalRamGb>0?Math.round(vmRam/h.totalRamGb*100):null;
+  const vols=h.volumes||[];
+  const totDisk=vols.reduce((s,v)=>s+v.totalGb,0);
+  const freeDisk=vols.reduce((s,v)=>s+v.freeGb,0);
+  const diskPct=totDisk>0?Math.round((totDisk-freeDisk)/totDisk*100):null;
+  if(ramPct===null&&diskPct===null)return'<div style="color:var(--text3)">—</div>';
+  const bar=(pct,lbl)=>{
+    if(pct===null)return'';
+    const cls=pct>=90?'crit':pct>=70?'warn':'';
+    const col=pct>=90?'var(--red)':pct>=70?'var(--yellow)':'var(--green)';
+    return`<div class="cap-row"><span class="cap-lbl">${lbl}</span><div class="cap-bar"><div class="cap-fill" style="width:${pct}%;background:${col}"></div></div><span class="cap-pct${cls?' '+cls:''}">${pct}%</span></div>`;
+  };
+  return`<div class="cap-cell">${bar(ramPct,'RAM')}${bar(diskPct,'Disk')}</div>`;
+}
 async function reScan(id){
   try{const r=await api('POST','/api/scan',id?{hostId:id}:{});if(!r.ok)toast(r.message||'Scan not started','error');else toast('Rescanning…','info');}
   catch(e){toast('Scan failed: '+e.message,'error');}
