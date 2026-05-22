@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<title>VMentory — Allocation E: Heatmap grid</title>
+<style>
+:root {
+  --bg:#0f172a; --bg-card:#1e293b; --bg-hover:#263347;
+  --border:#334155; --border-lt:#475569;
+  --text:#f1f5f9; --text2:#94a3b8; --text3:#64748b;
+  --blue:#3b82f6; --green:#22c55e; --yellow:#f59e0b; --red:#ef4444;
+  --purple:#8b5cf6; --cyan:#06b6d4;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.5;padding:24px}
+
+.page-hdr{display:flex;align-items:center;gap:12px;margin-bottom:18px}
+.page-os{flex-shrink:0}
+.page-ttl{font-size:18px;font-weight:700}
+.page-sub{color:var(--text2);font-size:12px}
+.label-opt{margin-left:auto;font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em}
+
+.section-ttl{font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin:0 4px 8px 4px}
+
+/* Heatmap container */
+.heat{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.heat-hdr{padding:12px 16px;border-bottom:1px solid var(--border);font-weight:600;font-size:13.5px;display:flex;justify-content:space-between;align-items:center}
+.heat-hdr .ct{color:var(--text3);font-weight:500;font-size:12px;margin-left:6px}
+.heat-legend{display:flex;gap:0;font-size:10.5px;color:var(--text3);font-weight:500;text-transform:uppercase;letter-spacing:.05em;align-items:center}
+.heat-legend .swatch{display:inline-flex;align-items:center;gap:4px;padding:0 6px}
+.heat-legend .ch{width:14px;height:14px;border-radius:3px;border:1px solid var(--border)}
+
+/* Grid */
+.heat-grid{display:grid;grid-template-columns:34px minmax(180px,1.4fr) repeat(3,1.1fr) 0.6fr 0.7fr;gap:1px;background:var(--border);padding:1px}
+.heat-cell{background:var(--bg-card);padding:8px 12px;display:flex;flex-direction:column;justify-content:center;min-height:54px;position:relative}
+.heat-cell.head{background:rgba(0,0,0,.18);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);font-weight:600;min-height:32px;align-items:flex-start;justify-content:center}
+.heat-cell.head.r{align-items:flex-end}
+.heat-cell.r{text-align:right;align-items:flex-end}
+.heat-cell.c{align-items:center;justify-content:center}
+
+/* Row that's the "host totals" sticky-style row */
+.heat-cell.host-row{background:linear-gradient(180deg,rgba(59,130,246,.06),transparent),var(--bg-card)}
+.heat-cell.host-row .heat-val{color:var(--text);font-size:14px}
+
+.heat-name{display:flex;align-items:center;gap:9px;min-width:0}
+.heat-name .nm{font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)}
+.heat-name .sub{font-size:11px;color:var(--text3);margin-top:1px}
+.state-pill{display:inline-flex;padding:1px 7px;border-radius:3px;font-size:10.5px;font-weight:500}
+.state-pill.run{background:rgba(34,197,94,.12);color:var(--green)}
+.state-pill.off{background:rgba(148,163,184,.12);color:var(--text3)}
+
+.heat-val{font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.1}
+.heat-pct{font-size:10.5px;color:var(--text3);font-weight:500;margin-top:3px;letter-spacing:.02em;font-variant-numeric:tabular-nums}
+
+.vm-os-fallback{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:3px;background:rgba(148,163,184,.12);color:var(--text3);font-size:10px;font-weight:700}
+
+/* HEAT TINTS — each cell gets a coloured background based on % of host */
+.h-na   {background:var(--bg-card)}
+.h-0    {background:var(--bg-card)}
+.h-15   {background:rgba(34,197,94,.06)}
+.h-30   {background:rgba(34,197,94,.16)}
+.h-45   {background:rgba(245,158,11,.18)}
+.h-60   {background:rgba(245,158,11,.30)}
+.h-75   {background:rgba(239,68,68,.25)}
+.h-90   {background:rgba(239,68,68,.40)}
+.h-over {background:repeating-linear-gradient(45deg,rgba(239,68,68,.45) 0,rgba(239,68,68,.45) 6px,rgba(239,68,68,.25) 6px,rgba(239,68,68,.25) 12px)}
+
+/* Brighter text on hot cells */
+.h-75 .heat-val,.h-90 .heat-val,.h-over .heat-val{color:#fff}
+.h-75 .heat-pct,.h-90 .heat-pct,.h-over .heat-pct{color:rgba(255,255,255,.7)}
+
+.host-uptime{font-size:11.5px;color:var(--text2);font-variant-numeric:tabular-nums}
+.host-uptime.stale{color:var(--yellow)}
+</style>
+</head>
+<body>
+
+<div class="page-hdr">
+  <span class="page-os"><svg width="20" height="20" viewBox="0 0 24 24" fill="#3b82f6"><path d="M0 3.45 9.8 2.1v9.45H0M10.95 1.95 24 0v11.5H10.95M0 12.6h9.8v9.45L0 20.7M10.95 12.65H24V24l-13-1.85"/></svg></span>
+  <div>
+    <div class="page-ttl">Sagan_125.i60.local</div>
+    <div class="page-sub">32 cores · 128 GB RAM · 3.52 TB storage · 6 VMs</div>
+  </div>
+  <div class="label-opt">Option E · heatmap grid</div>
+</div>
+
+<div class="section-ttl">Allocation heatmap</div>
+
+<div class="heat">
+  <div class="heat-hdr">
+    <span>Allocation per resource <span class="ct">cell colour = share of host capacity</span></span>
+    <div class="heat-legend">
+      <span class="swatch"><span class="ch h-0"></span>0%</span>
+      <span class="swatch"><span class="ch h-15"></span>15%</span>
+      <span class="swatch"><span class="ch h-30"></span>30%</span>
+      <span class="swatch"><span class="ch h-45"></span>45%</span>
+      <span class="swatch"><span class="ch h-60"></span>60%</span>
+      <span class="swatch"><span class="ch h-75"></span>75%</span>
+      <span class="swatch"><span class="ch h-90"></span>90%+</span>
+      <span class="swatch"><span class="ch h-over"></span>oversub</span>
+    </div>
+  </div>
+
+  <div class="heat-grid">
+
+    <!-- header row -->
+    <div class="heat-cell head c"></div>
+    <div class="heat-cell head">VM</div>
+    <div class="heat-cell head r">vCPU</div>
+    <div class="heat-cell head r">RAM</div>
+    <div class="heat-cell head r">Disk (used / thick)</div>
+    <div class="heat-cell head r">NICs</div>
+    <div class="heat-cell head r">Uptime</div>
+
+    <!-- HOST totals row -->
+    <div class="heat-cell host-row c"><svg width="16" height="16" viewBox="0 0 24 24" fill="#3b82f6"><path d="M0 3.45 9.8 2.1v9.45H0M10.95 1.95 24 0v11.5H10.95M0 12.6h9.8v9.45L0 20.7M10.95 12.65H24V24l-13-1.85"/></svg></div>
+    <div class="heat-cell host-row">
+      <div class="heat-name">
+        <div style="min-width:0">
+          <div class="nm">Host total</div>
+          <div class="sub">Sagan_125.i60.local</div>
+        </div>
+      </div>
+    </div>
+    <div class="heat-cell host-row r h-over">
+      <div class="heat-val">68 <span style="font-size:10px;color:rgba(255,255,255,.7);font-weight:500">/ 32</span></div>
+      <div class="heat-pct">213% · 2.13×</div>
+    </div>
+    <div class="heat-cell host-row r h-60">
+      <div class="heat-val">93.3 <span style="font-size:10px;color:var(--text3);font-weight:500">/ 128 GB</span></div>
+      <div class="heat-pct">73% allocated</div>
+    </div>
+    <div class="heat-cell host-row r h-30">
+      <div class="heat-val">1.21 <span style="font-size:10px;color:var(--text3);font-weight:500">/ 3.52 TB</span></div>
+      <div class="heat-pct">34% used (thick)</div>
+    </div>
+    <div class="heat-cell host-row r"><div class="heat-val">6</div></div>
+    <div class="heat-cell host-row r"><div class="host-uptime">9d 17h</div></div>
+
+    <!-- VM rows -->
+    <div class="heat-cell c"><svg width="14" height="14" viewBox="0 0 24 24" fill="#3b82f6"><path d="M0 3.45 9.8 2.1v9.45H0M10.95 1.95 24 0v11.5H10.95M0 12.6h9.8v9.45L0 20.7M10.95 12.65H24V24l-13-1.85"/></svg></div>
+    <div class="heat-cell">
+      <div class="heat-name"><div style="min-width:0"><div class="nm">DATAWAREHOUSE [249]</div><div class="sub"><span class="state-pill run">Running</span></div></div></div>
+    </div>
+    <div class="heat-cell r h-60"><div class="heat-val">16</div><div class="heat-pct">50%</div></div>
+    <div class="heat-cell r h-0"><div class="heat-val">10.0 GB</div><div class="heat-pct">8%</div></div>
+    <div class="heat-cell r h-45"><div class="heat-val">0.59 / 1.49 TB</div><div class="heat-pct">40% of disk</div></div>
+    <div class="heat-cell r"><div class="heat-val">1</div></div>
+    <div class="heat-cell r"><div class="host-uptime">8d 11h</div></div>
+
+    <div class="heat-cell c"><span class="vm-os-fallback">?</span></div>
+    <div class="heat-cell">
+      <div class="heat-name"><div style="min-width:0"><div class="nm">DATAWAREHOUSE [250]</div><div class="sub"><span class="state-pill off">Off</span></div></div></div>
+    </div>
+    <div class="heat-cell r h-30"><div class="heat-val">8</div><div class="heat-pct">25%</div></div>
+    <div class="heat-cell r h-na"><div class="heat-val" style="color:var(--text3)">—</div><div class="heat-pct">unallocated</div></div>
+    <div class="heat-cell r h-45"><div class="heat-val">45.9 / 127 GB</div><div class="heat-pct">36% of disk</div></div>
+    <div class="heat-cell r"><div class="heat-val">1</div></div>
+    <div class="heat-cell r"><div class="host-uptime" style="color:var(--text3)">—</div></div>
+
+    <div class="heat-cell c"><span class="vm-os-fallback">?</span></div>
+    <div class="heat-cell">
+      <div class="heat-name"><div style="min-width:0"><div class="nm">Email document processor [124]</div><div class="sub"><span class="state-pill run">Running</span></div></div></div>
+    </div>
+    <div class="heat-cell r h-45"><div class="heat-val">12</div><div class="heat-pct">38%</div></div>
+    <div class="heat-cell r h-15"><div class="heat-val">15.6 GB</div><div class="heat-pct">12%</div></div>
+    <div class="heat-cell r h-0"><div class="heat-val">54.3 / 1,000 GB</div><div class="heat-pct">5% of disk</div></div>
+    <div class="heat-cell r"><div class="heat-val">1</div></div>
+    <div class="heat-cell r"><div class="host-uptime">1d 18h</div></div>
+
+    <div class="heat-cell c"><svg width="14" height="14" viewBox="0 0 24 24" fill="#3b82f6"><path d="M0 3.45 9.8 2.1v9.45H0M10.95 1.95 24 0v11.5H10.95M0 12.6h9.8v9.45L0 20.7M10.95 12.65H24V24l-13-1.85"/></svg></div>
+    <div class="heat-cell">
+      <div class="heat-name"><div style="min-width:0"><div class="nm">Frappe [118]</div><div class="sub"><span class="state-pill run">Running</span></div></div></div>
+    </div>
+    <div class="heat-cell r h-30"><div class="heat-val">10</div><div class="heat-pct">31%</div></div>
+    <div class="heat-cell r h-15"><div class="heat-val">15.6 GB</div><div class="heat-pct">12%</div></div>
+    <div class="heat-cell r h-60"><div class="heat-val">105 / 200 GB</div><div class="heat-pct">52% of disk</div></div>
+    <div class="heat-cell r"><div class="heat-val">1</div></div>
+    <div class="heat-cell r"><div class="host-uptime">8d 10h</div></div>
+
+    <div class="heat-cell c"><svg width="14" height="14" viewBox="0 0 24 24" fill="#3b82f6"><path d="M0 3.45 9.8 2.1v9.45H0M10.95 1.95 24 0v11.5H10.95M0 12.6h9.8v9.45L0 20.7M10.95 12.65H24V24l-13-1.85"/></svg></div>
+    <div class="heat-cell">
+      <div class="heat-name"><div style="min-width:0"><div class="nm">Lifetime [137]</div><div class="sub"><span class="state-pill run">Running</span></div></div></div>
+    </div>
+    <div class="heat-cell r h-15"><div class="heat-val">6</div><div class="heat-pct">19%</div></div>
+    <div class="heat-cell r h-30"><div class="heat-val">32.0 GB</div><div class="heat-pct">25%</div></div>
+    <div class="heat-cell r h-75"><div class="heat-val">368 / 500 GB</div><div class="heat-pct">74% of disk</div></div>
+    <div class="heat-cell r"><div class="heat-val">1</div></div>
+    <div class="heat-cell r"><div class="host-uptime">9d 10h</div></div>
+
+    <div class="heat-cell c"><span class="vm-os-fallback">?</span></div>
+    <div class="heat-cell">
+      <div class="heat-name"><div style="min-width:0"><div class="nm">Portainer [116]</div><div class="sub"><span class="state-pill run">Running</span></div></div></div>
+    </div>
+    <div class="heat-cell r h-60"><div class="heat-val">16</div><div class="heat-pct">50%</div></div>
+    <div class="heat-cell r h-15"><div class="heat-val">20.0 GB</div><div class="heat-pct">16%</div></div>
+    <div class="heat-cell r h-30"><div class="heat-val">59.1 / 256 GB</div><div class="heat-pct">23% of disk</div></div>
+    <div class="heat-cell r"><div class="heat-val">1</div></div>
+    <div class="heat-cell r"><div class="host-uptime">9d 10h</div></div>
+
+  </div>
+</div>
+
+<div style="margin-top:14px;font-size:11.5px;color:var(--text3);padding:0 4px;line-height:1.6">
+  <strong style="color:var(--text2)">How to read:</strong>
+  Each row is a VM. Each cell's <em>background tint</em> shows how much of the host's total capacity that VM is using for that resource — darker means more. Numbers are absolute values; the small caption underneath is the share. The top row shows the host's overall pressure across all VMs (red striped = oversubscribed).
+</div>
+
+</body>
+</html>

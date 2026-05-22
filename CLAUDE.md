@@ -7,6 +7,21 @@ Single-exe Windows tool that inventories Hyper-V hosts over WinRM and serves a l
 
 ---
 
+## UI/UX work — read this first
+
+A separate Claude session drives the visual design. The shared workspace lives at **`design/`** (not embedded in the binary). Before doing any UI work in `wwwroot/index.html`:
+
+1. **Read `design/README.md`** — defines the workflow and request templates.
+2. **Check `design/STATUS.md`** — the live board of proposed / in-progress / awaiting-design items.
+3. **Check `design/requests/from-design/`** — implementation specs waiting for you. Each request lists the mockup, what to change, and what's out of scope.
+4. **Open the linked mockup** in a browser before coding. The mockups are standalone HTML in `design/mockups/` using the same design tokens as the live app.
+
+When you need a design answer mid-implementation, **don't guess** — drop a markdown file in `design/requests/from-codebase/` (template in `design/README.md`), update `STATUS.md`, commit with `design: question about X`, and move to other work while you wait.
+
+Update `STATUS.md` when you start a request (move to *In progress*) and when you ship it (move to *Shipped* with commit SHA). Commit implementation work with the normal `feat:` / `fix:` prefix, not `design:`.
+
+---
+
 ## File map
 
 | File | Purpose |

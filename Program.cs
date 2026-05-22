@@ -51,6 +51,8 @@ builder.Logging.ClearProviders();
 builder.Logging.AddFilter("Microsoft", LogLevel.None);
 builder.Logging.AddFilter("System", LogLevel.None);
 
+builder.Services.Configure<HostOptions>(o => o.ShutdownTimeout = TimeSpan.FromSeconds(3));
+
 // ── Load mock data ────────────────────────────────────────────────────────────
 
 if (config.MockMode)
@@ -137,85 +139,150 @@ app.MapPost("/api/hosts", async (HttpContext ctx, Store s, EventHub h, AppConfig
     if (cfg.MockMode)
         return Results.Ok(new { added = 0, message = "Mock mode: use pre-loaded mock hosts" });
 
+    var existingAddresses = s.GetAllHosts()
+        .Select(h => h.Address.Trim().ToLowerInvariant())
+        .ToHashSet();
+
     var addresses = body.Addresses
         .Split(['\n', ',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Where(a => !existingAddresses.Contains(a.Trim().ToLowerInvariant()))
         .Distinct()
         .ToList();
 
-    var added = new List<object>();
-
+    // Add all hosts to the store immediately so they appear in the UI right away,
+    // then run DNS / reachability / auth checks in the background.
+    var hostsToCheck = new List<HyperInventory.Host>();
     foreach (var addr in addresses)
     {
-        var host = new HyperInventory.Host { Address = addr, UseGlobalCreds = body.UseGlobalCreds };
-
+        var host = new HyperInventory.Host
+        {
+            Address = addr,
+            Fqdn = addr,
+            UseGlobalCreds = body.UseGlobalCreds,
+            Connecting = true,
+        };
         if (!body.UseGlobalCreds && !string.IsNullOrWhiteSpace(body.Username))
             host.PerHostCreds = new Credentials(body.Username!, body.Password ?? "");
 
-        // DNS check
-        DevLog.Step($"[ADD]  resolving DNS for {addr}");
-        var (resolved, fqdn, dnsErr) = await ReachabilityChecker.ResolveFqdnAsync(addr);
-        host.Fqdn = fqdn;
-        if (!resolved)
-        {
-            DevLog.Err($"[ADD]  DNS failed for {addr}: {dnsErr}");
-            host.AddError = $"DNS resolution failed: {dnsErr}";
-            host.Reachability.CheckedAt = DateTimeOffset.UtcNow;
-            s.AddHost(host);
-            h.Broadcast("hostAdded", host);
-            added.Add(new { host.Id, host.Address, error = host.AddError });
-            continue;
-        }
-        DevLog.Ok($"[ADD]  DNS OK → {fqdn}");
+        s.AddHost(host);
+        h.Broadcast("hostAdded", host);
+        hostsToCheck.Add(host);
+    }
 
-        // Reachability checks
-        host.Reachability.CheckedAt = DateTimeOffset.UtcNow;
-        host.Reachability.Icmp = await ReachabilityChecker.PingAsync(addr, TimeSpan.FromSeconds(2));
-        host.Reachability.WinRm = await ReachabilityChecker.TestTcpPortAsync(addr, cfg.WinRmPort, TimeSpan.FromSeconds(3));
-
-        if (host.Reachability.WinRm)
+    _ = Task.Run(async () =>
+    {
+        foreach (var host in hostsToCheck)
         {
-            var creds = s.GetEffectiveCreds(host);
-            if (creds != null)
+            var addr = host.Address;
+            try
             {
+                // DNS
+                DevLog.Step($"[ADD]  resolving DNS for {addr}");
+                var (resolved, fqdn, dnsErr) = await ReachabilityChecker.ResolveFqdnAsync(addr);
+                s.UpdateHost(host.Id, hh => hh.Fqdn = fqdn);
+
+                if (!resolved)
+                {
+                    DevLog.Err($"[ADD]  DNS failed for {addr}: {dnsErr}");
+                    s.UpdateHost(host.Id, hh =>
+                    {
+                        hh.AddError = $"DNS resolution failed: {dnsErr}";
+                        hh.Reachability.CheckedAt = DateTimeOffset.UtcNow;
+                        hh.Connecting = false;
+                    });
+                    var gone = s.GetHost(host.Id);
+                    if (gone != null) h.Broadcast("hostUpdated", gone);
+                    continue;
+                }
+                DevLog.Ok($"[ADD]  DNS OK → {fqdn}");
+
+                // Reachability
+                var icmp = await ReachabilityChecker.PingAsync(addr, TimeSpan.FromSeconds(2));
+                var winrm = await ReachabilityChecker.TestTcpPortAsync(addr, cfg.WinRmPort, TimeSpan.FromSeconds(3));
+                s.UpdateHost(host.Id, hh =>
+                {
+                    hh.Reachability.CheckedAt = DateTimeOffset.UtcNow;
+                    hh.Reachability.Icmp = icmp;
+                    hh.Reachability.WinRm = winrm;
+                });
+                var afterReach = s.GetHost(host.Id);
+                if (afterReach != null)
+                    h.Broadcast("reachability", new { hostId = host.Id, reachability = afterReach.Reachability });
+
+                if (!winrm)
+                {
+                    s.UpdateHost(host.Id, hh =>
+                    {
+                        hh.Reachability.Auth = AuthState.Unknown;
+                        hh.AddError = !icmp ? "Host unreachable (ICMP failed)" : "WinRM port not responding";
+                        hh.Connecting = false;
+                    });
+                    DevLog.Warn($"[ADD]  {addr} — ICMP={icmp}, WinRM={winrm}");
+                    var afterWinrm = s.GetHost(host.Id);
+                    if (afterWinrm != null) h.Broadcast("hostUpdated", afterWinrm);
+                    continue;
+                }
+
+                // Auth
+                var creds = s.GetEffectiveCreds(host);
+                if (creds == null)
+                {
+                    DevLog.Warn($"[ADD]  no credentials available for {addr}");
+                    s.UpdateHost(host.Id, hh =>
+                    {
+                        hh.Reachability.Auth = AuthState.Unknown;
+                        hh.AddError = "No credentials configured — set global credentials first";
+                        hh.Connecting = false;
+                    });
+                    var afterNoCreds = s.GetHost(host.Id);
+                    if (afterNoCreds != null) h.Broadcast("hostUpdated", afterNoCreds);
+                    continue;
+                }
+
                 DevLog.Step($"[ADD]  using creds: username='{creds.Username}', useGlobal={host.UseGlobalCreds}");
                 await ReachabilityChecker.EnsureTrustedHostAsync(addr);
                 var (authState, authErr) = await ReachabilityChecker.TestWinRmAuthAsync(
                     addr, creds, cfg.WinRmPort, TimeSpan.FromSeconds(30));
-                host.Reachability.Auth = authState;
-                host.Reachability.ErrorDetail = authErr;
+                s.UpdateHost(host.Id, hh =>
+                {
+                    hh.Reachability.Auth = authState;
+                    hh.Reachability.ErrorDetail = authErr;
+                });
 
                 if (authState == AuthState.Ok)
                 {
-                    (bool ok, string err) = await Scanner.QuickConnectAsync(host, creds, cfg.WinRmPort);
-                    if (!ok) host.AddError = err;
+                    // QuickConnectAsync modifies the host object in place (Fqdn, OsCaption, Model, etc.)
+                    var storedHost = s.GetHost(host.Id);
+                    if (storedHost != null)
+                    {
+                        (bool ok, string err) = await Scanner.QuickConnectAsync(storedHost, creds, cfg.WinRmPort);
+                        s.UpdateHost(host.Id, hh => { if (!ok) hh.AddError = err; hh.Connecting = false; });
+                    }
                 }
                 else
                 {
-                    host.AddError = $"Authentication failed: {authErr}";
                     DevLog.Err($"[ADD]  auth failed for {addr}: {authErr}");
+                    s.UpdateHost(host.Id, hh =>
+                    {
+                        hh.AddError = $"Authentication failed: {authErr}";
+                        hh.Connecting = false;
+                    });
                 }
+
+                var final = s.GetHost(host.Id);
+                if (final != null) h.Broadcast("hostUpdated", final);
             }
-            else
+            catch (Exception ex)
             {
-                DevLog.Warn($"[ADD]  no credentials available for {addr}");
-                host.Reachability.Auth = AuthState.Unknown;
-                host.AddError = "No credentials configured — set global credentials first";
+                logWriter.LogError($"Add host failed for {addr}", ex);
+                s.UpdateHost(host.Id, hh => { hh.AddError = "Unexpected error during connect"; hh.Connecting = false; });
+                var afterErr = s.GetHost(host.Id);
+                if (afterErr != null) h.Broadcast("hostUpdated", afterErr);
             }
         }
-        else
-        {
-            host.Reachability.Auth = AuthState.Unknown;
-            if (!host.Reachability.Icmp) host.AddError = "Host unreachable (ICMP failed)";
-            else host.AddError = "WinRM port not responding";
-            DevLog.Warn($"[ADD]  {addr} — ICMP={host.Reachability.Icmp}, WinRM={host.Reachability.WinRm}");
-        }
+    });
 
-        s.AddHost(host);
-        h.Broadcast("hostAdded", host);
-        added.Add(new { host.Id, host.Address, error = host.AddError });
-    }
-
-    return Results.Ok(new { added = added.Count, hosts = added });
+    return Results.Ok(new { added = addresses.Count });
 });
 
 // Remove host
@@ -227,7 +294,7 @@ app.MapDelete("/api/hosts/{id}", (string id, Store s, EventHub h) =>
 });
 
 // Trigger full scan (fire-and-forget — returns immediately while scans run in background)
-app.MapPost("/api/scan", (Store s, EventHub h, AppConfig cfg) =>
+app.MapPost("/api/scan", async (HttpContext ctx, Store s, EventHub h, AppConfig cfg) =>
 {
     if (cfg.MockMode)
     {
@@ -235,8 +302,17 @@ app.MapPost("/api/scan", (Store s, EventHub h, AppConfig cfg) =>
         return Results.Ok(new { ok = true, message = "Mock mode" });
     }
 
+    string? targetHostId = null;
+    try
+    {
+        var body = await ctx.Request.ReadFromJsonAsync<ScanBody>();
+        targetHostId = body?.HostId;
+    }
+    catch { }
+
     var hosts = s.GetAllHosts()
         .Where(h => h.Reachability.Auth == AuthState.Ok)
+        .Where(h => targetHostId == null || h.Id == targetHostId)
         .ToList();
 
     if (hosts.Count == 0)
@@ -333,14 +409,17 @@ app.MapPost("/api/scan", (Store s, EventHub h, AppConfig cfg) =>
 });
 
 // SSE event stream
-app.MapGet("/api/events", async (HttpContext ctx) =>
+app.MapGet("/api/events", async (HttpContext ctx, IHostApplicationLifetime lifetime) =>
 {
     var tok = ctx.Request.Headers["X-Session-Token"].FirstOrDefault()
               ?? ctx.Request.Query["token"].FirstOrDefault();
     if (tok != config.Token) { ctx.Response.StatusCode = 401; return; }
 
+    using var cts = CancellationTokenSource.CreateLinkedTokenSource(
+        ctx.RequestAborted, lifetime.ApplicationStopping);
+
     var clientId = hub.Subscribe();
-    await hub.StreamAsync(clientId, ctx.Response, ctx.RequestAborted);
+    await hub.StreamAsync(clientId, ctx.Response, cts.Token);
 });
 
 // Export JSON
@@ -463,6 +542,7 @@ static void OpenBrowser(string url)
 
 record CredentialsDto(string Username, string Password);
 record AddHostsDto(string Addresses, bool UseGlobalCreds = true, string? Username = null, string? Password = null);
+record ScanBody(string? HostId);
 
 // ── App config (registered as singleton) ─────────────────────────────────────
 

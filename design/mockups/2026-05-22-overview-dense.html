@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<title>VMentory — Dense List (mockup)</title>
+<style>
+:root {
+  --bg:#0f172a; --bg-card:#1e293b; --bg-hover:#263347;
+  --border:#334155; --border-lt:#475569;
+  --text:#f1f5f9; --text2:#94a3b8; --text3:#64748b;
+  --blue:#3b82f6; --green:#22c55e; --yellow:#f59e0b; --red:#ef4444;
+  --purple:#8b5cf6; --cyan:#06b6d4;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.5;padding:24px}
+
+.page-hdr{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:18px}
+.page-ttl{font-size:18px;font-weight:700}
+.page-sub{color:var(--text3);font-size:12px;margin-top:2px}
+
+/* Toolbar */
+.toolbar{display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:14px;background:var(--bg-card);border:1px solid var(--border);color:var(--text2);font-size:12px;cursor:pointer;user-select:none;transition:all .12s}
+.chip:hover{border-color:var(--border-lt);color:var(--text)}
+.chip.active{background:rgba(59,130,246,.12);border-color:var(--blue);color:var(--blue)}
+.chip-count{background:rgba(255,255,255,.08);padding:1px 6px;border-radius:8px;font-size:11px}
+.chip.active .chip-count{background:rgba(59,130,246,.2)}
+.tb-sp{flex:1}
+.search{background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text);font-size:13px;width:240px;font-family:inherit}
+.search::placeholder{color:var(--text3)}
+
+/* List table */
+.hlist{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.hrow{display:grid;grid-template-columns:24px 1.6fr 60px 60px 50px 60px 1.4fr 80px 90px 40px;gap:14px;align-items:center;padding:11px 16px;border-bottom:1px solid var(--border);transition:background .12s}
+.hrow:last-child{border-bottom:none}
+.hrow:hover{background:var(--bg-hover)}
+.hrow.head{background:rgba(0,0,0,.18);padding-top:9px;padding-bottom:9px;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);font-weight:600}
+.hrow.head:hover{background:rgba(0,0,0,.18)}
+
+.health{width:8px;height:8px;border-radius:50%;justify-self:center}
+.health.ok{background:var(--green);box-shadow:0 0 0 3px rgba(34,197,94,.18)}
+.health.warn{background:var(--yellow);box-shadow:0 0 0 3px rgba(245,158,11,.18)}
+.health.bad{background:var(--red);box-shadow:0 0 0 3px rgba(239,68,68,.18)}
+
+.hname-cell{display:flex;align-items:center;gap:10px;min-width:0}
+.os-icon{width:16px;height:16px;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+.hname-stack{min-width:0}
+.hname{font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hsub{color:var(--text3);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+.metric{font-variant-numeric:tabular-nums;font-weight:600;font-size:13px}
+.metric-sub{color:var(--text3);font-size:11px;margin-top:1px;font-weight:400}
+
+.hardware{color:var(--text2);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+.boot{font-variant-numeric:tabular-nums;color:var(--text2);font-size:12px;text-align:right}
+.boot.stale{color:var(--yellow)}
+
+.scan-badge{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:500;white-space:nowrap;justify-self:start}
+.scan-badge.done{background:rgba(34,197,94,.1);color:var(--green)}
+.scan-badge.scanning{background:rgba(59,130,246,.12);color:var(--blue)}
+.scan-badge.idle{background:rgba(148,163,184,.1);color:var(--text3)}
+
+.actions{justify-self:end;display:flex;gap:4px;opacity:0;transition:opacity .12s}
+.hrow:hover .actions{opacity:1}
+.act-btn{width:28px;height:28px;border-radius:6px;border:none;background:transparent;color:var(--text2);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:all .12s}
+.act-btn:hover{background:var(--bg);color:var(--text)}
+.act-btn.danger:hover{color:var(--red)}
+
+/* sparkline column (alt: replace VMs col) */
+.spark{height:14px;width:100%;display:block}
+
+.legend{margin-top:14px;display:flex;gap:18px;color:var(--text3);font-size:11px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+
+@media (max-width:1100px){
+  .hrow{grid-template-columns:18px 1.4fr 60px 60px 50px 1.2fr 80px 40px;}
+  .hrow > .col-vcpu,.hrow > .col-scan{display:none}
+}
+</style>
+</head>
+<body>
+
+<div class="page-hdr">
+  <div>
+    <div class="page-ttl">Host Overview</div>
+    <div class="page-sub">5 hosts · 11 VMs · cluster vCPU 84 / 56 cores · last scan 2m ago</div>
+  </div>
+  <button style="background:var(--blue);color:#fff;border:none;border-radius:6px;padding:7px 14px;font-weight:500;cursor:pointer">+ Add host</button>
+</div>
+
+<div class="toolbar">
+  <div class="chip active">All <span class="chip-count">5</span></div>
+  <div class="chip">Healthy <span class="chip-count">3</span></div>
+  <div class="chip">Warning <span class="chip-count">1</span></div>
+  <div class="chip">Unreachable <span class="chip-count">1</span></div>
+  <div class="tb-sp"></div>
+  <input class="search" placeholder="Filter by name, IP, model…" />
+</div>
+
+<div class="hlist">
+  <div class="hrow head">
+    <div></div>
+    <div>Host</div>
+    <div>Cores</div>
+    <div>RAM</div>
+    <div>VMs</div>
+    <div class="col-vcpu">vCPU</div>
+    <div>Hardware</div>
+    <div style="text-align:right">Uptime</div>
+    <div class="col-scan">Scan</div>
+    <div></div>
+  </div>
+
+  <div class="hrow">
+    <div class="health ok" title="All checks passing"></div>
+    <div class="hname-cell">
+      <span class="os-icon" title="Windows Server 2019">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="#3b82f6"><path d="M0 3.45 9.8 2.1v9.45H0M10.95 1.95 24 0v11.5H10.95M0 12.6h9.8v9.45L0 20.7M10.95 12.65H24V24l-13-1.85"/></svg>
+      </span>
+      <div class="hname-stack">
+        <div class="hname">Orion_20.i60.local</div>
+        <div class="hsub">Server 2019 Standard · 10.0.20.20</div>
+      </div>
+    </div>
+    <div class="metric">24</div>
+    <div class="metric">255.9<span class="metric-sub" style="margin-left:2px">GB</span></div>
+    <div class="metric">3</div>
+    <div class="metric col-vcpu">22<span class="metric-sub" style="margin-left:2px">/24</span></div>
+    <div class="hardware">PowerEdge R820 · E5-4610</div>
+    <div class="boot">36h</div>
+    <div class="col-scan"><span class="scan-badge done">✓ 2m ago</span></div>
+    <div class="actions">
+      <button class="act-btn" title="Re-scan"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg></button>
+      <button class="act-btn danger" title="Remove"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+    </div>
+  </div>
+
+  <div class="hrow">
+    <div class="health warn" title="Uptime > 90 days"></div>
+    <div class="hname-cell">
+      <span class="os-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="#3b82f6"><path d="M0 3.45 9.8 2.1v9.45H0M10.95 1.95 24 0v11.5H10.95M0 12.6h9.8v9.45L0 20.7M10.95 12.65H24V24l-13-1.85"/></svg></span>
+      <div class="hname-stack">
+        <div class="hname">Rhea_11.i60.local</div>
+        <div class="hsub">Server 2019 Standard · 10.0.20.11</div>
+      </div>
+    </div>
+    <div class="metric">16</div>
+    <div class="metric">127.9<span class="metric-sub" style="margin-left:2px">GB</span></div>
+    <div class="metric">3</div>
+    <div class="metric col-vcpu" style="color:var(--yellow)" title="vCPU exceeds physical cores">40<span class="metric-sub" style="margin-left:2px">/16</span></div>
+    <div class="hardware">PowerEdge R620 · E5-2650L</div>
+    <div class="boot stale" title="No reboot in ~253 days">254d</div>
+    <div class="col-scan"><span class="scan-badge done">✓ 2m ago</span></div>
+    <div class="actions">
+      <button class="act-btn" title="Re-scan"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg></button>
+      <button class="act-btn danger"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+    </div>
+  </div>
+
+  <div class="hrow">
+    <div class="health ok"></div>
+    <div class="hname-cell">
+      <span class="os-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="#3b82f6"><path d="M0 3.45 9.8 2.1v9.45H0M10.95 1.95 24 0v11.5H10.95M0 12.6h9.8v9.45L0 20.7M10.95 12.65H24V24l-13-1.85"/></svg></span>
+      <div class="hname-stack">
+        <div class="hname">Pleiades_01.i60.local</div>
+        <div class="hsub">Server 2022 Datacenter · 10.0.20.1</div>
+      </div>
+    </div>
+    <div class="metric">32</div>
+    <div class="metric">512.0<span class="metric-sub" style="margin-left:2px">GB</span></div>
+    <div class="metric">5</div>
+    <div class="metric col-vcpu">28<span class="metric-sub" style="margin-left:2px">/32</span></div>
+    <div class="hardware">PowerEdge R740 · Gold 6248R</div>
+    <div class="boot">18d</div>
+    <div class="col-scan"><span class="scan-badge done">✓ 1m ago</span></div>
+    <div class="actions">
+      <button class="act-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg></button>
+      <button class="act-btn danger"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+    </div>
+  </div>
+
+  <div class="hrow">
+    <div class="health ok"></div>
+    <div class="hname-cell">
+      <span class="os-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="#3b82f6"><path d="M0 3.45 9.8 2.1v9.45H0M10.95 1.95 24 0v11.5H10.95M0 12.6h9.8v9.45L0 20.7M10.95 12.65H24V24l-13-1.85"/></svg></span>
+      <div class="hname-stack">
+        <div class="hname">Atlas_07.i60.local</div>
+        <div class="hsub">Server 2022 Datacenter · 10.0.20.7</div>
+      </div>
+    </div>
+    <div class="metric">16</div>
+    <div class="metric">256.0<span class="metric-sub" style="margin-left:2px">GB</span></div>
+    <div class="metric">0</div>
+    <div class="metric col-vcpu">0<span class="metric-sub" style="margin-left:2px">/16</span></div>
+    <div class="hardware">PowerEdge R630 · E5-2660 v4</div>
+    <div class="boot">3d</div>
+    <div class="col-scan"><span class="scan-badge done">✓ 4m ago</span></div>
+    <div class="actions">
+      <button class="act-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg></button>
+      <button class="act-btn danger"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+    </div>
+  </div>
+
+  <div class="hrow">
+    <div class="health bad" title="WinRM unreachable"></div>
+    <div class="hname-cell">
+      <span class="os-icon" style="opacity:.4"><svg width="14" height="14" viewBox="0 0 24 24" fill="#64748b"><path d="M0 3.45 9.8 2.1v9.45H0M10.95 1.95 24 0v11.5H10.95M0 12.6h9.8v9.45L0 20.7M10.95 12.65H24V24l-13-1.85"/></svg></span>
+      <div class="hname-stack">
+        <div class="hname" style="color:var(--text2)">Helios_03.i60.local</div>
+        <div class="hsub" style="color:var(--red)">WinRM unreachable · ping ok</div>
+      </div>
+    </div>
+    <div class="metric" style="color:var(--text3)">—</div>
+    <div class="metric" style="color:var(--text3)">—</div>
+    <div class="metric" style="color:var(--text3)">—</div>
+    <div class="metric col-vcpu" style="color:var(--text3)">—</div>
+    <div class="hardware" style="color:var(--text3)">last seen: PowerEdge R720</div>
+    <div class="boot" style="color:var(--text3)">—</div>
+    <div class="col-scan"><span class="scan-badge idle">! failed</span></div>
+    <div class="actions">
+      <button class="act-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg></button>
+      <button class="act-btn danger"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+    </div>
+  </div>
+
+</div>
+
+<div class="legend">
+  <span><span class="health ok" style="display:inline-block"></span> Healthy</span>
+  <span><span class="health warn" style="display:inline-block"></span> Warning (oversubscribed / stale uptime)</span>
+  <span><span class="health bad" style="display:inline-block"></span> Unreachable</span>
+</div>
+
+</body>
+</html>

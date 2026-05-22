@@ -146,6 +146,7 @@ public static class Scanner
                     DynamicMemory = v["DynamicMemory"]?.GetValue<bool>() ?? false,
                     Uptime = v["Uptime"]?.GetValue<string>() ?? "",
                     IntegrationServices = v["IntegrationServices"]?.GetValue<string>() ?? "",
+                    GuestOs = v["GuestOs"]?.GetValue<string>() ?? "",
                     NicCount = v["NICCount"]?.GetValue<int>() ?? 0,
                 };
 
@@ -168,15 +169,32 @@ public static class Scanner
         }
     }
 
-    // Extract the last JSON object from PowerShell output (may contain other lines).
+    // Extract the first complete JSON object/array from PowerShell output (may contain other lines).
+    // Scans forward, tracking string boundaries and nesting depth, so nested {} inside the JSON
+    // are handled correctly — the old backward scan would return a fragment starting at the
+    // innermost { and ending at the last } in the entire output.
     private static string? ExtractJson(string raw)
     {
-        for (int i = raw.Length - 1; i >= 0; i--)
+        for (int start = 0; start < raw.Length; start++)
         {
-            if (raw[i] == '{' || raw[i] == '[')
+            char open = raw[start];
+            if (open != '{' && open != '[') continue;
+            char close = open == '{' ? '}' : ']';
+
+            int depth = 0;
+            bool inString = false;
+            bool escaped = false;
+
+            for (int i = start; i < raw.Length; i++)
             {
-                var end = raw.LastIndexOf(raw[i] == '{' ? '}' : ']');
-                if (end > i) return raw[i..(end + 1)];
+                char c = raw[i];
+                if (escaped) { escaped = false; continue; }
+                if (c == '\\' && inString) { escaped = true; continue; }
+                if (c == '"') { inString = !inString; continue; }
+                if (inString) continue;
+                if (c == open) depth++;
+                else if (c == close && --depth == 0)
+                    return raw[start..(i + 1)];
             }
         }
         return null;
@@ -265,6 +283,25 @@ public static class Scanner
                                 @{ Path = $hdrive.Path; ThickBytes = 0L; ActualBytes = 0L }
                             }
                         })
+                        $guestOs = ''
+                        try {
+                            $vmGuid = $vm.Id.ToString()
+                            $kvpItems = (Get-WmiObject -Namespace root\virtualization\v2 `
+                                -Query "ASSOCIATORS OF {Msvm_ComputerSystem.CreationClassName='Msvm_ComputerSystem',Name='$vmGuid'} WHERE ResultClass=Msvm_KvpExchangeComponent" `
+                                -ErrorAction SilentlyContinue).GuestIntrinsicExchangeItems
+                            if ($kvpItems) {
+                                $xmlItems = @($kvpItems | ForEach-Object { try { [xml]$_ } catch { $null } } | Where-Object { $_ -ne $null })
+                                foreach ($keyName in @('OSName','OSFullName')) {
+                                    $match = $xmlItems | Where-Object {
+                                        ($_.INSTANCE.PROPERTY | Where-Object { $_.NAME -eq 'Name' } | Select-Object -First 1).InnerText -eq $keyName
+                                    } | Select-Object -First 1
+                                    if ($match) {
+                                        $val = ($match.INSTANCE.PROPERTY | Where-Object { $_.NAME -eq 'Data' } | Select-Object -First 1).InnerText
+                                        if ($val) { $guestOs = $val; break }
+                                    }
+                                }
+                            }
+                        } catch { $guestOs = '' }
                         @{
                             Name              = $vm.Name
                             State             = $vm.State.ToString()
@@ -275,6 +312,7 @@ public static class Scanner
                             DynamicMemory     = [bool]$vm.DynamicMemoryEnabled
                             Uptime            = if ($vm.Uptime.TotalSeconds -gt 0) { $vm.Uptime.ToString() } else { '' }
                             IntegrationServices = if ($vm.IntegrationServicesVersion) { $vm.IntegrationServicesVersion.ToString() } else { '' }
+                            GuestOs           = $guestOs
                             NICCount          = [int]@(Get-VMNetworkAdapter -VM $vm).Count
                             VHDs              = $vhds
                         }

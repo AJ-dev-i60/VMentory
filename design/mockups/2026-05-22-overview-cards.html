@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<title>VMentory — Card Grid (mockup)</title>
+<style>
+:root {
+  --bg:#0f172a; --bg-card:#1e293b; --bg-hover:#263347;
+  --border:#334155; --border-lt:#475569;
+  --text:#f1f5f9; --text2:#94a3b8; --text3:#64748b;
+  --blue:#3b82f6; --green:#22c55e; --yellow:#f59e0b; --red:#ef4444;
+  --purple:#8b5cf6; --cyan:#06b6d4;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.5;padding:24px}
+
+.page-hdr{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:18px}
+.page-ttl{font-size:18px;font-weight:700}
+.page-sub{color:var(--text3);font-size:12px;margin-top:2px}
+.btn-primary{background:var(--blue);color:#fff;border:none;border-radius:6px;padding:7px 14px;font-weight:500;cursor:pointer;font-size:13px}
+
+.toolbar{display:flex;align-items:center;gap:8px;margin-bottom:18px;flex-wrap:wrap}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:14px;background:var(--bg-card);border:1px solid var(--border);color:var(--text2);font-size:12px;cursor:pointer}
+.chip:hover{border-color:var(--border-lt);color:var(--text)}
+.chip.active{background:rgba(59,130,246,.12);border-color:var(--blue);color:var(--blue)}
+.chip-count{background:rgba(255,255,255,.08);padding:1px 6px;border-radius:8px;font-size:11px}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:14px}
+
+.hcard{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;overflow:hidden;position:relative;transition:border-color .15s,transform .15s}
+.hcard:hover{border-color:var(--border-lt)}
+.hcard::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--green)}
+.hcard.warn::before{background:var(--yellow)}
+.hcard.bad::before{background:var(--red)}
+
+.hcard-hdr{display:flex;align-items:center;gap:10px;padding:13px 16px 11px 18px}
+.os-icon{flex-shrink:0;width:18px;height:18px;display:flex;align-items:center;justify-content:center}
+.htitle{flex:1;min-width:0}
+.hname{font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hsub{color:var(--text2);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.recheck{display:flex;gap:3px}
+.dot{width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;cursor:default;position:relative}
+.dot.ok{background:rgba(34,197,94,.15);color:var(--green)}
+.dot.fail{background:rgba(239,68,68,.15);color:var(--red)}
+.dot.unk{background:rgba(148,163,184,.12);color:var(--text3)}
+
+.hcard-body{padding:4px 18px 14px 18px}
+
+.gauges{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:12px}
+.gauge-lbl{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px}
+.gauge-name{font-size:10.5px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;font-weight:600}
+.gauge-val{font-size:13px;font-weight:600;font-variant-numeric:tabular-nums}
+.gauge-bar{height:5px;background:var(--bg);border-radius:3px;overflow:hidden;position:relative}
+.gauge-fill{height:100%;border-radius:3px;background:var(--blue);transition:width .3s}
+.gauge-fill.green{background:var(--green)}
+.gauge-fill.yellow{background:var(--yellow)}
+.gauge-fill.over{background:linear-gradient(90deg,var(--green) 0,var(--green) 50%,var(--yellow) 50%,var(--yellow) 75%,var(--red) 75%,var(--red) 100%)}
+
+.mini-stats{display:flex;gap:0;border-top:1px solid var(--border);padding-top:11px;margin-top:2px}
+.ms{flex:1;text-align:center;border-right:1px solid var(--border)}
+.ms:last-child{border-right:none}
+.ms-val{font-weight:700;font-size:16px;font-variant-numeric:tabular-nums;line-height:1.1}
+.ms-lbl{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-top:3px}
+
+.hcard-foot{display:flex;align-items:center;gap:10px;padding:10px 18px;border-top:1px solid var(--border);background:rgba(0,0,0,.12);font-size:11.5px;color:var(--text3)}
+.hcard-foot .hw{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hcard-foot .boot{font-variant-numeric:tabular-nums}
+.hcard-foot .boot.stale{color:var(--yellow)}
+
+.scan-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border-radius:3px;font-size:10.5px;font-weight:500}
+.scan-badge.done{background:rgba(34,197,94,.12);color:var(--green)}
+.scan-badge.idle{background:rgba(148,163,184,.1);color:var(--text3)}
+
+.cluster-hero{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}
+.kpi{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:14px 16px}
+.kpi-lbl{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;font-weight:600}
+.kpi-val{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:4px;line-height:1.1}
+.kpi-delta{font-size:11px;color:var(--text3);margin-top:2px}
+.kpi-delta.up{color:var(--green)}
+
+/* Pre-scan card */
+.hcard.idle::before{background:var(--text3)}
+.hcard.idle .placeholder{padding:22px 18px;text-align:center;color:var(--text3);font-size:12px}
+</style>
+</head>
+<body>
+
+<div class="page-hdr">
+  <div>
+    <div class="page-ttl">Host Overview</div>
+    <div class="page-sub">5 hosts · 11 VMs · last scan 2m ago</div>
+  </div>
+  <button class="btn-primary">+ Add host</button>
+</div>
+
+<div class="cluster-hero">
+  <div class="kpi"><div class="kpi-lbl">Hosts reachable</div><div class="kpi-val">4<span style="color:var(--text3);font-weight:500;font-size:14px"> / 5</span></div><div class="kpi-delta">1 unreachable</div></div>
+  <div class="kpi"><div class="kpi-lbl">Total VMs</div><div class="kpi-val">11</div><div class="kpi-delta up">+1 since last scan</div></div>
+  <div class="kpi"><div class="kpi-lbl">Cluster vCPU</div><div class="kpi-val">90<span style="color:var(--text3);font-weight:500;font-size:14px"> / 88 cores</span></div><div class="kpi-delta" style="color:var(--yellow)">2% oversubscribed</div></div>
+  <div class="kpi"><div class="kpi-lbl">Cluster RAM</div><div class="kpi-val">1.15<span style="color:var(--text3);font-weight:500;font-size:14px"> TB</span></div><div class="kpi-delta">512 GB allocated</div></div>
+</div>
+
+<div class="toolbar">
+  <div class="chip active">All <span class="chip-count">5</span></div>
+  <div class="chip">Healthy <span class="chip-count">3</span></div>
+  <div class="chip">Warning <span class="chip-count">1</span></div>
+  <div class="chip">Unreachable <span class="chip-count">1</span></div>
+</div>
+
+<div class="grid">
+
+  <div class="hcard">
+    <div class="hcard-hdr">
+      <span class="os-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="#3b82f6"><path d="M0 3.45 9.8 2.1v9.45H0M10.95 1.95 24 0v11.5H10.95M0 12.6h9.8v9.45L0 20.7M10.95 12.65H24V24l-13-1.85"/></svg></span>
+      <div class="htitle">
+        <div class="hname">Orion_20.i60.local</div>
+        <div class="hsub">Server 2019 Standard · 10.0.20.20</div>
+      </div>
+      <div class="recheck">
+        <span class="dot ok" title="Ping ok">P</span>
+        <span class="dot ok" title="TCP 5985 ok">T</span>
+        <span class="dot ok" title="WinRM ok">W</span>
+      </div>
+    </div>
+    <div class="hcard-body">
+      <div class="gauges">
+        <div>
+          <div class="gauge-lbl"><span class="gauge-name">vCPU allocated</span><span class="gauge-val">22 / 24</span></div>
+          <div class="gauge-bar"><div class="gauge-fill green" style="width:91.6%"></div></div>
+        </div>
+        <div>
+          <div class="gauge-lbl"><span class="gauge-name">VM RAM allocated</span><span class="gauge-val">96 / 256 GB</span></div>
+          <div class="gauge-bar"><div class="gauge-fill green" style="width:37.5%"></div></div>
+        </div>
+      </div>
+      <div class="mini-stats">
+        <div class="ms"><div class="ms-val">24</div><div class="ms-lbl">Cores</div></div>
+        <div class="ms"><div class="ms-val">256<span style="font-size:11px;color:var(--text3);font-weight:500"> GB</span></div><div class="ms-lbl">RAM</div></div>
+        <div class="ms"><div class="ms-val">3</div><div class="ms-lbl">VMs</div></div>
+        <div class="ms"><div class="ms-val">22</div><div class="ms-lbl">vCPU</div></div>
+      </div>
+    </div>
+    <div class="hcard-foot">
+      <span class="hw">PowerEdge R820 · E5-4610</span>
+      <span class="boot">↑ 36h</span>
+      <span class="scan-badge done">✓ 2m</span>
+    </div>
+  </div>
+
+  <div class="hcard warn">
+    <div class="hcard-hdr">
+      <span class="os-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="#3b82f6"><path d="M0 3.45 9.8 2.1v9.45H0M10.95 1.95 24 0v11.5H10.95M0 12.6h9.8v9.45L0 20.7M10.95 12.65H24V24l-13-1.85"/></svg></span>
+      <div class="htitle">
+        <div class="hname">Rhea_11.i60.local</div>
+        <div class="hsub">Server 2019 Standard · 10.0.20.11</div>
+      </div>
+      <div class="recheck">
+        <span class="dot ok">P</span><span class="dot ok">T</span><span class="dot ok">W</span>
+      </div>
+    </div>
+    <div class="hcard-body">
+      <div class="gauges">
+        <div>
+          <div class="gauge-lbl"><span class="gauge-name">vCPU allocated</span><span class="gauge-val" style="color:var(--yellow)">40 / 16</span></div>
+          <div class="gauge-bar"><div class="gauge-fill over" style="width:100%"></div></div>
+        </div>
+        <div>
+          <div class="gauge-lbl"><span class="gauge-name">VM RAM allocated</span><span class="gauge-val">64 / 128 GB</span></div>
+          <div class="gauge-bar"><div class="gauge-fill green" style="width:50%"></div></div>
+        </div>
+      </div>
+      <div class="mini-stats">
+        <div class="ms"><div class="ms-val">16</div><div class="ms-lbl">Cores</div></div>
+        <div class="ms"><div class="ms-val">128<span style="font-size:11px;color:var(--text3);font-weight:500"> GB</span></div><div class="ms-lbl">RAM</div></div>
+        <div class="ms"><div class="ms-val">3</div><div class="ms-lbl">VMs</div></div>
+        <div class="ms"><div class="ms-val" style="color:var(--yellow)">40</div><div class="ms-lbl">vCPU</div></div>
+      </div>
+    </div>
+    <div class="hcard-foot">
+      <span class="hw">PowerEdge R620 · E5-2650L</span>
+      <span class="boot stale" title="No reboot ~253 days">↑ 254d</span>
+      <span class="scan-badge done">✓ 2m</span>
+    </div>
+  </div>
+
+  <div class="hcard">
+    <div class="hcard-hdr">
+      <span class="os-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="#3b82f6"><path d="M0 3.45 9.8 2.1v9.45H0M10.95 1.95 24 0v11.5H10.95M0 12.6h9.8v9.45L0 20.7M10.95 12.65H24V24l-13-1.85"/></svg></span>
+      <div class="htitle">
+        <div class="hname">Pleiades_01.i60.local</div>
+        <div class="hsub">Server 2022 Datacenter · 10.0.20.1</div>
+      </div>
+      <div class="recheck"><span class="dot ok">P</span><span class="dot ok">T</span><span class="dot ok">W</span></div>
+    </div>
+    <div class="hcard-body">
+      <div class="gauges">
+        <div>
+          <div class="gauge-lbl"><span class="gauge-name">vCPU allocated</span><span class="gauge-val">28 / 32</span></div>
+          <div class="gauge-bar"><div class="gauge-fill green" style="width:87.5%"></div></div>
+        </div>
+        <div>
+          <div class="gauge-lbl"><span class="gauge-name">VM RAM allocated</span><span class="gauge-val">320 / 512 GB</span></div>
+          <div class="gauge-bar"><div class="gauge-fill green" style="width:62.5%"></div></div>
+        </div>
+      </div>
+      <div class="mini-stats">
+        <div class="ms"><div class="ms-val">32</div><div class="ms-lbl">Cores</div></div>
+        <div class="ms"><div class="ms-val">512<span style="font-size:11px;color:var(--text3);font-weight:500"> GB</span></div><div class="ms-lbl">RAM</div></div>
+        <div class="ms"><div class="ms-val">5</div><div class="ms-lbl">VMs</div></div>
+        <div class="ms"><div class="ms-val">28</div><div class="ms-lbl">vCPU</div></div>
+      </div>
+    </div>
+    <div class="hcard-foot">
+      <span class="hw">PowerEdge R740 · Gold 6248R</span>
+      <span class="boot">↑ 18d</span>
+      <span class="scan-badge done">✓ 1m</span>
+    </div>
+  </div>
+
+  <div class="hcard bad">
+    <div class="hcard-hdr">
+      <span class="os-icon" style="opacity:.35"><svg width="16" height="16" viewBox="0 0 24 24" fill="#64748b"><path d="M0 3.45 9.8 2.1v9.45H0M10.95 1.95 24 0v11.5H10.95M0 12.6h9.8v9.45L0 20.7M10.95 12.65H24V24l-13-1.85"/></svg></span>
+      <div class="htitle">
+        <div class="hname" style="color:var(--text2)">Helios_03.i60.local</div>
+        <div class="hsub" style="color:var(--red)">WinRM unreachable · 10.0.20.3</div>
+      </div>
+      <div class="recheck">
+        <span class="dot ok">P</span><span class="dot ok">T</span><span class="dot fail">W</span>
+      </div>
+    </div>
+    <div class="hcard-body">
+      <div class="placeholder" style="padding:18px 0 8px 0;text-align:center;color:var(--text3);font-size:12.5px">
+        Last successful scan: 2 days ago · PowerEdge R720
+        <div style="margin-top:8px"><button style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:5px 12px;border-radius:5px;font-size:12px;cursor:pointer">Retry connection</button></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

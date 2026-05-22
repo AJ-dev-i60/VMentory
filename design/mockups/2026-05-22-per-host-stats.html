@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<title>VMentory — Per-host stats (mockup)</title>
+<style>
+:root {
+  --bg:#0f172a; --bg-card:#1e293b; --bg-hover:#263347;
+  --border:#334155; --border-lt:#475569;
+  --text:#f1f5f9; --text2:#94a3b8; --text3:#64748b;
+  --blue:#3b82f6; --green:#22c55e; --yellow:#f59e0b; --red:#ef4444;
+  --purple:#8b5cf6; --cyan:#06b6d4;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.5;padding:24px}
+
+/* Breadcrumb / back */
+.crumb{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text3);margin-bottom:10px}
+.crumb a{color:var(--text2);text-decoration:none;display:inline-flex;align-items:center;gap:5px}
+.crumb a:hover{color:var(--text)}
+.crumb svg{width:14px;height:14px}
+
+/* Page header */
+.page-hdr{display:flex;align-items:center;gap:14px;margin-bottom:14px}
+.page-os{flex-shrink:0}
+.page-ttl{font-size:20px;font-weight:700;line-height:1.2}
+.page-sub{color:var(--text2);font-size:12.5px;margin-top:2px}
+.page-sp{flex:1}
+.recheck{display:flex;gap:4px}
+.dot{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700}
+.dot.ok{background:rgba(34,197,94,.15);color:var(--green)}
+.dot.fail{background:rgba(239,68,68,.15);color:var(--red)}
+.page-acts{display:flex;gap:6px}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:7px 13px;border-radius:6px;border:1px solid var(--border);background:var(--bg-card);color:var(--text);font-size:13px;font-weight:500;cursor:pointer;font-family:inherit}
+.btn:hover{background:var(--bg-hover)}
+.btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}
+.btn.danger{color:var(--red);border-color:transparent;background:transparent;padding:7px 9px}
+.btn.danger:hover{background:rgba(239,68,68,.1)}
+
+/* Quick facts strip */
+.facts{display:flex;align-items:stretch;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:0 4px;margin-bottom:10px;overflow-x:auto}
+.fact{display:flex;flex-direction:column;justify-content:center;padding:11px 22px;border-right:1px solid var(--border);min-width:0}
+.fact:last-child{border-right:none}
+.fact-lbl{font-size:10.5px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;font-weight:600}
+.fact-val{font-size:16px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:2px;line-height:1.1}
+.fact-val .unit{font-size:11px;color:var(--text3);font-weight:500;margin-left:3px}
+.fact-val.warn{color:var(--yellow)}
+
+/* Hardware line */
+.hw{padding:8px 16px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;margin-bottom:18px;font-size:12.5px;color:var(--text2);display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center}
+.hw span{white-space:nowrap}
+.hw .key{color:var(--text3);font-size:11px;text-transform:uppercase;letter-spacing:.05em;font-weight:600;margin-right:4px}
+
+/* Cards grid */
+.section-ttl{font-size:14px;font-weight:600;margin:18px 2px 10px 2px;color:var(--text)}
+.donut-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px}
+.ccrd{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.ccrd-hdr{padding:13px 16px;border-bottom:1px solid var(--border);font-weight:600;display:flex;align-items:center;justify-content:space-between;font-size:13.5px}
+.ccrd-hdr .sub{font-size:11.5px;color:var(--text3);font-weight:500}
+.commit-badge{font-size:11px;font-weight:600;padding:2px 7px;border-radius:4px}
+.commit-badge.warn{background:rgba(245,158,11,.15);color:var(--yellow)}
+.commit-badge.ok{background:rgba(34,197,94,.12);color:var(--green)}
+.ccrd-body{padding:16px;display:flex;gap:16px;align-items:center}
+.donut{flex-shrink:0;width:140px;height:140px;position:relative}
+.donut svg{width:100%;height:100%;transform:rotate(-90deg)}
+.donut-ctr{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+.donut-num{font-size:22px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
+.donut-lbl{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-top:3px}
+.legend{flex:1;min-width:0}
+.leg-item{display:flex;align-items:center;gap:8px;padding:3px 0;font-size:12px}
+.leg-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.leg-name{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.leg-val{color:var(--text2);white-space:nowrap;font-variant-numeric:tabular-nums}
+.leg-pct{color:var(--text3);font-size:11px;margin-left:3px}
+
+/* Storage */
+.sto-card{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:18px}
+.sto-hdr{padding:13px 16px;border-bottom:1px solid var(--border);font-weight:600;font-size:13.5px;display:flex;justify-content:space-between;align-items:center}
+.sto-hdr .legend-mini{display:flex;gap:14px;font-size:11px;color:var(--text2);font-weight:500}
+.sto-hdr .legend-mini span{display:inline-flex;align-items:center;gap:5px}
+.sto-hdr .legend-mini .dot-sq{width:9px;height:9px;border-radius:2px}
+.sto-body{padding:14px 16px}
+.sto-rows{display:flex;flex-direction:column;gap:7px}
+.sto-row{display:flex;align-items:center;gap:12px}
+.sto-nm{width:160px;flex-shrink:0;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sto-nm.tot{font-weight:600}
+.sto-bwrap{flex:1;position:relative;height:22px;background:var(--bg);border-radius:4px;overflow:hidden}
+.sto-thick{height:100%;border-radius:4px;background:rgba(34,197,94,.3);position:relative}
+.sto-actual{position:absolute;left:0;top:0;height:100%;background:#22c55e;border-radius:4px}
+.sto-val{font-size:12px;color:var(--text2);font-variant-numeric:tabular-nums;width:140px;text-align:right;flex-shrink:0}
+
+/* VM table */
+.vm-card{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.vm-hdr{padding:13px 16px;border-bottom:1px solid var(--border);font-weight:600;font-size:13.5px;display:flex;justify-content:space-between;align-items:center}
+.vm-hdr .vm-count{color:var(--text3);font-weight:500;font-size:12px;margin-left:6px}
+.vm-tools{display:flex;gap:6px}
+.search{background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:5px 10px;color:var(--text);font-size:12px;width:200px;font-family:inherit}
+.vm-tbl{width:100%;font-size:12.5px;border-collapse:collapse}
+.vm-tbl thead th{background:rgba(0,0,0,.18);text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);font-weight:600;padding:9px 14px;border-bottom:1px solid var(--border)}
+.vm-tbl thead th.r{text-align:right}
+.vm-tbl thead th.c{text-align:center;width:28px;padding:9px 4px}
+.vm-tbl tbody td.c{text-align:center;padding:6px 4px;width:28px}
+.vm-tbl tbody td{padding:10px 14px;border-bottom:1px solid var(--border);font-variant-numeric:tabular-nums}
+.vm-os-fallback{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:3px;background:rgba(148,163,184,.12);color:var(--text3);font-size:10px;font-weight:700}
+.vm-tbl tbody tr:last-child td{border-bottom:none}
+.vm-tbl tbody tr:hover{background:var(--bg-hover)}
+.vm-tbl .name{font-weight:600;color:var(--text)}
+.vm-tbl .r{text-align:right}
+.state-pill{display:inline-flex;padding:1px 8px;border-radius:3px;font-size:11px;font-weight:500}
+.state-pill.run{background:rgba(34,197,94,.12);color:var(--green)}
+.state-pill.off{background:rgba(148,163,184,.12);color:var(--text3)}
+
+@media (max-width:900px){
+  .donut-grid{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<div class="crumb">
+  <a href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg> Overview</a>
+  <span>/</span>
+  <span>Orion_20.i60.local</span>
+</div>
+
+<div class="page-hdr">
+  <span class="page-os">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="#3b82f6"><path d="M0 3.45 9.8 2.1v9.45H0M10.95 1.95 24 0v11.5H10.95M0 12.6h9.8v9.45L0 20.7M10.95 12.65H24V24l-13-1.85"/></svg>
+  </span>
+  <div>
+    <div class="page-ttl">Orion_20.i60.local</div>
+    <div class="page-sub">Server 2019 Standard · 10.0.20.20</div>
+  </div>
+  <div class="page-sp"></div>
+  <div class="recheck">
+    <span class="dot ok" title="Ping ok">P</span>
+    <span class="dot ok" title="TCP 5985 ok">T</span>
+    <span class="dot ok" title="WinRM ok">W</span>
+  </div>
+  <div class="page-acts">
+    <button class="btn"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>Re-scan</button>
+    <button class="btn danger" title="Remove host"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+  </div>
+</div>
+
+<div class="facts">
+  <div class="fact"><div class="fact-lbl">Cores</div><div class="fact-val">24</div></div>
+  <div class="fact"><div class="fact-lbl">Host RAM</div><div class="fact-val">256<span class="unit">GB</span></div></div>
+  <div class="fact"><div class="fact-lbl">VMs</div><div class="fact-val">3</div></div>
+  <div class="fact"><div class="fact-lbl">vCPU</div><div class="fact-val">22<span class="unit">/24</span></div></div>
+  <div class="fact"><div class="fact-lbl">VM RAM</div><div class="fact-val">45.3<span class="unit">/ 256 GB</span></div></div>
+  <div class="fact"><div class="fact-lbl">Uptime</div><div class="fact-val">1<span class="unit">d</span> 12<span class="unit">h</span></div></div>
+  <div class="fact"><div class="fact-lbl">Last scan</div><div class="fact-val" style="font-size:13px">2m<span class="unit">ago</span></div></div>
+</div>
+
+<div class="hw">
+  <span><span class="key">CPU</span>Xeon E5-4610 @ 2.40 GHz</span>
+  <span><span class="key">Model</span>PowerEdge R820</span>
+  <span><span class="key">S/N</span>4QY7WX1</span>
+  <span><span class="key">Boot</span>2026-05-20 17:30</span>
+</div>
+
+<div class="donut-grid">
+
+  <div class="ccrd">
+    <div class="ccrd-hdr">
+      <span>vCPU Allocation <span class="sub">— 22 of 24 cores</span></span>
+      <span class="commit-badge ok">Commit 0.92&times;</span>
+    </div>
+    <div class="ccrd-body">
+      <div class="donut">
+        <svg viewBox="0 0 100 100">
+          <circle cx="50" cy="50" r="38" fill="none" stroke="var(--bg)" stroke-width="14"/>
+          <!-- Albatross 16 vCPU = 66.7% -->
+          <circle cx="50" cy="50" r="38" fill="none" stroke="#3b82f6" stroke-width="14" stroke-dasharray="159.2 238.8" stroke-dashoffset="0"/>
+          <!-- IIS 2 vCPU = 8.3% -->
+          <circle cx="50" cy="50" r="38" fill="none" stroke="#22c55e" stroke-width="14" stroke-dasharray="19.9 238.8" stroke-dashoffset="-159.2"/>
+          <!-- oldDC 4 vCPU = 16.7% -->
+          <circle cx="50" cy="50" r="38" fill="none" stroke="#f59e0b" stroke-width="14" stroke-dasharray="39.8 238.8" stroke-dashoffset="-179.1"/>
+        </svg>
+        <div class="donut-ctr">
+          <div class="donut-num">22</div>
+          <div class="donut-lbl">of 24</div>
+        </div>
+      </div>
+      <div class="legend">
+        <div class="leg-item"><span class="leg-dot" style="background:#3b82f6"></span><span class="leg-name">Albatross</span><span class="leg-val">16.0 vCPU <span class="leg-pct">(67%)</span></span></div>
+        <div class="leg-item"><span class="leg-dot" style="background:#22c55e"></span><span class="leg-name">IIS</span><span class="leg-val">2.0 vCPU <span class="leg-pct">(8%)</span></span></div>
+        <div class="leg-item"><span class="leg-dot" style="background:#f59e0b"></span><span class="leg-name">oldDC</span><span class="leg-val">4.0 vCPU <span class="leg-pct">(17%)</span></span></div>
+        <div class="leg-item"><span class="leg-dot" style="background:#334155"></span><span class="leg-name" style="color:var(--text3)">Free</span><span class="leg-val">2.0 vCPU <span class="leg-pct">(8%)</span></span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ccrd">
+    <div class="ccrd-hdr">
+      <span>VM RAM Allocation <span class="sub">— 45.3 of 256 GB</span></span>
+      <span class="sub" style="color:var(--text2)">18% allocated</span>
+    </div>
+    <div class="ccrd-body">
+      <div class="donut">
+        <svg viewBox="0 0 100 100">
+          <circle cx="50" cy="50" r="38" fill="none" stroke="var(--bg)" stroke-width="14"/>
+          <!-- Albatross 31.3 GB = 12.2% -->
+          <circle cx="50" cy="50" r="38" fill="none" stroke="#3b82f6" stroke-width="14" stroke-dasharray="29.2 238.8" stroke-dashoffset="0"/>
+          <!-- IIS 6 GB = 2.3% -->
+          <circle cx="50" cy="50" r="38" fill="none" stroke="#22c55e" stroke-width="14" stroke-dasharray="5.5 238.8" stroke-dashoffset="-29.2"/>
+          <!-- oldDC 8 GB = 3.1% -->
+          <circle cx="50" cy="50" r="38" fill="none" stroke="#f59e0b" stroke-width="14" stroke-dasharray="7.4 238.8" stroke-dashoffset="-34.7"/>
+        </svg>
+        <div class="donut-ctr">
+          <div class="donut-num">45.3<span style="font-size:11px;color:var(--text3);font-weight:500"> GB</span></div>
+          <div class="donut-lbl">allocated</div>
+        </div>
+      </div>
+      <div class="legend">
+        <div class="leg-item"><span class="leg-dot" style="background:#3b82f6"></span><span class="leg-name">Albatross</span><span class="leg-val">31.3 GB <span class="leg-pct">(12%)</span></span></div>
+        <div class="leg-item"><span class="leg-dot" style="background:#22c55e"></span><span class="leg-name">IIS</span><span class="leg-val">6.0 GB <span class="leg-pct">(2%)</span></span></div>
+        <div class="leg-item"><span class="leg-dot" style="background:#f59e0b"></span><span class="leg-name">oldDC</span><span class="leg-val">8.0 GB <span class="leg-pct">(3%)</span></span></div>
+        <div class="leg-item"><span class="leg-dot" style="background:#334155"></span><span class="leg-name" style="color:var(--text3)">Free</span><span class="leg-val">211 GB <span class="leg-pct">(82%)</span></span></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="sto-card">
+  <div class="sto-hdr">
+    <span>Storage — 0.91 / 1.79 TB [51%]</span>
+    <div class="legend-mini">
+      <span><span class="dot-sq" style="background:rgba(34,197,94,.3)"></span>Thick provisioned</span>
+      <span><span class="dot-sq" style="background:#22c55e"></span>Actual on-disk</span>
+    </div>
+  </div>
+  <div class="sto-body">
+    <div class="sto-rows">
+      <div class="sto-row">
+        <div class="sto-nm tot">Total (host)</div>
+        <div class="sto-bwrap">
+          <div class="sto-thick" style="width:100%"></div>
+          <div class="sto-actual" style="width:50.8%"></div>
+        </div>
+        <div class="sto-val">0.91 / 1.79 TB [51%]</div>
+      </div>
+      <div class="sto-row">
+        <div class="sto-nm">Albatross [106]</div>
+        <div class="sto-bwrap">
+          <div class="sto-thick" style="width:79.1%"></div>
+          <div class="sto-actual" style="width:43.6%"></div>
+        </div>
+        <div class="sto-val">0.78 / 1.42 TB [55%]</div>
+      </div>
+      <div class="sto-row">
+        <div class="sto-nm">IIS [104]</div>
+        <div class="sto-bwrap">
+          <div class="sto-thick" style="width:14%"></div>
+          <div class="sto-actual" style="width:4.5%"></div>
+        </div>
+        <div class="sto-val">82.5 / 256 GB [32%]</div>
+      </div>
+      <div class="sto-row">
+        <div class="sto-nm">oldDC [101]</div>
+        <div class="sto-bwrap">
+          <div class="sto-thick" style="width:6.9%"></div>
+          <div class="sto-actual" style="width:2.7%"></div>
+        </div>
+        <div class="sto-val">49.8 / 127 GB [39%]</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="vm-card">
+  <div class="vm-hdr">
+    <span>VMs<span class="vm-count">3 on this host</span></span>
+    <div class="vm-tools">
+      <input class="search" placeholder="Search VMs…">
+    </div>
+  </div>
+  <table class="vm-tbl">
+    <thead>
+      <tr>
+        <th class="c"></th>
+        <th>Name</th>
+        <th>State</th>
+        <th class="r">vCPU</th>
+        <th class="r">RAM</th>
+        <th class="r">Disk (used / thick)</th>
+        <th class="r">NICs</th>
+        <th class="r">Uptime</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="c"><svg width="14" height="14" viewBox="0 0 24 24" fill="#3b82f6"><path d="M0 3.45 9.8 2.1v9.45H0M10.95 1.95 24 0v11.5H10.95M0 12.6h9.8v9.45L0 20.7M10.95 12.65H24V24l-13-1.85"/></svg></td>
+        <td class="name">Albatross [106]</td>
+        <td><span class="state-pill run">Running</span></td>
+        <td class="r">16</td>
+        <td class="r">31.3 GB</td>
+        <td class="r">0.78 / 1.42 TB <span style="color:var(--text3);font-size:11px">[55%]</span></td>
+        <td class="r">1</td>
+        <td class="r">1d 11h</td>
+      </tr>
+      <tr>
+        <td class="c"><svg width="14" height="14" viewBox="0 0 24 24" fill="#3b82f6"><path d="M0 3.45 9.8 2.1v9.45H0M10.95 1.95 24 0v11.5H10.95M0 12.6h9.8v9.45L0 20.7M10.95 12.65H24V24l-13-1.85"/></svg></td>
+        <td class="name">IIS [104]</td>
+        <td><span class="state-pill run">Running</span></td>
+        <td class="r">2</td>
+        <td class="r">6.0 GB</td>
+        <td class="r">82.5 / 256 GB <span style="color:var(--text3);font-size:11px">[32%]</span></td>
+        <td class="r">1</td>
+        <td class="r">1d 3h</td>
+      </tr>
+      <tr>
+        <td class="c"><span class="vm-os-fallback" title="No KVP / integration services">?</span></td>
+        <td class="name">oldDC [101]</td>
+        <td><span class="state-pill run">Running</span></td>
+        <td class="r">4</td>
+        <td class="r">8.0 GB</td>
+        <td class="r">49.8 / 127 GB <span style="color:var(--text3);font-size:11px">[39%]</span></td>
+        <td class="r">1</td>
+        <td class="r">1d 3h</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+</body>
+</html>

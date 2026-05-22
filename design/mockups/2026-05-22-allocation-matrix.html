@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<title>VMentory — Allocation B: Resource matrix</title>
+<style>
+:root {
+  --bg:#0f172a; --bg-card:#1e293b; --bg-hover:#263347;
+  --border:#334155; --border-lt:#475569;
+  --text:#f1f5f9; --text2:#94a3b8; --text3:#64748b;
+  --blue:#3b82f6; --green:#22c55e; --yellow:#f59e0b; --red:#ef4444;
+  --purple:#8b5cf6; --cyan:#06b6d4;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.5;padding:24px}
+
+.page-hdr{display:flex;align-items:center;gap:12px;margin-bottom:18px}
+.page-os{flex-shrink:0}
+.page-ttl{font-size:18px;font-weight:700}
+.page-sub{color:var(--text2);font-size:12px}
+.label-opt{margin-left:auto;font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em}
+
+.section-ttl{font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin:0 4px 8px 4px}
+
+/* Pressure strip */
+.pressure{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px}
+.p-card{background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:11px 14px}
+.p-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+.p-name{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;font-weight:600}
+.p-val{font-size:14px;font-weight:700;font-variant-numeric:tabular-nums}
+.p-val .sub{color:var(--text3);font-weight:500;font-size:11.5px;margin-left:3px}
+.p-val.warn{color:var(--yellow)}
+.p-val.bad{color:var(--red)}
+.p-bar{height:6px;background:var(--bg);border-radius:3px;overflow:hidden;position:relative}
+.p-fill{height:100%;background:var(--green);border-radius:3px}
+.p-fill.warn{background:var(--yellow)}
+.p-fill.bad{background:linear-gradient(90deg,var(--yellow),var(--red))}
+.p-redline{position:absolute;left:46.9%;top:-2px;bottom:-2px;width:1.5px;background:var(--red);border-radius:1px}
+
+/* Matrix table */
+.mtbl{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.mtbl-hdr{padding:12px 16px;border-bottom:1px solid var(--border);font-weight:600;font-size:13.5px;display:flex;justify-content:space-between;align-items:center}
+.mtbl-hdr .ct{color:var(--text3);font-weight:500;font-size:12px;margin-left:6px}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+thead th{background:rgba(0,0,0,.18);text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);font-weight:600;padding:9px 12px;border-bottom:1px solid var(--border);white-space:nowrap}
+thead th.r{text-align:right}
+thead th.c{text-align:center;width:24px;padding:9px 6px}
+tbody td{padding:9px 12px;border-bottom:1px solid var(--border);font-variant-numeric:tabular-nums;vertical-align:middle}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover{background:var(--bg-hover)}
+td.c{text-align:center;padding:6px 6px;width:24px}
+td.name{font-weight:600;color:var(--text);white-space:nowrap}
+td.r{text-align:right}
+.state-pill{display:inline-flex;padding:1px 8px;border-radius:3px;font-size:11px;font-weight:500}
+.state-pill.run{background:rgba(34,197,94,.12);color:var(--green)}
+.state-pill.off{background:rgba(148,163,184,.12);color:var(--text3)}
+
+/* Inline resource cell: value + bar */
+.rc{display:flex;flex-direction:column;align-items:flex-end;gap:3px;min-width:120px}
+.rc-val{font-size:12.5px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.rc-val .pct{color:var(--text3);font-size:10.5px;font-weight:500;margin-left:4px}
+.rc-bar{width:100%;height:5px;background:var(--bg);border-radius:3px;overflow:hidden}
+.rc-fill{height:100%;border-radius:3px}
+.rc-fill.green{background:var(--green)}
+.rc-fill.blue{background:var(--blue)}
+.rc-fill.yellow{background:var(--yellow)}
+.rc-fill.red{background:var(--red)}
+
+.vm-os-fallback{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:3px;background:rgba(148,163,184,.12);color:var(--text3);font-size:10px;font-weight:700}
+</style>
+</head>
+<body>
+
+<div class="page-hdr">
+  <span class="page-os"><svg width="20" height="20" viewBox="0 0 24 24" fill="#3b82f6"><path d="M0 3.45 9.8 2.1v9.45H0M10.95 1.95 24 0v11.5H10.95M0 12.6h9.8v9.45L0 20.7M10.95 12.65H24V24l-13-1.85"/></svg></span>
+  <div>
+    <div class="page-ttl">Sagan_125.i60.local</div>
+    <div class="page-sub">32 cores · 128 GB RAM · 3.52 TB storage · 6 VMs</div>
+  </div>
+  <div class="label-opt">Option B · resource matrix</div>
+</div>
+
+<div class="section-ttl">Host pressure</div>
+<div class="pressure">
+  <div class="p-card">
+    <div class="p-top">
+      <span class="p-name">vCPU</span>
+      <span class="p-val bad">68<span class="sub">/ 32 cores · 2.13×</span></span>
+    </div>
+    <div class="p-bar"><div class="p-fill bad" style="width:100%"></div><div class="p-redline"></div></div>
+  </div>
+  <div class="p-card">
+    <div class="p-top">
+      <span class="p-name">VM RAM</span>
+      <span class="p-val">93.3<span class="sub">/ 128 GB · 73%</span></span>
+    </div>
+    <div class="p-bar"><div class="p-fill" style="width:73%"></div></div>
+  </div>
+  <div class="p-card">
+    <div class="p-top">
+      <span class="p-name">Storage</span>
+      <span class="p-val">1.21<span class="sub">/ 3.52 TB · 34%</span></span>
+    </div>
+    <div class="p-bar"><div class="p-fill" style="width:34%"></div></div>
+  </div>
+</div>
+
+<div class="section-ttl">VM allocations</div>
+<div class="mtbl">
+  <div class="mtbl-hdr">
+    <span>VMs <span class="ct">6 on this host</span></span>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th class="c"></th>
+        <th>Name</th>
+        <th>State</th>
+        <th class="r">vCPU (share of cores)</th>
+        <th class="r">RAM (share of host)</th>
+        <th class="r">Disk (used / thick)</th>
+        <th class="r">NICs</th>
+        <th class="r">Uptime</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="c"><svg width="14" height="14" viewBox="0 0 24 24" fill="#3b82f6"><path d="M0 3.45 9.8 2.1v9.45H0M10.95 1.95 24 0v11.5H10.95M0 12.6h9.8v9.45L0 20.7M10.95 12.65H24V24l-13-1.85"/></svg></td>
+        <td class="name">DATAWAREHOUSE [249]</td>
+        <td><span class="state-pill run">Running</span></td>
+        <td class="r"><div class="rc"><div class="rc-val">16<span class="pct">50%</span></div><div class="rc-bar"><div class="rc-fill red" style="width:50%"></div></div></div></td>
+        <td class="r"><div class="rc"><div class="rc-val">10.0 GB<span class="pct">8%</span></div><div class="rc-bar"><div class="rc-fill green" style="width:8%"></div></div></div></td>
+        <td class="r"><div class="rc"><div class="rc-val">0.59 / 1.49 TB<span class="pct">40%</span></div><div class="rc-bar"><div class="rc-fill green" style="width:40%"></div></div></div></td>
+        <td class="r">1</td>
+        <td class="r">8d 11h</td>
+      </tr>
+      <tr>
+        <td class="c"><span class="vm-os-fallback">?</span></td>
+        <td class="name">DATAWAREHOUSE [250]</td>
+        <td><span class="state-pill off">Off</span></td>
+        <td class="r"><div class="rc"><div class="rc-val">8<span class="pct">25%</span></div><div class="rc-bar"><div class="rc-fill yellow" style="width:25%"></div></div></div></td>
+        <td class="r"><div class="rc"><div class="rc-val" style="color:var(--text3)">—</div><div class="rc-bar"></div></div></td>
+        <td class="r"><div class="rc"><div class="rc-val">45.9 / 127 GB<span class="pct">36%</span></div><div class="rc-bar"><div class="rc-fill green" style="width:36%"></div></div></div></td>
+        <td class="r">1</td>
+        <td class="r" style="color:var(--text3)">—</td>
+      </tr>
+      <tr>
+        <td class="c"><span class="vm-os-fallback">?</span></td>
+        <td class="name">Email document processor [124]</td>
+        <td><span class="state-pill run">Running</span></td>
+        <td class="r"><div class="rc"><div class="rc-val">12<span class="pct">38%</span></div><div class="rc-bar"><div class="rc-fill yellow" style="width:38%"></div></div></div></td>
+        <td class="r"><div class="rc"><div class="rc-val">15.6 GB<span class="pct">12%</span></div><div class="rc-bar"><div class="rc-fill green" style="width:12%"></div></div></div></td>
+        <td class="r"><div class="rc"><div class="rc-val">54.3 / 1,000 GB<span class="pct">5%</span></div><div class="rc-bar"><div class="rc-fill green" style="width:5%"></div></div></div></td>
+        <td class="r">1</td>
+        <td class="r">1d 18h</td>
+      </tr>
+      <tr>
+        <td class="c"><svg width="14" height="14" viewBox="0 0 24 24" fill="#3b82f6"><path d="M0 3.45 9.8 2.1v9.45H0M10.95 1.95 24 0v11.5H10.95M0 12.6h9.8v9.45L0 20.7M10.95 12.65H24V24l-13-1.85"/></svg></td>
+        <td class="name">Frappe [118]</td>
+        <td><span class="state-pill run">Running</span></td>
+        <td class="r"><div class="rc"><div class="rc-val">10<span class="pct">31%</span></div><div class="rc-bar"><div class="rc-fill yellow" style="width:31%"></div></div></div></td>
+        <td class="r"><div class="rc"><div class="rc-val">15.6 GB<span class="pct">12%</span></div><div class="rc-bar"><div class="rc-fill green" style="width:12%"></div></div></div></td>
+        <td class="r"><div class="rc"><div class="rc-val">105 / 200 GB<span class="pct">52%</span></div><div class="rc-bar"><div class="rc-fill yellow" style="width:52%"></div></div></div></td>
+        <td class="r">1</td>
+        <td class="r">8d 10h</td>
+      </tr>
+      <tr>
+        <td class="c"><svg width="14" height="14" viewBox="0 0 24 24" fill="#3b82f6"><path d="M0 3.45 9.8 2.1v9.45H0M10.95 1.95 24 0v11.5H10.95M0 12.6h9.8v9.45L0 20.7M10.95 12.65H24V24l-13-1.85"/></svg></td>
+        <td class="name">Lifetime [137]</td>
+        <td><span class="state-pill run">Running</span></td>
+        <td class="r"><div class="rc"><div class="rc-val">6<span class="pct">19%</span></div><div class="rc-bar"><div class="rc-fill green" style="width:19%"></div></div></div></td>
+        <td class="r"><div class="rc"><div class="rc-val">32.0 GB<span class="pct">25%</span></div><div class="rc-bar"><div class="rc-fill yellow" style="width:25%"></div></div></div></td>
+        <td class="r"><div class="rc"><div class="rc-val">368 / 500 GB<span class="pct">74%</span></div><div class="rc-bar"><div class="rc-fill red" style="width:74%"></div></div></div></td>
+        <td class="r">1</td>
+        <td class="r">9d 10h</td>
+      </tr>
+      <tr>
+        <td class="c"><span class="vm-os-fallback">?</span></td>
+        <td class="name">Portainer [116]</td>
+        <td><span class="state-pill run">Running</span></td>
+        <td class="r"><div class="rc"><div class="rc-val">16<span class="pct">50%</span></div><div class="rc-bar"><div class="rc-fill red" style="width:50%"></div></div></div></td>
+        <td class="r"><div class="rc"><div class="rc-val">20.0 GB<span class="pct">16%</span></div><div class="rc-bar"><div class="rc-fill green" style="width:16%"></div></div></div></td>
+        <td class="r"><div class="rc"><div class="rc-val">59.1 / 256 GB<span class="pct">23%</span></div><div class="rc-bar"><div class="rc-fill green" style="width:23%"></div></div></div></td>
+        <td class="r">1</td>
+        <td class="r">9d 10h</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div style="margin-top:14px;font-size:11.5px;color:var(--text3);padding:0 4px">
+  <strong style="color:var(--text2)">Bar colour:</strong>
+  <span style="display:inline-block;width:9px;height:9px;background:var(--green);border-radius:2px;vertical-align:middle;margin:0 4px 0 8px"></span>&lt;25% &nbsp;
+  <span style="display:inline-block;width:9px;height:9px;background:var(--yellow);border-radius:2px;vertical-align:middle;margin:0 4px"></span>25–49% &nbsp;
+  <span style="display:inline-block;width:9px;height:9px;background:var(--red);border-radius:2px;vertical-align:middle;margin:0 4px"></span>≥50% (largest contributors)
+</div>
+
+</body>
+</html>

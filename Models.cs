@@ -45,6 +45,7 @@ public class Vm
     public int NicCount { get; set; }
     public string Uptime { get; set; } = "";
     public string IntegrationServices { get; set; } = "";
+    public string GuestOs { get; set; } = "";
 
     [JsonIgnore]
     public double TotalThickGb => Vhds.Sum(v => v.ThickGb);
@@ -76,6 +77,7 @@ public class Host
     public DateTimeOffset? LastScanned { get; set; }
     public bool UseGlobalCreds { get; set; } = true;
     public string AddError { get; set; } = "";
+    public bool Connecting { get; set; }
 
     [JsonIgnore]
     public Credentials? PerHostCreds { get; set; }
