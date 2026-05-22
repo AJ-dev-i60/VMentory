@@ -16,7 +16,9 @@ Live state of design proposals. Newest at the top of each section.
 *(none)*
 
 ## Awaiting design
-*(none)*
+| Date | Title | Request | Notes |
+|---|---|---|---|
+| 2026-05-22 | Hybrid allocation not visible after latest push — clarify what was shipped | `requests/from-codebase/2026-05-22-hybrid-allocation-not-visible.md` | User ran the app and per-host page still shows old layout (two large donuts + storage bars + separate VM card). Asking design to confirm whether `wwwroot/index.html` was changed or if the spec is still pending codebase implementation. |
 
 ## Shipped
 | Date | Title | Commit | Notes |
