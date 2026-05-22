@@ -45,6 +45,7 @@ public class Vm
     public int NicCount { get; set; }
     public string Uptime { get; set; } = "";
     public string IntegrationServices { get; set; } = "";
+    public string GuestOs { get; set; } = "";
 
     [JsonIgnore]
     public double TotalThickGb => Vhds.Sum(v => v.ThickGb);

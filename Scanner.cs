@@ -146,6 +146,7 @@ public static class Scanner
                     DynamicMemory = v["DynamicMemory"]?.GetValue<bool>() ?? false,
                     Uptime = v["Uptime"]?.GetValue<string>() ?? "",
                     IntegrationServices = v["IntegrationServices"]?.GetValue<string>() ?? "",
+                    GuestOs = v["GuestOs"]?.GetValue<string>() ?? "",
                     NicCount = v["NICCount"]?.GetValue<int>() ?? 0,
                 };
 
@@ -282,6 +283,25 @@ public static class Scanner
                                 @{ Path = $hdrive.Path; ThickBytes = 0L; ActualBytes = 0L }
                             }
                         })
+                        $guestOs = ''
+                        try {
+                            $vmGuid = $vm.Id.ToString()
+                            $kvpItems = (Get-WmiObject -Namespace root\virtualization\v2 `
+                                -Query "ASSOCIATORS OF {Msvm_ComputerSystem.CreationClassName='Msvm_ComputerSystem',Name='$vmGuid'} WHERE ResultClass=Msvm_KvpExchangeComponent" `
+                                -ErrorAction SilentlyContinue).GuestIntrinsicExchangeItems
+                            if ($kvpItems) {
+                                $xmlItems = @($kvpItems | ForEach-Object { try { [xml]$_ } catch { $null } } | Where-Object { $_ -ne $null })
+                                foreach ($keyName in @('OSName','OSFullName')) {
+                                    $match = $xmlItems | Where-Object {
+                                        ($_.INSTANCE.PROPERTY | Where-Object { $_.NAME -eq 'Name' } | Select-Object -First 1).InnerText -eq $keyName
+                                    } | Select-Object -First 1
+                                    if ($match) {
+                                        $val = ($match.INSTANCE.PROPERTY | Where-Object { $_.NAME -eq 'Data' } | Select-Object -First 1).InnerText
+                                        if ($val) { $guestOs = $val; break }
+                                    }
+                                }
+                            }
+                        } catch { $guestOs = '' }
                         @{
                             Name              = $vm.Name
                             State             = $vm.State.ToString()
@@ -292,6 +312,7 @@ public static class Scanner
                             DynamicMemory     = [bool]$vm.DynamicMemoryEnabled
                             Uptime            = if ($vm.Uptime.TotalSeconds -gt 0) { $vm.Uptime.ToString() } else { '' }
                             IntegrationServices = if ($vm.IntegrationServicesVersion) { $vm.IntegrationServicesVersion.ToString() } else { '' }
+                            GuestOs           = $guestOs
                             NICCount          = [int]@(Get-VMNetworkAdapter -VM $vm).Count
                             VHDs              = $vhds
                         }

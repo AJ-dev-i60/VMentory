@@ -177,14 +177,6 @@ table.dt tr:hover td{background:var(--bg-hover)}
 .rfill.warn{background:var(--yellow)}
 .rfill.over{background:var(--red)}
 
-/* Diff panel */
-.diff-panel{background:rgba(59,130,246,.06);border:1px solid rgba(59,130,246,.2);border-radius:8px;padding:14px;margin-bottom:16px}
-.diff-ttl{font-size:13px;font-weight:600;color:var(--blue);margin-bottom:8px}
-.diff-item{font-size:12px;padding:2px 0}
-.diff-item.add{color:var(--green)}
-.diff-item.rem{color:var(--red)}
-.diff-item.chg{color:var(--yellow)}
-
 /* Modals */
 .moverlay{display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.6);backdrop-filter:blur(2px);align-items:center;justify-content:center}
 .moverlay.show{display:flex}
@@ -232,6 +224,37 @@ textarea.finp{resize:vertical;min-height:80px}
 
 @media(max-width:1100px){.hrow{grid-template-columns:20px 1.4fr 60px 60px 50px 1.2fr 70px 56px}.col-vcpu,.col-scan{display:none}}
 @media(max-width:768px){.sidebar{width:52px}.nav-item span{display:none}.content{padding:16px}}
+
+/* Per-host stats page */
+.crumb{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text3);margin-bottom:10px}
+.crumb a{color:var(--text2);text-decoration:none;display:inline-flex;align-items:center;gap:5px;cursor:pointer}
+.crumb a:hover{color:var(--text)}
+.facts{display:flex;align-items:stretch;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:0 4px;margin-bottom:10px;overflow-x:auto}
+.fact{display:flex;flex-direction:column;justify-content:center;padding:11px 22px;border-right:1px solid var(--border);min-width:0}
+.fact:last-child{border-right:none}
+.fact-lbl{font-size:10.5px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;font-weight:600}
+.fact-val{font-size:16px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:2px;line-height:1.1}
+.fact-val.warn{color:var(--yellow)}
+.fact-unit{font-size:11px;color:var(--text3);font-weight:500;margin-left:3px}
+.hw-line{padding:8px 16px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;margin-bottom:18px;font-size:12.5px;color:var(--text2);display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center}
+.hw-line span{white-space:nowrap}
+.hw-key{color:var(--text3);font-size:11px;text-transform:uppercase;letter-spacing:.05em;font-weight:600;margin-right:4px}
+.commit-badge{font-size:11px;font-weight:600;padding:2px 7px;border-radius:4px}
+.commit-badge.warn{background:rgba(245,158,11,.15);color:var(--yellow)}
+.commit-badge.ok{background:rgba(34,197,94,.12);color:var(--green)}
+.donut-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px}
+@media(max-width:900px){.donut-grid{grid-template-columns:1fr}}
+.sto-card{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:18px}
+.sto-hdr{padding:13px 16px;border-bottom:1px solid var(--border);font-weight:600;font-size:13.5px;display:flex;justify-content:space-between;align-items:center}
+.sto-hdr-leg{display:flex;gap:14px;font-size:11px;color:var(--text2);font-weight:500}
+.sto-hdr-leg span{display:inline-flex;align-items:center;gap:5px}
+.sto-hdr-sq{width:9px;height:9px;border-radius:2px;display:inline-block}
+.sto-body{padding:14px 16px}
+.sto-val{font-size:12px;color:var(--text2);font-variant-numeric:tabular-nums;width:140px;text-align:right;flex-shrink:0}
+.vm-card{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:18px}
+.vm-hdr{padding:13px 16px;border-bottom:1px solid var(--border);font-weight:600;font-size:13.5px;display:flex;justify-content:space-between;align-items:center}
+.vm-count{color:var(--text3);font-weight:500;font-size:12px;margin-left:6px}
+.vm-os-fallback{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:3px;background:rgba(148,163,184,.12);color:var(--text3);font-size:10px;font-weight:700}
 </style>
 </head>
 <body>
@@ -283,18 +306,6 @@ textarea.finp{resize:vertical;min-height:80px}
         <div class="nav-item active" data-view="overview" onclick="switchView('overview')">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
           <span>Overview</span>
-        </div>
-        <div class="nav-item" data-view="ram" onclick="switchView('ram')">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
-          <span>RAM Charts</span>
-        </div>
-        <div class="nav-item" data-view="cpu" onclick="switchView('cpu')">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3"/></svg>
-          <span>CPU Charts</span>
-        </div>
-        <div class="nav-item" data-view="storage" onclick="switchView('storage')">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
-          <span>Storage</span>
         </div>
         <div class="nav-item" data-view="vms" onclick="switchView('vms')">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
@@ -403,12 +414,13 @@ const COLORS=['#3b82f6','#22c55e','#f59e0b','#8b5cf6','#ef4444','#06b6d4','#ec48
 const st={
   token:new URLSearchParams(location.search).get('token')||'',
   hosts:[],totals:{},diff:{},
-  view:'overview',
+  view:'overview',viewArg:null,
   credSet:false,mock:false,
   rmId:null,
   vmSort:{col:'name',dir:1},
   vmF:{host:'',state:'',name:''},
   hlF:{filter:'all',search:''},
+  hostVmSearch:'',
 };
 
 // ── API ───────────────────────────────────────────────────────────────────────
@@ -426,10 +438,12 @@ async function init(){
   }
   await loadState();
   setupSSE();
-  renderView(st.view);
+  readHash();
+  if(st.view==='overview')renderView(st.view);
   if(!st.credSet&&!st.mock) document.getElementById('creds-ov').style.display='flex';
   setInterval(loadState,5000);
 }
+window.addEventListener('hashchange',readHash);
 
 async function loadState(){
   try{
@@ -455,7 +469,15 @@ function setupSSE(){
     if(d.totals)st.totals=d.totals;if(d.diff)st.diff=d.diff;
     const b=document.getElementById('btn-scan');
     b.disabled=false;b.innerHTML='<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg> Scan All';
-    updateStrip();toast('Scan complete','success');renderView(st.view,false);
+    updateStrip();
+    const diff=d.diff||{};
+    const added=(diff.added||[]).length,removed=(diff.removed||[]).length,changed=(diff.changed||[]).length;
+    const parts=[];
+    if(added)parts.push(`${added} VM${added!==1?'s':''} added`);
+    if(removed)parts.push(`${removed} VM${removed!==1?'s':''} removed`);
+    if(changed)parts.push(`${changed} VM${changed!==1?'s':''} changed`);
+    toast('Scan complete · '+(parts.length?parts.join(' · '):'no changes'),'success');
+    renderView(st.view,false);
   });
   on('hostAdded',d=>{if(!st.hosts.find(h=>h.id===d.id))st.hosts.push(d);updateStrip();renderView(st.view,false);});
   on('hostUpdated',d=>{const idx=st.hosts.findIndex(h=>h.id===d.id);if(idx>=0)st.hosts[idx]=d;else st.hosts.push(d);updateStrip();renderView(st.view,false);});
@@ -475,16 +497,30 @@ function updateStrip(){
 }
 
 // ── Views ─────────────────────────────────────────────────────────────────────
-function switchView(v){
-  st.view=v;
+function switchView(v,arg=null){
+  st.view=v;st.viewArg=arg;
   document.querySelectorAll('.nav-item[data-view]').forEach(el=>el.classList.toggle('active',el.dataset.view===v));
+  if(v==='host'&&arg)location.hash='#host/'+arg;
+  else history.replaceState(null,'',location.pathname+location.search);
   renderView(v,true);
+}
+function readHash(){
+  const m=location.hash.match(/^#host\/(.+)$/);
+  if(!m)return;
+  const id=decodeURIComponent(m[1]);
+  if(st.view==='host'&&st.viewArg===id)return;
+  const h=st.hosts.find(hh=>hh.id===id);
+  if(!h){toast('Host not found — returned to overview','info');history.replaceState(null,'',location.pathname+location.search);switchView('overview');return;}
+  st.view='host';st.viewArg=id;
+  document.querySelectorAll('.nav-item[data-view]').forEach(el=>el.classList.remove('active'));
+  renderView('host',true);
 }
 
 function renderView(v,scroll=false){
   const el=document.getElementById('main');
   switch(v){
     case'overview':el.innerHTML=vOverview();break;
+    case'host':el.innerHTML=vHost(st.viewArg);break;
     case'ram':el.innerHTML=vRam();break;
     case'cpu':el.innerHTML=vCpu();break;
     case'storage':el.innerHTML=vStorage();break;
@@ -495,12 +531,12 @@ function renderView(v,scroll=false){
   if(v==='ram')drawCharts('ram');
   if(v==='cpu')drawCharts('cpu');
   if(v==='cluster')drawClusterCharts();
+  if(v==='host')drawHostCharts(st.viewArg);
 }
 
 // ── Overview ──────────────────────────────────────────────────────────────────
 function vOverview(){
-  const out=diffBanner();
-  if(!st.hosts.length)return out+`<div class="empty"><div class="empty-ico">🖥️</div><div class="empty-ttl">No hosts yet</div><div class="empty-txt">Add a Hyper-V host to get started.</div><button class="btn btn-primary" onclick="showAddHostModal()">Add Host</button></div>`;
+  if(!st.hosts.length)return`<div class="empty"><div class="empty-ico">🖥️</div><div class="empty-ttl">No hosts yet</div><div class="empty-txt">Add a Hyper-V host to get started.</div><button class="btn btn-primary" onclick="showAddHostModal()">Add Host</button></div>`;
 
   const withH=st.hosts.map(h=>({...h,_h:hostHealth(h)}));
   const cnt={all:withH.length,healthy:0,warning:0,unreachable:0};
@@ -520,7 +556,7 @@ function vOverview(){
   const lastScanStr=scanTimes.length?` · last scan ${ago(new Date(Math.max(...scanTimes)).toISOString())}`:'';
   const sub=`${cnt.all} host${cnt.all!==1?'s':''} · ${totalVMs} VM${totalVMs!==1?'s':''} · cluster vCPU ${totalVCpu} / ${totalCores||'?'} cores${lastScanStr}`;
 
-  let html=out+`
+  let html=`
   <div class="page-hdr">
     <div>
       <div class="page-ttl">Host Overview</div>
@@ -565,7 +601,7 @@ function vOverview(){
       const fullHw=[h.manufacturer,h.model,h.cpuModel].filter(Boolean).join(' · ');
       const scanned=h.scanState==='Done';
       const dim=h._h==='bad';
-      html+=`<div class="hrow" id="hrow-${h.id}">
+      html+=`<div class="hrow" id="hrow-${h.id}" onclick="switchView('host','${h.id}')" style="cursor:pointer">
         <div class="health ${h._h}" title="${x(healthTip(h))}"></div>
         <div class="hname-cell">
           <span class="os-icon" ${dim?'style="opacity:.4"':''}>${osIconSvg(h.osCaption,dim)}</span>
@@ -576,15 +612,15 @@ function vOverview(){
           <div class="reach-icons">${ri('P',r.icmp,'Ping')}${ri('T',r.winRm,'TCP 5985')}${ai(r.auth)}</div>
         </div>
         <div class="metric" ${dim?'style="color:var(--text3)"':''}>${scanned?h.totalCores:'—'}</div>
-        <div class="metric" ${dim?'style="color:var(--text3)"':''}>${scanned?fmtGb(h.totalRamGb):'—'}</div>
+        <div class="metric" ${dim?'style="color:var(--text3)"':''}>${scanned?fmtGB(h.totalRamGb):'—'}</div>
         <div class="metric" ${dim?'style="color:var(--text3)"':''}>${scanned?(h.vms||[]).length:'—'}</div>
         <div class="metric col-vcpu">${scanned?`<span ${oversub?`style="color:var(--yellow)" title="vCPU exceeds physical cores"`:''}>${vCpu}<span class="metric-sub" style="margin-left:2px">/${h.totalCores}</span></span>`:'—'}</div>
         <div class="hardware" title="${x(fullHw)}">${dim?`<span style="color:var(--text3)">last seen: ${x(h.model||'—')}</span>`:hw||'—'}</div>
         <div class="boot${up.stale?' stale':''}" title="${up.stale?`No reboot in ${up.days} days`:''}">${scanned||h.lastBoot?up.text:'—'}</div>
         <div class="col-scan">${rowScanBadge(h)}</div>
         <div class="actions">
-          <button class="act-btn" title="Re-scan" onclick="reScan('${h.id}')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg></button>
-          <button class="act-btn danger" title="Remove" onclick="promptRemove('${h.id}','${x(h.fqdn||h.address)}')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+          <button class="act-btn" title="Re-scan" onclick="event.stopPropagation();reScan('${h.id}')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg></button>
+          <button class="act-btn danger" title="Remove" onclick="event.stopPropagation();promptRemove('${h.id}','${x(h.fqdn||h.address)}')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
         </div>
       </div>`;
     }
@@ -730,15 +766,138 @@ function vStorage(){
   return out;
 }
 
-function stoBar(name,t,a,max,isTotal=false){
+function stoBar(name,t,a,max,isTotal=false,valStr=null){
   const tp=max>0?Math.min(100,t/max*100):0;
   const ap=t>0?Math.min(100,a/t*100):0;
+  const v=valStr!==null?valStr:fmtDiskUse(a,t);
   return `<div class="sto-row" ${isTotal?'style="border-top:1px solid var(--border);padding-top:8px;margin-bottom:4px"':''}>
     <div class="sto-nm" title="${x(name)}" ${isTotal?'style="font-weight:600"':''}>${x(name)}</div>
     <div class="sto-bwrap"><div class="sto-thick" style="width:${tp}%"><div class="sto-actual" style="width:${ap}%"></div></div></div>
-    <div class="sto-lbl">${a.toFixed(1)} / ${t.toFixed(1)} GB</div>
+    <div class="sto-lbl">${v}</div>
   </div>`;
 }
+
+// ── Per-host stats page ────────────────────────────────────────────────────────
+function vHost(hostId){
+  const h=st.hosts.find(hh=>hh.id===hostId);
+  if(!h)return`<div class="page-hdr"><div class="page-ttl">Host not found</div><div class="page-sub">The requested host is no longer available.</div></div>`;
+  const scanned=h.scanState==='Done';
+  const r=h.reachability||{};
+  const vms=h.vms||[];
+  const vCpu=vms.reduce((s,v)=>s+v.vCpuCount,0);
+  const vmRam=vms.reduce((s,v)=>s+v.assignedRamMb/1024,0);
+  const totT=vms.reduce((s,v)=>s+(v.vhds||[]).reduce((a,d)=>a+d.thickGb,0),0);
+  const totA=vms.reduce((s,v)=>s+(v.vhds||[]).reduce((a,d)=>a+d.actualGb,0),0);
+  const commitRatio=h.totalCores>0?vCpu/h.totalCores:0;
+  const q=(st.hostVmSearch||'').toLowerCase();
+  const filteredVms=q?vms.filter(v=>v.name.toLowerCase().includes(q)):vms;
+  const crumb=`<div class="crumb"><a onclick="switchView('overview')">← Overview</a><span>/</span><span>${x(h.fqdn||h.address)}</span></div>`;
+  const phdr=`<div style="display:flex;align-items:center;gap:14px;margin-bottom:14px;flex-wrap:wrap">
+    <span style="flex-shrink:0">${osIconSvg(h.osCaption,false)}</span>
+    <div style="min-width:0">
+      <div class="page-ttl" style="font-size:20px">${x(h.fqdn||h.address)}</div>
+      <div class="page-sub">${x([osShort(h.osCaption),h.address].filter(Boolean).join(' · '))}</div>
+    </div>
+    <div style="flex:1"></div>
+    <div class="reach-icons">${ri('P',r.icmp,'Ping')}${ri('T',r.winRm,'TCP 5985')}${ai(r.auth)}</div>
+    <div style="display:flex;gap:6px">
+      <button class="btn btn-secondary btn-sm" onclick="reScan('${h.id}')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>Re-scan</button>
+      <button class="btn btn-ghost btn-icon btn-sm" title="Remove host" onclick="promptRemove('${h.id}','${x(h.fqdn||h.address)}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+    </div>
+  </div>`;
+  const facts=`<div class="facts">
+    <div class="fact"><div class="fact-lbl">Cores</div><div class="fact-val">${scanned?h.totalCores:'—'}</div></div>
+    <div class="fact"><div class="fact-lbl">Host RAM</div><div class="fact-val">${scanned?fmtGB(h.totalRamGb):'—'}</div></div>
+    <div class="fact"><div class="fact-lbl">VMs</div><div class="fact-val">${scanned?vms.length:'—'}</div></div>
+    <div class="fact"><div class="fact-lbl">vCPU</div><div class="fact-val${commitRatio>1&&scanned?' warn':''}">${scanned?`${vCpu}<span class="fact-unit">/${h.totalCores}</span>`:'—'}</div></div>
+    <div class="fact"><div class="fact-lbl">VM RAM</div><div class="fact-val">${scanned?fmtGB(vmRam):'—'}</div></div>
+    <div class="fact"><div class="fact-lbl">Uptime</div><div class="fact-val">${h.lastBoot?uptimeFmt(h.lastBoot).text:'—'}</div></div>
+    <div class="fact"><div class="fact-lbl">Last scan</div><div class="fact-val" style="font-size:13px">${h.lastScanned?ago(h.lastScanned):'—'}</div></div>
+  </div>`;
+  const hwParts=[];
+  if(h.cpuModel)hwParts.push(`<span><span class="hw-key">CPU</span>${x(h.cpuModel)}</span>`);
+  if(h.model)hwParts.push(`<span><span class="hw-key">Model</span>${x([h.manufacturer,h.model].filter(Boolean).join(' '))}</span>`);
+  if(h.serial)hwParts.push(`<span><span class="hw-key">S/N</span>${x(h.serial)}</span>`);
+  if(h.lastBoot)hwParts.push(`<span><span class="hw-key">Boot</span>${x(h.lastBoot.slice(0,16).replace('T',' '))}</span>`);
+  const hw=hwParts.length?`<div class="hw-line">${hwParts.join('')}</div>`:'';
+  const ph=`<div class="ccrd"><div class="ccrd-hdr"><span>vCPU Allocation</span></div><div class="ccrd-body" style="padding:20px 16px;color:var(--text3);font-size:13px">Run a scan to populate this view.</div></div>`;
+  const pr=`<div class="ccrd"><div class="ccrd-hdr"><span>VM RAM Allocation</span></div><div class="ccrd-body" style="padding:20px 16px;color:var(--text3);font-size:13px">Run a scan to populate this view.</div></div>`;
+  let cpuCard=ph,ramCard=pr;
+  if(scanned){
+    const cpuSegs=cpuSegsWithFree(h);
+    const cpuRatio=(commitRatio).toFixed(2);
+    const cpuBadge=commitRatio>1?'warn':'ok';
+    const cpuLeg=cpuSegs.map(s=>`<div class="leg-item"><div class="leg-dot" style="background:${s.color}"></div><div class="leg-name">${x(s.label)}</div><div class="leg-val">${s.value} vCPU <span class="leg-pct">(${Math.round(s.value/h.totalCores*100)}%)</span></div></div>`).join('');
+    cpuCard=`<div class="ccrd"><div class="ccrd-hdr"><span>vCPU Allocation <span style="font-weight:400;color:var(--text2);font-size:12px">— ${vCpu} of ${h.totalCores} cores</span></span><span class="commit-badge ${cpuBadge}">Commit ${cpuRatio}×</span></div><div class="ccrd-body"><div style="flex-shrink:0"><canvas id="c-host-cpu" class="donut" width="180" height="180"></canvas></div><div class="legend">${cpuLeg}</div></div></div>`;
+    const ramSegsH=ramSegs(h);
+    const ramLeg=ramSegsH.map(s=>`<div class="leg-item"><div class="leg-dot" style="background:${s.color}"></div><div class="leg-name">${x(s.label)}</div><div class="leg-val">${fmtGB(s.raw)} <span class="leg-pct">(${h.totalRamGb>0?Math.round(s.raw/h.totalRamGb*100):0}%)</span></div></div>`).join('');
+    const ramPct=h.totalRamGb>0?`${Math.round(vmRam/h.totalRamGb*100)}% allocated`:'';
+    ramCard=`<div class="ccrd"><div class="ccrd-hdr"><span>VM RAM Allocation <span style="font-weight:400;color:var(--text2);font-size:12px">— ${fmtGB(vmRam)} of ${fmtGB(h.totalRamGb)}</span></span><span style="font-size:11.5px;color:var(--text2)">${ramPct}</span></div><div class="ccrd-body"><div style="flex-shrink:0"><canvas id="c-host-ram" class="donut" width="180" height="180"></canvas></div><div class="legend">${ramLeg}</div></div></div>`;
+  }
+  let stoHtml='';
+  if(!scanned){
+    stoHtml=`<div class="sto-card"><div class="sto-hdr"><span>Storage</span></div><div class="sto-body" style="padding:24px;text-align:center;color:var(--text3);font-size:13px">Run a scan to populate this view.</div></div>`;
+  }else if(vms.length===0){
+    stoHtml=`<div class="sto-card"><div class="sto-hdr"><span>Storage</span></div><div class="sto-body" style="padding:24px;text-align:center;color:var(--text3);font-size:13px">No VMs on this host.</div></div>`;
+  }else{
+    const maxT=Math.max(...vms.map(v=>(v.vhds||[]).reduce((s,d)=>s+d.thickGb,0)),totT,1);
+    const vmRows=vms.map(v=>{const t=(v.vhds||[]).reduce((s,d)=>s+d.thickGb,0);const a=(v.vhds||[]).reduce((s,d)=>s+d.actualGb,0);return stoBar(v.name,t,a,maxT);}).join('');
+    stoHtml=`<div class="sto-card"><div class="sto-hdr"><span>Storage — ${fmtDiskUse(totA,totT)}</span><div class="sto-hdr-leg"><span><span class="sto-hdr-sq" style="background:rgba(34,197,94,.3)"></span>Thick provisioned</span><span><span class="sto-hdr-sq" style="background:#22c55e"></span>Actual on-disk</span></div></div><div class="sto-body"><div class="sto-rows">${stoBar('Total (host)',totT,totA,Math.max(totT,1),true)}${vmRows}</div></div></div>`;
+  }
+  let vmCardHtml='';
+  if(scanned){
+    if(vms.length===0){
+      vmCardHtml=`<div class="vm-card"><div class="vm-hdr"><span>VMs</span></div><div style="padding:24px;text-align:center;color:var(--text3);font-size:13px">No VMs on this host.</div></div>`;
+    }else{
+      const vmRows=filteredVms.map(v=>{
+        const t=(v.vhds||[]).reduce((s,d)=>s+d.thickGb,0);
+        const a=(v.vhds||[]).reduce((s,d)=>s+d.actualGb,0);
+        return`<tr><td style="text-align:center;width:28px;padding:10px 4px">${vmOsIcon(v.guestOs)}</td><td style="font-weight:600">${x(v.name)}</td><td><span class="vmst ${(v.state||'').toLowerCase()}">${x(v.state)}</span></td><td style="text-align:right">${v.vCpuCount}</td><td style="text-align:right">${fmtGB(v.assignedRamMb/1024)}</td><td style="text-align:right">${fmtDiskUse(a,t)}</td><td style="text-align:right">${v.nicCount}</td><td style="text-align:right;color:var(--text2)">${fmtDuration(v.uptime)}</td></tr>`;
+      }).join('');
+      const noMatch=`<tr><td colspan="8" style="text-align:center;color:var(--text3);padding:24px">No VMs match search</td></tr>`;
+      vmCardHtml=`<div class="vm-card"><div class="vm-hdr"><span>VMs<span class="vm-count">${vms.length} on this host</span></span><input class="finput" type="search" placeholder="Search VMs…" value="${x(st.hostVmSearch)}" oninput="setHostVmSearch(this.value)" style="width:200px"></div><div class="twrap"><table class="dt"><thead><tr><th style="width:28px;padding:10px 4px"></th><th>Name</th><th>State</th><th style="text-align:right">vCPU</th><th style="text-align:right">RAM</th><th style="text-align:right">Disk</th><th style="text-align:right">NICs</th><th style="text-align:right">Uptime</th></tr></thead><tbody>${vmRows||noMatch}</tbody></table></div></div>`;
+    }
+  }
+  return crumb+phdr+facts+hw+`<div class="donut-grid">${cpuCard}${ramCard}</div>`+stoHtml+vmCardHtml;
+}
+
+function cpuSegsWithFree(h){
+  const segs=h.vms.filter(v=>v.vCpuCount>0).map((v,i)=>({label:v.name,value:v.vCpuCount,raw:v.vCpuCount,unit:' vCPU',color:COLORS[i%COLORS.length]}));
+  const used=segs.reduce((a,s)=>a+s.raw,0);
+  const free=Math.max(0,h.totalCores-used);
+  if(free>0)segs.push({label:'Free',value:free,raw:free,unit:' vCPU',color:'#334155'});
+  return segs;
+}
+
+function drawHostCharts(hostId){
+  const h=st.hosts.find(hh=>hh.id===hostId);
+  if(!h||h.scanState!=='Done')return;
+  const cc=document.getElementById('c-host-cpu');
+  if(cc){
+    const segs=cpuSegsWithFree(h);
+    const vCpu=h.vms.reduce((s,v)=>s+v.vCpuCount,0);
+    donut(cc,segs,h.totalCores,String(vCpu),`of ${h.totalCores}`);
+  }
+  const rc=document.getElementById('c-host-ram');
+  if(rc){
+    const segs=ramSegs(h);
+    const vmRam=h.vms.filter(v=>v.assignedRamMb>0).reduce((s,v)=>s+v.assignedRamMb/1024,0);
+    donut(rc,segs,h.totalRamGb,fmtGB(vmRam),'allocated');
+  }
+}
+
+function vmOsIcon(guestOs){
+  if(!guestOs)return`<span class="vm-os-fallback" title="Unknown OS">?</span>`;
+  if(/windows/i.test(guestOs))return`<svg width="14" height="14" viewBox="0 0 22 22"><rect x="0" y="0" width="10" height="10" rx="1" fill="#3b82f6"/><rect x="12" y="0" width="10" height="10" rx="1" fill="#3b82f6"/><rect x="0" y="12" width="10" height="10" rx="1" fill="#3b82f6"/><rect x="12" y="12" width="10" height="10" rx="1" fill="#3b82f6"/></svg>`;
+  if(/ubuntu/i.test(guestOs))return`<svg width="14" height="14" viewBox="0 0 22 22"><circle cx="11" cy="11" r="10" fill="#e95420"/><circle cx="11" cy="3.5" r="2.2" fill="white"/><circle cx="17.5" cy="14.5" r="2.2" fill="white"/><circle cx="4.5" cy="14.5" r="2.2" fill="white"/></svg>`;
+  if(/debian/i.test(guestOs))return`<svg width="14" height="14" viewBox="0 0 22 22"><circle cx="11" cy="11" r="10" fill="#d70a53"/><path d="M11 4 Q17 7 11 14 Q8 10 11 4Z" fill="white"/></svg>`;
+  if(/red hat|rhel/i.test(guestOs))return`<svg width="14" height="14" viewBox="0 0 22 22"><circle cx="11" cy="11" r="10" fill="#cc0000"/><path d="M6 11 Q11 6 16 11 Q11 16 6 11Z" fill="white"/></svg>`;
+  if(/centos/i.test(guestOs))return`<svg width="14" height="14" viewBox="0 0 22 22"><circle cx="11" cy="11" r="10" fill="#932279"/><path d="M11 2L11 20M2 11L20 11" stroke="white" stroke-width="2"/></svg>`;
+  if(/linux/i.test(guestOs))return`<svg width="14" height="14" viewBox="0 0 22 22" fill="none" stroke="var(--text2)" stroke-width="1.5"><rect x="2" y="3" width="18" height="13" rx="2"/><path d="M6 9l3 3-3 3"/><path d="M13 15h4"/></svg>`;
+  return`<span class="vm-os-fallback" title="${x(guestOs)}">?</span>`;
+}
+
+function setHostVmSearch(q){st.hostVmSearch=q;renderView('host',false);}
 
 // ── VM Table ──────────────────────────────────────────────────────────────────
 function vVmTable(){
@@ -761,15 +920,15 @@ function vVmTable(){
     const t=(v.vhds||[]).reduce((s,d)=>s+d.thickGb,0);
     const a=(v.vhds||[]).reduce((s,d)=>s+d.actualGb,0);
     return `<tr>
+      <td style="text-align:center;width:28px;padding:10px 4px">${vmOsIcon(v.guestOs)}</td>
       <td style="color:var(--text2)">${x(v._h?.fqdn||v.hostId)}</td>
       <td style="font-weight:500">${x(v.name)}</td>
       <td><span class="vmst ${(v.state||'').toLowerCase()}">${x(v.state)}</span></td>
       <td>${v.vCpuCount}</td>
-      <td>${fmtMb(v.assignedRamMb)}</td>
-      <td>${t.toFixed(1)} GB</td>
-      <td>${a.toFixed(1)} GB</td>
+      <td>${fmtGB(v.assignedRamMb/1024)}</td>
+      <td>${fmtDiskUse(a,t)}</td>
       <td>${v.nicCount}</td>
-      <td style="color:var(--text2)">${x(v.uptime||'—')}</td>
+      <td style="color:var(--text2)">${fmtDuration(v.uptime)}</td>
     </tr>`;
   }).join('');
   return `<div class="sec-ttl">VM Table <span style="font-weight:400;font-size:14px;color:var(--text2)">(${rows.length} of ${all.length})</span></div>
@@ -779,9 +938,10 @@ function vVmTable(){
     <select class="finput" onchange="fltVm('state',this.value)"><option value="">All states</option>${sopts}</select>
   </div>
   <div class="twrap"><table class="dt"><thead><tr>
+    <th style="width:28px;padding:10px 4px"></th>
     ${th('host','Host')}${th('name','Name')}${th('state','State')}
     ${th('vCpuCount','vCPU')}${th('assignedRamMb','RAM')}
-    <th>Disk (thick)</th><th>Disk (actual)</th><th>NICs</th>${th('uptime','Uptime')}
+    <th>Disk</th><th>NICs</th>${th('uptime','Uptime')}
   </tr></thead><tbody>${trows||'<tr><td colspan="9" style="text-align:center;color:var(--text3);padding:32px">No VMs match filters</td></tr>'}</tbody></table></div>`;
 }
 
@@ -891,7 +1051,7 @@ function toggleTheme(){
   document.getElementById('btn-theme').innerHTML=nxt==='dark'
     ?'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>'
     :'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>';
-  setTimeout(()=>{if(st.view==='ram')drawCharts('ram');if(st.view==='cpu')drawCharts('cpu');if(st.view==='cluster')drawClusterCharts();},20);
+  setTimeout(()=>{if(st.view==='ram')drawCharts('ram');if(st.view==='cpu')drawCharts('cpu');if(st.view==='cluster')drawClusterCharts();if(st.view==='host')drawHostCharts(st.viewArg);},20);
 }
 
 // ── Modals ────────────────────────────────────────────────────────────────────
@@ -994,7 +1154,7 @@ function rowScanBadge(h){
 function setHlFilter(f){st.hlF.filter=f;renderView('overview',false);}
 function setHlSearch(q){st.hlF.search=q;renderView('overview',false);}
 async function reScan(id){
-  try{const r=await api('POST','/api/scan',{});if(!r.ok)toast(r.message||'Scan not started','error');else toast('Rescanning…','info');}
+  try{const r=await api('POST','/api/scan',id?{hostId:id}:{});if(!r.ok)toast(r.message||'Scan not started','error');else toast('Rescanning…','info');}
   catch(e){toast('Scan failed: '+e.message,'error');}
 }
 function scanLabel(h){
@@ -1006,18 +1166,40 @@ function scanLabel(h){
     default:return'Ready to scan';
   }
 }
-function diffBanner(){
-  const d=st.diff;
-  if(!d.added?.length&&!d.removed?.length&&!d.changed?.length)return'';
-  return`<div class="diff-panel"><div class="diff-ttl">Changes since last scan</div>
-    ${(d.added||[]).map(e=>`<div class="diff-item add">+ VM added: ${x(e.vmName)}</div>`).join('')}
-    ${(d.removed||[]).map(e=>`<div class="diff-item rem">− VM removed: ${x(e.vmName)}</div>`).join('')}
-    ${(d.changed||[]).map(e=>`<div class="diff-item chg">~ ${x(e.vmName)}: ${e.field} ${x(e.oldVal)} → ${x(e.newVal)}</div>`).join('')}
-  </div>`;
-}
 function noData(t,m){return`<div class="sec-ttl">${t}</div><div class="empty"><div class="empty-ico">📊</div><div class="empty-ttl">No data yet</div><div class="empty-txt">${m}</div><button class="btn btn-primary" onclick="triggerScan()">Scan Now</button></div>`;}
 function fmtGb(g){if(g>=1024)return`${(g/1024).toFixed(1)} TB`;return`${g.toFixed(1)} GB`;}
 function fmtMb(m){if(!m)return'—';if(m>=1024)return`${(m/1024).toFixed(1)} GB`;return`${m} MB`;}
+function fmtGB(gb){
+  if(!gb||isNaN(gb)||gb===0)return'—';
+  if(gb<1)return`${Math.round(gb*1024)} MB`;
+  if(gb>=1024)return`${(gb/1024).toFixed(2)} TB`;
+  if(gb<100)return`${gb.toFixed(1)} GB`;
+  return`${Math.round(gb).toLocaleString('en-US')} GB`;
+}
+function fmtDuration(input){
+  if(!input)return'—';
+  const s=String(input).trim();
+  if(!s||s==='00:00:00')return'—';
+  let days=0,h=0,m=0;
+  const ci=s.indexOf(':');
+  const di=s.indexOf('.');
+  if(di>=0&&di<ci){days=parseInt(s.slice(0,di),10);const rest=s.slice(di+1).split(':');h=parseInt(rest[0]||'0',10);m=parseInt(rest[1]||'0',10);}
+  else{const p=s.split(':');h=parseInt(p[0]||'0',10);m=parseInt(p[1]||'0',10);}
+  const total=days*1440+h*60+m;
+  if(total===0)return'—';
+  if(days>0)return`${days}d ${h}h`;
+  if(h>0)return`${h}h ${m}m`;
+  return`${m}m`;
+}
+function fmtDiskUse(usedGb,thickGb){
+  const u=usedGb||0,t=thickGb||0;
+  if(!u&&!t)return'—';
+  const pct=t>0?Math.round(u/t*100):0;
+  const useTB=Math.max(u,t)>=1024;
+  const n=v=>useTB?(v/1024).toFixed(2):(v<100?v.toFixed(1):Math.round(v).toLocaleString('en-US'));
+  const unit=useTB?'TB':'GB';
+  return`${n(u)} / ${n(t)} ${unit} [${pct}%]`;
+}
 function pct(v,t){return t>0?` (${((v/t)*100).toFixed(0)}%)`:''}
 function x(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function set(id,v){const e=document.getElementById(id);if(e)e.textContent=v;}

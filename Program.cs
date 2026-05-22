@@ -294,7 +294,7 @@ app.MapDelete("/api/hosts/{id}", (string id, Store s, EventHub h) =>
 });
 
 // Trigger full scan (fire-and-forget — returns immediately while scans run in background)
-app.MapPost("/api/scan", (Store s, EventHub h, AppConfig cfg) =>
+app.MapPost("/api/scan", async (HttpContext ctx, Store s, EventHub h, AppConfig cfg) =>
 {
     if (cfg.MockMode)
     {
@@ -302,8 +302,17 @@ app.MapPost("/api/scan", (Store s, EventHub h, AppConfig cfg) =>
         return Results.Ok(new { ok = true, message = "Mock mode" });
     }
 
+    string? targetHostId = null;
+    try
+    {
+        var body = await ctx.Request.ReadFromJsonAsync<ScanBody>();
+        targetHostId = body?.HostId;
+    }
+    catch { }
+
     var hosts = s.GetAllHosts()
         .Where(h => h.Reachability.Auth == AuthState.Ok)
+        .Where(h => targetHostId == null || h.Id == targetHostId)
         .ToList();
 
     if (hosts.Count == 0)
@@ -533,6 +542,7 @@ static void OpenBrowser(string url)
 
 record CredentialsDto(string Username, string Password);
 record AddHostsDto(string Addresses, bool UseGlobalCreds = true, string? Username = null, string? Password = null);
+record ScanBody(string? HostId);
 
 // ── App config (registered as singleton) ─────────────────────────────────────
 
