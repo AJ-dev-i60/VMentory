@@ -1,9 +1,13 @@
 # VMentory
 
-> **Phase 2 in planning.** This document describes the shipping Phase-1 app (below). For the
-> multi-platform (Hyper-V + Proxmox) management/migration direction, start at
+> **Phase 2 in planning.** This document describes the shipping Phase-1 app (below). Phase 2 turns
+> VMentory into a **container-based, single-operator, multi-platform (Hyper-V + Proxmox) platform**
+> with on-device agents, delivering **four pillars on one shared foundation** —
+> **Observe → Migrate → Deploy → Backup** (ENG-0006). The shared foundation is a .NET-native agent
+> (gRPC/mTLS, ENG-0001/0004), `ISecretStore` (ENG-0002), a private-CA PKI (ENG-0005), persistence,
+> and a general operations engine. Start at
 > [`docs/phase2/PROGRESS.md`](docs/phase2/PROGRESS.md) → `ARCHITECTURE.md` / `ROADMAP.md`, and
-> `docs/engineering/REGISTER.md` for open decisions. Agents live in `.claude/agents/`.
+> `docs/engineering/REGISTER.md` for the decision register. Agents live in `.claude/agents/`.
 
 Single-exe Windows tool that inventories Hyper-V hosts over WinRM and serves a local web dashboard on 127.0.0.1.
 

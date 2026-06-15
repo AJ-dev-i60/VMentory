@@ -1,6 +1,6 @@
 # ENG-0001 — Hyper-V migration transport for the 2.3 MVP
 
-**Status:** Awaiting decision
+**Status:** Decided
 **Raised:** 2026-06-15 by orchestrator (after reviewing the `migrate-vm` skill)
 **Affects:** `docs/phase2/ROADMAP.md` (2.0, 2.2, 2.3), `docs/phase2/specs/agent-protocol.md`, `docs/phase2/specs/migration-job-model.md`, `migrate-vm/` skill
 **Related:** ARCHITECTURE locked decision #1 (Hyper-V via Windows agent)
@@ -75,4 +75,37 @@ and how much the NTLM/GPO dependency is acceptable to ship even temporarily.
 - Where does this leave same-platform HV→HV migration (2.4), which the agent is better suited to?
 
 ## Decision
-> _Pending._
+
+**2026-06-15 · Choice: B — build the Windows agent first; migration uses it from day one. No
+winrun.py in the product; the transport is reimplemented natively in .NET inside
+`VMentory.Providers.HyperV` / the agent.** (Owner decision, engineering session.)
+
+### Rationale
+- A single, clean transport that never ships the fragile NTLM/GPO path or a Python sidecar in a
+  .NET product. Aligns with ARCHITECTURE locked decision #1 as written.
+- The validated `winrun.py` path and `references/centralized-access.md` (the 401/NetBIOS-vs-FQDN/
+  local-admin/GPO gotcha list) are **not discarded** — they become the **behavioral reference spec**
+  for what the agent must implement and the access model it replaces. The hard-won knowledge is
+  encoded into the agent design, not thrown away.
+- Security win that tipped the call: with winrun.py, VMentory must store a Windows **domain
+  service-account password**. With the agent, the agent runs locally under a service identity
+  (gMSA / Local System) and VMentory authenticates to it over **mTLS** — so there is **no Windows
+  domain password at rest in VMentory's secret store**, only a scoped, revocable client cert. B
+  materially shrinks the secret-handling surface (feeds the dedicated secrets discussion, ENG-0002).
+
+### Consequences
+- **Migration (2.3) now hard-depends on the agent landing in 2.0/2.2.** There is no winrun.py
+  fallback. ROADMAP must treat "agent can drive guest VM control + the migration step graph
+  (export/copy disk, prep, hand-off to `qm importdisk` on the Proxmox node)" as the **gate** for
+  starting 2.3, not a stretch goal. If the agent slips, migration slips — accepted.
+- `sub-question: Python sidecar vs .NET client` is resolved → **reimplement in .NET** (the agent is
+  .NET; no Python in the Core container).
+- Disk transfer stays a **Proxmox-node concern** (CIFS mount + `qm importdisk`), independent of the
+  HV control transport — the agent owns HV-side control/export, not the Proxmox-side import. (Confirms
+  the third open sub-question.)
+- HV→HV same-platform migration (2.4) is now naturally served by the same agent — no second
+  transport to introduce later.
+- **Docs to propagate (documentation agent):** `agent-protocol.md` (the agent must cover the
+  migration control verbs the skill exercises), `migration-job-model.md` (Hyper-V side driven by the
+  agent, not winrun.py), and `ROADMAP.md` (2.0/2.2 agent = gate for 2.3). The virt-v2v→`qm importdisk`
+  correction is separate and still pending regardless.

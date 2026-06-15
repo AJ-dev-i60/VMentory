@@ -13,20 +13,40 @@ VMentory Phase 1 = single-exe, **Windows-only, read-only, ephemeral** Hyper-V in
 (ASP.NET Core 8 + vanilla-JS SPA, namespace `HyperInventory`, in-memory only, WinRM via
 `powershell.exe`). It works and ships today.
 
-Phase 2 = turn it into a **hosted, multi-platform (Hyper-V + Proxmox) management + migration
-platform**: a Linux-container "Core" that talks to providers, persists state, and runs migrations.
+Phase 2 = turn it into a **container-based, single-operator, multi-platform (Hyper-V + Proxmox)
+platform** with Windows + Linux on-device agents — a Linux-container "Core" that talks to providers,
+persists state, and runs operations.
 
-The full target design is in [ARCHITECTURE.md](ARCHITECTURE.md); the milestone plan is in
+**Product scope (ENG-0006, 2026-06-16): four pillars on one shared foundation**, each standalone
+value, sequenced **Observe → Migrate → Deploy → Backup**:
+1. **Observe** — resource/load dashboard (Phase-1 root); also feeds placement recommendations.
+2. **Migrate** — wizard-driven **bidirectional HV↔PVE** (end state), **HV→PVE first**.
+3. **Deploy** — VM provisioning: ISO/image repo, creation wizard, guest customization, post-deploy apps.
+4. **Backup/Restore** — to either platform, dedup, off-site replication (**buy-vs-build deferred**).
+
+New shared subsystems the vision adds (⚠ not yet in ARCHITECTURE/ROADMAP — documentation agent to
+expand): storage/repository layer, guest-customization layer (shared Deploy+Migrate), scheduling,
+data-movement-at-scale; the migration job engine generalizes to a **general operations engine**.
+
+> ⚠ ARCHITECTURE.md and ROADMAP.md still describe the narrower "dashboard + management + one-way
+> migration" scope — they predate ENG-0006 and need expanding to the four-pillar model.
+
+The target design is in [ARCHITECTURE.md](ARCHITECTURE.md); the milestone plan is in
 [ROADMAP.md](ROADMAP.md). **No Phase 2 product code has been written yet** — we are in planning,
 docs, and decision-framing.
 
 ## 2. Locked decisions (the spine — don't silently revisit)
 
-1. **Hyper-V transport (long-term):** a **Windows agent installed on the host** (HTTP/gRPC), not
-   remote WinRM from Linux. *(But see open decision ENG-0001 — the migration MVP may reuse the
-   existing winrun.py path first.)*
-2. **Persistence: hybrid** — registry/jobs/history persisted (SQLite/EF Core); **secrets in a vault/
-   secret store, never plaintext at rest**.
+1. **Hyper-V transport:** a **Windows agent installed on the host**, reimplemented natively in .NET
+   (no winrun.py / Python in the product). **ENG-0001 (Decided, choice B):** the agent ships in
+   2.0/2.2 and drives migration from day one — there is **no winrun.py fallback**, so "agent can
+   drive guest control + the migration step graph" is the **gate** for starting 2.3. winrun.py +
+   `centralized-access.md` survive as the behavioral reference spec. The agent's mTLS identity
+   eliminates storing any Windows domain password.
+2. **Persistence: hybrid** — registry/jobs/history persisted (SQLite/EF Core); **secrets never
+   plaintext at rest**. **ENG-0002 (Decided):** `ISecretStore` provider abstraction; v1 = app-native
+   envelope encryption (AES-GCM in SQLite, DEK wrapped by a runtime-injected KEK); Vault/OpenBao &
+   Azure Key Vault as optional providers later; **bind "prefer scoped keys/tokens over passwords."**
 3. **Migration: orchestrate proven tools.** The validated path (from the `migrate-vm` skill) is
    **`qm importdisk` on the Proxmox node** + targeted guest fixes; **virt-v2v is optional**, not the
    baseline. ⚠️ ARCHITECTURE.md and `specs/migration-job-model.md` still over-index on virt-v2v —
@@ -65,14 +85,28 @@ VMentory's migration engine — its step graph, safety rules, and scripts feed t
 
 ## 4. Open decisions / what needs the owner
 
-- **ENG-0001 (Awaiting decision):** how to drive the Hyper-V side of the 2.3 migration MVP — reuse
-  `winrun.py` now (A), build the agent first (B), or support both (C). The owner is taking this to a
-  dedicated engineering-discussion session. See the discussion file for the full brief.
+- **ENG-0001 (Decided 2026-06-15 — B):** agent first, .NET-native, no winrun.py fallback; agent is
+  the 2.3 gate. Propagation pending in `agent-protocol.md` / `migration-job-model.md` / ROADMAP.
+- **ENG-0002 (Decided 2026-06-15):** `ISecretStore` + app-native envelope encryption, runtime-
+  injected KEK, tokens-over-passwords (binding). Propagation pending in `persistence-and-security.md`.
+- **ENG-0003 (Decided 2026-06-15):** agent install is **manual/org-managed only** (MSI/GPO/SCCM) +
+  enrollment token; no remote push-install; VMentory never gets an admin cred.
+- **ENG-0004 (Decided 2026-06-15):** agent = NativeAOT single binary, gRPC/HTTP2+mTLS, **constrained
+  verb executor** (not a shell), gMSA-preferred (local fallback), **self-update over its own mTLS
+  channel** with watchdog rollback. The agent runtime + enrollment + self-update are the **2.0/2.2
+  gate for 2.3 migration**. Propagation pending in `agent-protocol.md` / `migration-job-model.md` /
+  ROADMAP.
+- **ENG-0005 (Decided 2026-06-16):** mTLS PKI = **private CA inside Core** (external-CA seam for
+  later), **root+intermediate**, **short-lived agent certs + auto-renew over the mTLS channel**
+  (revocation = stop-renew + registry allow/deny, no CRL/OCSP). Enrollment = single-use token + CSR,
+  key never leaves host. CA key in `ISecretStore`. Propagation pending in `agent-protocol.md` /
+  `persistence-and-security.md`.
 - **Docs reconciliation (held):** demote virt-v2v, ground `migration-job-model.md` in the skill,
   fold in the safety rules + scripts. Held pending owner review of the agents' first output.
 - **Review backlog:** the five specs and the four design mockups are first-drafts awaiting owner review.
 - Lower-priority open questions captured by the doc agent: conversion-host placement detail, stable
-  VM identity across migration, mTLS PKI ownership, secret-store v1 target, Secure-Boot guest scope.
+  VM identity across migration, Secure-Boot guest scope. *(mTLS PKI ownership → promoted to critical
+  path above; secret-store v1 target → resolved by ENG-0002.)*
 
 ## 5. Immediate next steps (suggested order)
 1. Owner reviews the five specs (`docs/phase2/specs/`) and the four design mockups (`design/`).

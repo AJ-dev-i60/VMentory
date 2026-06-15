@@ -1,7 +1,11 @@
 # Provider Abstraction
 
 > Component spec · expands [ARCHITECTURE.md §2 Provider abstraction](../ARCHITECTURE.md#2-provider-abstraction).
-> Anchored to **Decision 1** (Hyper-V via host agent) and **Decision 3** (orchestrate proven migration tools).
+> Anchored to Hyper-V via host agent (ENG-0001/0004) and orchestrate-proven-tools migration
+> (ENG-0001/0006). **Scope note (ENG-0006):** the provider — and the capability model below — must
+> now gate not only inventory/lifecycle/migration but also **Deploy** (create-from-template /
+> install-from-ISO) and **Backup/Restore** (snapshot / export / restore) verbs as those pillars
+> land. The interface and capability record grow; the design holds.
 
 This is the pivot that turns a "Hyper-V tool" into a "platform". Everything above it
 (`VMentory.Web`, the job engine) talks only to `IVirtualizationProvider`; everything below
@@ -49,6 +53,12 @@ public interface IVirtualizationProvider
     Task<DiskExport>             ExportDiskAsync(VmRef vm, DiskRef disk, StagingTarget to, IProgress<TransferProgress> p, CancellationToken ct);
     Task                         ImportDiskAsync(VmRef shell, DiskImage img, IProgress<TransferProgress> p, CancellationToken ct);
     Task<VmRef>                  CreateVmShellAsync(HostRef host, VmSpec spec, CancellationToken ct);
+
+    // ---- deploy (milestone 2.5) & backup/restore (milestone 2.6), capability-gated ----
+    //  CreateFromTemplateAsync / AttachIsoAsync / CustomizeGuestAsync   (Deploy, ENG-0006)
+    //  SnapshotAsync / ExportBackupAsync / RestoreBackupAsync           (Backup,  ENG-0006 — buy-vs-build deferred)
+    //  These extend the same interface as the pillars land; the agent verb catalog grows in lockstep
+    //  (see agent-protocol.md §4). Sketched, not committed, until those milestones.
 }
 ```
 
@@ -89,6 +99,13 @@ public sealed record ProviderCapabilities
     public bool CreateVmShell      { get; init; }
     public bool RequiresPowerOffForExport { get; init; } // HV without checkpoint: true
     public FirmwareSupport Firmware { get; init; }   // BIOS | UEFI | Both
+
+    // ---- Deploy (2.5) & Backup (2.6) — ENG-0006; added as those pillars land ----
+    public bool CreateFromTemplate { get; init; }   // golden-image / template provisioning
+    public bool InstallFromIso     { get; init; }   // ISO-library install
+    public bool GuestCustomization { get; init; }   // unattend/cloud-init/network (shared with Migrate)
+    public bool Backup             { get; init; }   // snapshot/export
+    public bool Restore            { get; init; }   // restore (to this platform)
 }
 ```
 
@@ -99,10 +116,14 @@ where the Hyper-V module is absent (Phase 1 already handles this case:
 and returns an empty VM list if missing). A host with no Hyper-V role should advertise
 `Inventory` only.
 
-**The UI rule:** a management or migration verb renders **only** if every provider involved
-advertises the capability. Migration is the hard case — it requires the *source* `DiskExport`
-and the *target* `DiskImport` + `CreateVmShell` + matching `Firmware`. The precheck step owns
-this evaluation ([migration-job-model.md §3](migration-job-model.md#3-step-flow-hyper-v--proxmox)).
+**The UI rule:** a management, migration, deploy, or backup verb renders **only** if every provider
+involved advertises the capability. Migration is the hard case — it requires the *source*
+`DiskExport` and the *target* `DiskImport` + `CreateVmShell` + matching `Firmware`. The precheck step
+owns this evaluation ([migration-job-model.md §3](migration-job-model.md#3-step-flow-hyper-v--proxmox-the-proven-path-eng-0001)).
+**Deploy** gates on `CreateFromTemplate` / `InstallFromIso` (+ `GuestCustomization`); **Backup/Restore**
+gate on `Backup` / `Restore` on the relevant provider (ENG-0006). The agent advertises which verbs it
+serves via capability negotiation ([agent-protocol.md §8](agent-protocol.md#8-health-heartbeat--capability-negotiation-eng-0004)),
+so an older agent version never gets offered a verb it can't run.
 
 ---
 
@@ -110,7 +131,7 @@ this evaluation ([migration-job-model.md §3](migration-job-model.md#3-step-flow
 
 | Concern | `HyperVProvider` | `ProxmoxProvider` |
 |---|---|---|
-| Transport | Calls **VMentory.Agent** on the host (Decision 1) over mTLS/token; agent runs the PowerShell/WMI that lives in [Scanner.cs](../../../Scanner.cs) / [Reachability.cs](../../../Reachability.cs) today | Direct **PVE REST** (token auth) + **SSH** for disk ops; no agent ([proxmox-integration.md](proxmox-integration.md)) |
+| Transport | Calls **VMentory.Agent** on the host (ENG-0001) over **gRPC/HTTP2 + mTLS** (ENG-0004); the agent runs the **natively-reimplemented** inventory/lifecycle logic that lives in [Scanner.cs](../../../Scanner.cs) / [Reachability.cs](../../../Reachability.cs) today — no winrun.py/Python | Direct **PVE REST** (scoped token auth) + **SSH** for disk ops; no agent ([proxmox-integration.md](proxmox-integration.md)) |
 | Inventory source | `Get-VM`, `Get-VMHardDiskDrive`, `Get-VHD`, WMI `Win32_*`, KVP exchange ([Scanner.cs:243](../../../Scanner.cs#L243)) | `/cluster/resources`, `/nodes/{n}/qemu/{id}/status/current`, `/config` |
 | Live stats | Agent reads perf counters → `VmStats` | `/nodes/{n}/qemu/{id}/rrddata` (native time series) |
 | Historical stats | **Only from our own persisted snapshots** — Hyper-V keeps none | rrddata gives history for free; we still snapshot for cross-platform uniformity |

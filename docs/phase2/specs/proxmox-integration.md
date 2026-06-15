@@ -2,8 +2,9 @@
 
 > Component spec · expands [ARCHITECTURE.md §Topology](../ARCHITECTURE.md#topology) (the Proxmox
 > node row) and the `VMentory.Providers.Proxmox` project.
-> Anchored to **Decision 1** (Proxmox needs **no** agent — REST + SSH) and **Decision 3**
-> (orchestrate `qm`/`qemu-img`/`virt-v2v`, don't rebuild conversion).
+> Anchored to: Proxmox needs **no** agent — REST + SSH; and the **proven baseline is
+> `qm importdisk` on the PVE node** (`virt-v2v` optional, not baseline — ENG-0001/0006). Secrets
+> via `ISecretStore`, tokens-over-passwords (ENG-0002).
 
 Unlike Hyper-V (Decision 1 → host agent, [agent-protocol.md](agent-protocol.md)), Proxmox ships a
 first-class HTTP API and an SSH-reachable shell on every node, so `ProxmoxProvider` talks to it
@@ -20,15 +21,18 @@ owns which operation is the core of this spec.
   **privilege-separated** (scoped via ACLs to only the paths/actions we need). This is the
   ARCHITECTURE security intent: "PVE API tokens privilege-separated, not root ticket where
   avoidable" ([ARCHITECTURE.md §5](../ARCHITECTURE.md#5-security-this-is-now-a-hosted-service-not-loopback)).
-- The token's secret is a **provider secret** — never persisted in the DB, comes from the secret
-  store and is decrypted into memory only ([persistence-and-security.md §4](persistence-and-security.md#4-secret-handling)).
+- The token's secret is a **provider secret** — never persisted in the DB, held in `ISecretStore`
+  (ENG-0002) and decrypted into memory only ([persistence-and-security.md §4](persistence-and-security.md#4-secret-handling--isecretstore--envelope-encryption-decided-eng-0002)).
+  This is the **tokens-over-passwords** principle (ENG-0002) in practice: a scoped, revocable token,
+  not a root password.
   The Phase-1 zero-on-dispose `Credentials` discipline ([Models.cs:121](../../../Models.cs#L121))
   carries forward to whatever holds the token in memory.
 - **TLS:** PVE default certs are self-signed. Provider must support pinning the node's cert /
   CA fingerprint rather than disabling verification. See *Open question 1*.
-- **SSH:** key-based auth to a dedicated low-privilege account where possible; some operations
-  (`qm`, `qemu-img`, `virt-v2v`) need root or `sudo`. SSH keys are secrets, same handling as the
-  API token.
+- **SSH:** key-based auth to a dedicated account, ideally **forced-command-restricted** (ENG-0002);
+  some operations (`qm importdisk`, `qemu-img`, optional `virt-v2v`) need root or `sudo`. SSH keys
+  are secrets in `ISecretStore`, same handling as the API token. **Dedicated SSH key, not an SSH
+  password** (tokens-over-passwords, ENG-0002).
 
 ---
 
@@ -68,10 +72,10 @@ Proxmox-side equivalent of Phase-1 fire-and-forget scan + progress broadcast
 | Inventory, stats, lifecycle, snapshot | **REST** | First-class API endpoints exist. |
 | Create VM shell, set config/boot/EFI | **REST** | `POST /qemu`, `PUT /config`. |
 | Native PVE↔PVE migration | **REST** | `/migrate` endpoint. |
-| `qm importdisk` (attach a converted raw/qcow2) | **SSH** | No clean REST equivalent for importing an external disk image into a storage + attaching it. |
-| `qemu-img convert` / `qemu-img info` | **SSH** | Disk-format work happens on the node's filesystem. |
-| `virt-v2v` (Windows guest virtio injection) | **SSH** | CLI tool, runs on the node (or a conversion host — *Open question 2*). |
-| Placing the source disk image onto node storage | **SSH/scp** or staging | Bulk transfer, out-of-band ([agent-protocol.md §6](agent-protocol.md#6-disk-transfer-is-out-of-band)). |
+| `qm importdisk` — **the baseline** (VHDX→raw + attach) | **SSH** | The proven path (ENG-0001). No clean REST equivalent for importing an external disk image into a storage + attaching it. |
+| `qemu-img info` (verify virtual size / no backing file) | **SSH** | Disk inspection on the node's filesystem. |
+| `virt-v2v` — **optional** (Windows virtio injection) | **SSH** | CLI tool, runs on the node (or a conversion host — *Open question 2*). **Not the baseline.** |
+| Reading the source VHDX onto the node (CIFS mount) | **SSH / node-local** | Bulk transfer, out-of-band; `qm importdisk` reads straight off the mount ([agent-protocol.md §6](agent-protocol.md#6-disk-transfer-is-out-of-band--a-proxmox-node-concern-eng-0001)). |
 
 `ProxmoxProvider` therefore wraps **two clients**: a typed `HttpClient` (REST) and an SSH command
 executor. The SSH executor is morally the same shape as Phase-1
@@ -95,10 +99,11 @@ equivalent of CLAUDE.md gotcha 9), capture exit code. Reuse that discipline.
 5. **Firmware must match the source.** A Hyper-V Gen2 VM ([Models.cs:39](../../../Models.cs#L39))
    is UEFI → the PVE shell needs `bios=ovmf` **and** an `efidisk0`; Gen1 → `seabios`. Getting this
    wrong is the classic "imported VM won't boot." Owned by migration precheck/provision
-   ([migration-job-model.md §3](migration-job-model.md#3-step-flow-hyper-v--proxmox)).
+   ([migration-job-model.md §3](migration-job-model.md#3-step-flow-hyper-v--proxmox-the-proven-path-eng-0001)).
 6. **virtio drivers.** A Windows guest moved off Hyper-V won't boot from a virtio disk/NIC without
-   drivers — this is exactly why Decision 3 prefers `virt-v2v` (it injects them). Don't attach
-   virtio bus and hope. See [migration-job-model.md §4](migration-job-model.md#4-conversion-virt-v2v-wrapping).
+   drivers. The **baseline handles this in the guest-fix step** (attach SATA first, install
+   virtio-win, switch to virtio-SCSI); **optional `virt-v2v`** can automate the injection. Don't
+   attach the virtio bus and hope. See [migration-job-model.md §4](migration-job-model.md#4-disk-import-the-baseline--guest-fix--virt-v2v-is-optional-eng-0001).
 7. **API token ACL scope** — a too-narrow token silently 403s on a path you forgot to grant;
    document the minimum ACL set per milestone so operators can scope tokens correctly.
 
@@ -107,12 +112,19 @@ equivalent of CLAUDE.md gotcha 9), capture exit code. Reuse that discipline.
 ## 5. Open questions (need a human decision)
 
 1. **TLS trust model for PVE nodes.** Fingerprint pinning per node, an operator-supplied CA, or
-   require proper certs? Affects onboarding UX. **Owner decision.**
-2. **Where does `virt-v2v`/`qemu-img` run** — on the PVE node over SSH (simplest, uses node CPU
-   and disk) or a dedicated conversion container/host? This is the open ARCHITECTURE question
-   ([ARCHITECTURE.md open questions](../ARCHITECTURE.md#open-questions-for-the-spec-agents)) and
-   it sets whether SSH-to-node is on the migration hot path or just orchestration. Tied to
-   [agent-protocol.md Open question 2](agent-protocol.md#7-open-questions-need-a-human-decision).
+   require proper certs? Affects onboarding UX. (Distinct from the agent PKI, which is decided —
+   ENG-0005; PVE node trust is a separate, still-open question.) **Owner decision.**
+2. **Where does the *optional* `virt-v2v`/`qemu-img` enhancement run** — on the PVE node over SSH
+   (simplest, uses node CPU/disk) or a dedicated conversion container/host? The **baseline
+   `qm importdisk` always runs on the PVE node** (ENG-0001), so this concerns only the optional
+   conversion path. Shared with
+   [ARCHITECTURE.md open questions](../ARCHITECTURE.md#open-questions) and
+   [agent-protocol.md OQ 1](agent-protocol.md#9-open--resolved-questions).
 3. **Cluster vs single-node addressing.** Do we register a cluster (one API entry point, resolve
    nodes dynamically) or individual nodes? `/cluster/resources` assumes a cluster; a lone node
    still answers it. Recommend registering a node and discovering the rest — confirm.
+
+> **Deploy/Backup note (ENG-0006):** when those pillars land, `ProxmoxProvider` gains create-from-
+> template / install-from-ISO and snapshot/export/restore surfaces (native PVE backup, PBS
+> integration). The **backup buy-vs-build approach is deferred** (ENG-0006) — do not assume a PVE
+> backup mechanism here yet.

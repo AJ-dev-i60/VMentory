@@ -1,18 +1,31 @@
-# Agent Protocol — Core ↔ Windows Agent
+# Agent Protocol — Core ↔ On-Device Agent
 
 > Component spec · expands [ARCHITECTURE.md §1 Topology](../ARCHITECTURE.md#topology) and the
 > `VMentory.Agent` project row in [§Component breakdown](../ARCHITECTURE.md#1-vmentory-core).
-> Anchored to **Decision 1**: Hyper-V is reached through an agent installed on the Windows host,
-> **not** remote WinRM from Linux.
+> **Decided:** the agent is reimplemented **natively in .NET** (no winrun.py / Python, ENG-0001),
+> ships as a **NativeAOT single binary** and is a **constrained verb executor** (ENG-0004);
+> transport is **gRPC over HTTP/2 + mTLS** (ENG-0004); install is **manual + enrollment token**
+> (ENG-0003); PKI is a **private CA in Core** (ENG-0005). This spec is the propagation target for
+> ENG-0001/0003/0004/0005.
 
 The Core runs in a Linux container; Hyper-V management is a Windows/PowerShell/WMI world. Rather
 than bridge that gap with Linux→WinRM (TrustedHosts, Negotiate/Kerberos from non-domain Linux,
 CredSSP for the second hop — all the pain Phase 1 already wrestles with locally:
 [Reachability.cs:74](../../../Reachability.cs#L74) `EnsureTrustedHostAsync`,
 [Reachability.cs:52](../../../Reachability.cs#L52) `EnsureWinRmServiceAsync`), we put a small
-service **on the host** where PowerShell + the Hyper-V module already work natively. `HyperVProvider`
+service **on the host** where the Hyper-V module already works natively. `HyperVProvider`
 ([provider-abstraction.md §4](provider-abstraction.md#4-how-the-two-providers-differ)) is then a
 thin client of this protocol.
+
+The same agent codebase serves **Windows (Hyper-V)** and **future Linux host roles** — one
+NativeAOT binary, cross-compiled (ENG-0004). It is the **gate for migration** (ENG-0001): there is
+**no winrun.py fallback**, so the agent's migration verbs must exist before 2.3 starts.
+
+> **The `migrate-vm` skill is the behavioral reference (ENG-0001), not shipping code.** Its
+> `winrun.py`/WinRM path and the `references/centralized-access.md` 401 gotcha list (NetBIOS-vs-FQDN,
+> local-admin requirement, GPO linkage, elevated gpupdate) document *what the agent must do and the
+> access model it replaces* — the agent reimplements that behavior in-process under its own service
+> identity, eliminating the stored Windows domain password.
 
 ---
 
@@ -45,78 +58,115 @@ the agent is either reachable or not; Core probes **the agent endpoint**, and th
 
 ---
 
-## 2. Transport: gRPC vs HTTP+JSON — recommendation
+## 2. Transport — gRPC over HTTP/2 + mTLS (decided, ENG-0004)
 
-[ARCHITECTURE.md open questions](../ARCHITECTURE.md#open-questions-for-the-spec-agents) leaves this
-open. Decision factors:
+**Decided (ENG-0004): gRPC over HTTP/2 with mutual TLS for the control plane.** This is no longer
+an open question. The rationale recorded in ENG-0004:
 
-| Factor | gRPC | HTTP/1.1 + JSON |
-|---|---|---|
-| Streaming (scan progress, migration disk-copy %, live log) | First-class server-streaming | SSE/chunked — workable but ad hoc; Core already speaks SSE ([EventHub.cs](../../../EventHub.cs)) |
-| Schema / contract | `.proto` is the contract, codegen both ends | Hand-kept DTOs (Phase-1 style: `record CredentialsDto` [Program.cs:543](../../../Program.cs#L543)) |
-| Debuggability | Needs `grpcurl`/reflection; opaque on the wire | `curl`, browser, logs — trivial |
-| mTLS | Native, idiomatic | Native in Kestrel/HttpClient |
-| Large binary transfer (disk export) | Streaming works but gRPC is **not** the right pipe for multi-GB disks | Neither — see §6 |
+- **Strongly-typed, versioned `.proto` contract** between two .NET deployables removes a class of
+  drift bugs that hand-kept DTOs invite, and pairs naturally with **capability negotiation** (§8)
+  and AOT **source-gen** (no runtime reflection — a NativeAOT constraint).
+- **Streaming-friendly** for the agent's inherently streaming traffic — long inventory scans,
+  per-step migration/deploy/backup progress, live log tailing.
+- **mTLS both directions** (§3): the agent presents its enrolled client identity; the agent pins
+  Core's root. The listener is firewalled to Core's address.
 
-**Recommendation: gRPC over HTTP/2 with TLS, for the control plane.** The agent's traffic is
-inherently streaming (long inventory scans, per-step migration progress, tailing logs), and a
-typed `.proto` contract between two .NET deployables removes a whole class of drift bugs that
-hand-kept DTOs invite. The debuggability gap is real but bounded — provide a `--http-debug`
-listener on the agent (plain JSON mirror of the unary RPCs) for field diagnosis. The disk-export
-bulk path is **not** carried over the RPC channel either way (§6).
+| Factor | How it's handled |
+|---|---|
+| Streaming (scan progress, migration step %, live log) | gRPC server-streaming → Core `IProgress<T>` → [EventHub.cs](../../../EventHub.cs) SSE (§5) |
+| Schema / contract | `.proto` is the contract, **source-generated** both ends (AOT-safe) |
+| Debuggability | `grpcurl`; an optional plain-JSON `--http-debug` unary mirror for field diagnosis |
+| Large binary transfer (disk) | **Not** over the RPC channel — out-of-band, a Proxmox-node concern (§6) |
 
-*If* the team weights "must `curl` it in the field" above streaming ergonomics, HTTP+JSON with
-SSE for progress is a defensible second choice and reuses Core's existing SSE muscle — but accept
-the manual contract maintenance.
-
----
-
-## 3. Authentication & trust
-
-Decision 1 plus [ARCHITECTURE.md §5 Security](../ARCHITECTURE.md#5-security-this-is-now-a-hosted-service-not-loopback)
-require the agent to accept **only the Core's identity** — the agent runs as a privileged Windows
-service on a Hyper-V host and must never be an open management endpoint.
-
-**Recommendation: mutual TLS as the primary, with a bootstrap enrolment token.**
-
-- **mTLS.** Core presents a client cert; agent pins the Core's cert/CA and rejects all else.
-  Agent presents a server cert Core pins. This is the steady-state auth — no shared secret to
-  leak, no replay.
-- **Enrolment.** First contact uses a one-time, short-lived bootstrap token (operator pastes it
-  into the agent installer or Core's "add host" flow) to exchange/sign the long-lived client
-  cert. Mirrors how Phase-1 mints a per-session token ([Program.cs:528](../../../Program.cs#L528)
-  `GenerateToken`, 24 random bytes, URL-safe base64) — reuse that generator for the bootstrap
-  token.
-- The agent **listens on the host's management interface only**, not `0.0.0.0` blindly; document
-  a firewall rule scoped to the Core's address.
-
-Short-lived signed tokens (the ARCHITECTURE alternative) are simpler to stand up but require a
-rotation story and a shared signing secret in the secret store
-([persistence-and-security.md §4](persistence-and-security.md#4-secret-handling)). mTLS pushes the
-trust into PKI where it belongs for a long-running host service. **Recommend mTLS; fall back to
-signed tokens only if PKI provisioning proves too heavy for the target operators.** See
-*Open question 1*.
+The disk-export bulk path is **not** carried over the RPC channel (§6) — gRPC is the *control*
+plane only.
 
 ---
 
-## 4. Endpoints / RPC surface
+## 3. Authentication, trust & enrollment (decided, ENG-0003/0005)
 
-Mapped to `IVirtualizationProvider`
-([provider-abstraction.md §2](provider-abstraction.md#2-the-interface)). gRPC method names shown;
-the HTTP mirror is the obvious `POST /v1/<name>`.
+The agent accepts **only the Core's identity** — it runs as a privileged service on a host and must
+never be an open management endpoint. **mTLS is decided** (ENG-0004); the PKI that backs it is
+decided (ENG-0005); install + enrollment is decided (ENG-0003). No fallback to shared signed
+tokens — the earlier "fall back to signed tokens" option is closed.
+
+### Steady-state — mutual mTLS (ENG-0004/0005)
+- The agent presents its **enrolled client cert**; Core presents a server cert; the agent pins
+  **Core's root** (not the leaf — see structure below). No shared secret to leak, no replay.
+- Certs are **short-lived** (days/weeks) and **auto-renewed over the existing mTLS channel** before
+  expiry — the same trusted channel used for self-update (§7). No CRL/OCSP.
+- **Revocation = stop renewing + a registry allow/deny list in Core** (ENG-0005). An identity
+  removed from the allow-list (or added to deny) stops being honored at the next handshake.
+- The agent **listens on the host's management interface only**, firewalled to Core's address.
+
+### PKI structure (ENG-0005)
+- A **private CA inside Core** is the v1 default (external-CA / AD CS seam deferred). An offline-ish
+  **root** signs a single **intermediate**; the **intermediate** does day-to-day signing.
+- Agents pin the **root**; Core signs agent + server certs with the **intermediate** — so the
+  signing key can rotate **without a fleet-wide re-pin**.
+- The CA private key lives in [`ISecretStore`](persistence-and-security.md#4-secret-handling)
+  (ENG-0002), KEK-wrapped — the natural case for the opt-in operator-passphrase KEK mode.
+
+### Enrollment handshake (ENG-0003/0005)
+Install is **manual / org-managed** (MSI / GPO / SCCM / Intune) — **no remote push-install**, and
+VMentory never receives an admin credential (ENG-0003). Install *includes* enrollment:
+
+1. Operator generates a **short-lived, single-use enrollment token** in Core (stored **hashed**,
+   short TTL); pastes it into the installer / first-run. Reuse the Phase-1 generator
+   ([Program.cs:528](../../../Program.cs#L528) `GenerateToken`, 24 random bytes, URL-safe base64).
+2. Agent connects and validates Core's server cert against an operator-shown **fingerprint/pin**
+   (trust-on-first-use, gated by the token).
+3. Agent **generates its keypair locally** (the **private key never leaves the host**), sends a
+   **CSR + token**; Core verifies the token (single-use, short TTL), signs the client cert with the
+   **intermediate**, and returns the cert **+ the root to pin**.
+4. Steady state: mutual mTLS; auto-renew before expiry over the same channel.
+
+> **Update is separate from install** (ENG-0003) and does **not** reuse the manual path — once
+> enrolled, the agent self-updates over its mTLS channel (§7).
+
+---
+
+## 4. The constrained verb catalog (ENG-0004)
+
+The agent exposes a **fixed, versioned verb set** — **never arbitrary PowerShell / RCE** (ENG-0004).
+This is the decisive security upgrade over `winrun.py`, which ran arbitrary remote PowerShell. The
+catalog is **versioned** and grows with the pillars (ENG-0006); Core and agent negotiate the
+supported version + capabilities at connect (§8). gRPC method names shown.
+
+**Foundation / inventory (2.0) — maps to `IVirtualizationProvider`
+([provider-abstraction.md §2](provider-abstraction.md#2-the-interface)):**
 
 | RPC | Maps to | Notes |
 |---|---|---|
-| `GetHealth` | agent heartbeat | Hyper-V module present? service running? agent version. Replaces Phase-1 reachability/Poller. |
-| `GetHost` | `GetHostAsync` | Runs `QuickInfoScript`/`FullInventoryScript` host portion locally. |
+| `GetHealth` (heartbeat) | agent health | Hyper-V module present? service running? agent + protocol version. Replaces Phase-1 reachability/Poller ([Poller.cs](../../../Poller.cs)). |
+| `GetHost` | `GetHostAsync` | Runs the host-inventory logic **in-process** (the reimplemented `QuickInfoScript`/`FullInventoryScript`, [Scanner.cs:226](../../../Scanner.cs#L226)). |
 | `GetVms` (server-stream) | `GetVmsAsync` | Streams VMs as enumerated rather than one big `ConvertTo-Json -Depth 10` blob ([Scanner.cs:325](../../../Scanner.cs#L325)). |
 | `GetVmStats` (server-stream) | `GetStatsAsync` | Live perf counters; tick interval a request param. |
-| `Lifecycle` | `LifecycleAsync` | start/stop/shutdown/reset/checkpoint. **New write surface** — Phase 1 is read-only. |
-| `ExportDisk` (server-stream progress) | `ExportDiskAsync` | Returns a **staging locator + progress**, not disk bytes (§6). Locates VHDX via the path already in inventory ([Scanner.cs:281](../../../Scanner.cs#L281)). |
-| `StreamLogs` (server-stream) | per-step migration log | Tail of a running operation; feeds [EventHub.cs](../../../EventHub.cs) → SSE. |
 
-JSON shapes mirror Phase-1 inventory field names where parity matters
-([Scanner.cs:251](../../../Scanner.cs#L251) onward) so the 2.0 dashboard maps 1:1.
+**Lifecycle + migration control (2.2 — the migration gate, ENG-0001/0004):**
+
+| RPC | Maps to | Notes |
+|---|---|---|
+| `Lifecycle` | `LifecycleAsync` | start/stop/shutdown/reset/checkpoint. **New write surface.** |
+| `ResolveCheckpoints` | migration precheck/quiesce | Merge `.avhdx` → flat `.vhdx` (the skill's checkpoint-merge step). |
+| `Quiesce` | migration step 2 | Graceful shutdown vs checkpoint, **by operator choice** (ENG-0006) — the verb takes the mode; it does not decide policy. |
+| `LocateDisks` / `ExposeDisk` (stream progress) | `ExportDiskAsync` | Returns a **staging locator + progress**, not disk bytes (§6). Locates VHDX via the inventory path ([Scanner.cs:281](../../../Scanner.cs#L281)). Disk *transfer* is a Proxmox-node concern (ENG-0001), not an agent push. |
+| `StreamLogs` (server-stream) | per-step operation log | Tail of a running operation; feeds [EventHub.cs](../../../EventHub.cs) → SSE. |
+
+**Deploy + Backup verbs (later pillars, ENG-0006) — catalog grows, design unchanged:**
+
+| RPC (sketch) | Pillar | Notes |
+|---|---|---|
+| `CreateVm` / `AttachIso` / `AttachTemplateDisk` | Deploy (2.5) | VM creation from ISO/golden image on the host side. |
+| `CustomizeGuest` | Deploy + Migrate | Unattend/sysprep/network injection — the shared guest-customization layer (ENG-0006). *Engine choice is an open ENG topic.* |
+| `Snapshot` / `ExportBackup` / `RestoreBackup` | Backup (2.6) | Snapshot/export/restore. *Backup buy-vs-build is deferred (ENG-0006); these verbs are sketched, not committed.* |
+
+Every executed verb is **idempotent/resumable** (ENG-0004 — survives an agent restart mid-job,
+ties to [migration-job-model.md §7](migration-job-model.md#7-stop-rollback-and-idempotency)) and
+**audit-logged back to Core's history store** (ENG-0004,
+[persistence-and-security.md §6](persistence-and-security.md#6-audit-log)). JSON/proto shapes mirror
+Phase-1 inventory field names where parity matters ([Scanner.cs:251](../../../Scanner.cs#L251)
+onward) so the 2.0 dashboard maps 1:1.
 
 ---
 
@@ -132,29 +182,73 @@ agent just becomes the upstream source instead of an in-process scan task.
 
 ---
 
-## 6. Disk transfer is out-of-band
+## 6. Disk transfer is out-of-band — a Proxmox-node concern (ENG-0001)
 
-The multi-GB disk export for migration must **not** flow through the RPC control channel. The
-agent exposes a converted/raw disk to the staging area (or streams it to a staging endpoint) over
-a dedicated bulk path with resumable, checksummed transfer; the RPC channel carries only the
-*locator* and *progress*. This keeps the control protocol responsive and lets the disk path use
-the right tool (see virt-v2v/qemu-img orchestration in
-[migration-job-model.md §4–5](migration-job-model.md#4-conversion-virt-v2v-wrapping)). Exact
-staging mechanism is *Open question 2*.
+The multi-GB disk for migration must **not** flow through the RPC control channel, and — decided in
+ENG-0001 — it is **not** an agent push either. **Disk transfer stays a Proxmox-node concern:** the
+PVE node mounts the Hyper-V disk share over **CIFS** and `qm importdisk` reads the VHDX straight off
+the mount (the proven `migrate-vm` path). The agent's role is to **locate and expose** the flat
+VHDX (after checkpoint merge) and report *locator + progress* over the RPC channel; it does not move
+the bytes. The RPC channel carries only control + progress. See
+[migration-job-model.md §3–4](migration-job-model.md#3-step-flow-hyper-v--proxmox-the-proven-path-eng-0001) and
+[proxmox-integration.md §3](proxmox-integration.md#3-rest-vs-ssh--the-boundary).
+
+The SMB/CIFS credential the node uses comes from [`ISecretStore`](persistence-and-security.md#4-secret-handling)
+injected at job runtime (ENG-0002) — replacing the skill's plaintext `/root/.smbcreds` file.
 
 ---
 
-## 7. Open questions (need a human decision)
+## 7. Self-update — over the agent's own mTLS channel (decided, ENG-0004)
 
-1. **mTLS PKI ownership.** Who issues/rotates the agent and Core certs — Core acts as a tiny
-   internal CA, or operators bring their own? Affects the installer UX and the enrolment flow
-   (§3). **Owner decision.**
-2. **Staging location for disk export.** Does the agent push the disk to a Core-side staging
-   volume, to the PVE node directly, or to a neutral conversion host? This ties to the
-   ARCHITECTURE open question on conversion-host placement
-   ([ARCHITECTURE.md open questions](../ARCHITECTURE.md#open-questions-for-the-spec-agents)) and
-   to [migration-job-model.md §4](migration-job-model.md#4-conversion-virt-v2v-wrapping).
-3. **Agent self-update.** [ARCHITECTURE.md carry-over table](../ARCHITECTURE.md#what-carries-over-vs-what-gets-rebuilt)
-   re-scopes Phase-1 [Updater.cs](../../../Updater.cs) and notes "the agent gets its own update
-   path." MSI + scheduled check, or Core-pushed update over the authenticated channel? Out of
-   scope for 2.0 but flag it now.
+Install is manual (ENG-0003); **update is not, and does not reuse the install path.** Once enrolled
+and trusted (§3), the agent self-updates over its mTLS channel:
+
+- Core hosts **signed agent packages**; on check-in the agent compares version, downloads,
+  **verifies the signature**, stages, **atomically swaps**, and restarts.
+- A **watchdog / bootstrapper** survives the main-agent restart and **rolls back on a failed
+  post-update health check** (`GetHealth`, §4).
+- Reuse the Phase-1 [Updater.cs](../../../Updater.cs) apply-on-launch + background-download pattern;
+  the transport is the mTLS channel, not GitHub Releases.
+- Binaries are **signed** (Authenticode on Windows, ENG-0004).
+
+> *Open sub-question (ENG-0004):* code-signing certificate ownership/custody for agent packages —
+> who signs, where the key lives (intersects ENG-0002). Distinct from the transport CA (ENG-0005).
+
+---
+
+## 8. Health, heartbeat & capability negotiation (ENG-0004)
+
+- **Heartbeat / health** (`GetHealth`, §4): Core's poller consumes it; the agent survives host
+  reboot via the Windows Service (SCM auto-restart) / systemd unit. Replaces the Phase-1
+  [Poller.cs](../../../Poller.cs) 30 s reachability re-check — reachability **inverts**: Core probes
+  *the agent endpoint*, and the agent reports *host-local* health (Hyper-V service up, module
+  present), rather than Core probing ICMP/TCP/auth toward the host.
+- **Versioned protocol + capability negotiation** (ENG-0004): Core and agent may differ by a version
+  during a rollout. At connect they negotiate the supported protocol version and the agent's verb
+  **capabilities** — feeding the provider [capability model](provider-abstraction.md#3-capability-model)
+  so the UI never offers a verb the connected agent version can't serve.
+
+---
+
+## 9. Open / resolved questions
+
+**Resolved (do not re-open):**
+- ~~Transport gRPC vs HTTP+JSON~~ → **gRPC/HTTP2 + mTLS** (ENG-0004).
+- ~~mTLS PKI ownership~~ → **private CA in Core**, root+intermediate, short-lived + auto-renew (ENG-0005).
+- ~~Auth fallback to signed tokens~~ → **closed; mTLS only** (ENG-0004).
+- ~~Agent self-update mechanism~~ → **mTLS channel + watchdog rollback** (ENG-0004).
+- ~~Disk-export staging push from the agent~~ → **closed; disk transfer is a Proxmox-node concern** (ENG-0001).
+
+**Still open (need a human decision; specs proceed against the current recommendation):**
+1. **Conversion-host placement.** Where the *optional* `virt-v2v`/`qemu-img` enhancement runs — PVE
+   node over SSH vs a dedicated conversion host. (The *baseline* `qm importdisk` runs on the PVE
+   node; this only concerns the optional conversion step.) Shared with
+   [proxmox-integration.md OQ](proxmox-integration.md#5-open-questions-need-a-human-decision) and
+   [migration-job-model.md OQ](migration-job-model.md#8-open-questions-need-a-human-decision).
+2. **gRPC `.proto` verb surface for v1** (ENG-0004 sub-question) — the exact contract for management
+   vs migration step-graph verbs; a spec detail to lock before 2.0 codegen.
+3. **Cert TTL + renewal-window defaults** (ENG-0005 sub-question) — e.g. 14-day cert, renew at 7 days.
+4. **Enrollment-token host-binding** (ENG-0005 sub-question) — bind the single-use token to an
+   expected host identity to harden TOFU.
+5. **Linux agent host roles** (ENG-0004 sub-question) — which Linux hosts get an agent vs stay
+   API/SSH-managed (Proxmox stays API+SSH per locked decisions).

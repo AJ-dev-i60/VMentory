@@ -2,6 +2,12 @@
 
 A portable, single-exe Windows tool that inventories Hyper-V hosts over WinRM and displays results in a modern local web dashboard. No installer, no persistent storage — all data lives in RAM and is wiped on exit.
 
+> **This README covers the shipping Phase-1 app.** VMentory Phase 2 is in planning: a
+> container-based, single-operator, **multi-platform (Hyper-V + Proxmox) platform** delivering four
+> pillars on a shared foundation — **Observe → Migrate → Deploy → Backup** (ENG-0006). See
+> [`docs/phase2/PROGRESS.md`](docs/phase2/PROGRESS.md), [`docs/phase2/ARCHITECTURE.md`](docs/phase2/ARCHITECTURE.md),
+> and the decision register at [`docs/engineering/REGISTER.md`](docs/engineering/REGISTER.md).
+
 ## Building
 
 ### Prerequisites
