@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VMentory — Migration Wizard (Direction A: linear stepper)</title>
+<style>
+:root {
+  --bg:#0f172a; --bg-card:#1e293b; --bg-hover:#263347; --bg-input:#0f172a;
+  --border:#334155; --border-lt:#475569;
+  --text:#f1f5f9; --text2:#94a3b8; --text3:#64748b;
+  --blue:#3b82f6; --green:#22c55e; --yellow:#f59e0b; --red:#ef4444;
+  --purple:#8b5cf6; --cyan:#06b6d4;
+  --hv:#0ea5e9; --pve:#e67817;
+}
+[data-theme="light"]{--bg:#f1f5f9;--bg-card:#fff;--bg-hover:#f8fafc;--bg-input:#fff;--border:#e2e8f0;--border-lt:#cbd5e1;--text:#0f172a;--text2:#475569;--text3:#94a3b8}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);font-size:15px;line-height:1.5;padding:24px}
+.wrap{max-width:1080px;margin:0 auto}
+.page-ttl{font-size:18px;font-weight:700;display:flex;align-items:center;gap:10px}
+.page-sub{color:var(--text3);font-size:12px;margin-top:2px;margin-bottom:18px}
+.pbadge{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700}
+.pbadge.hv{background:rgba(14,165,233,.14);color:var(--hv)}
+.pbadge.pve{background:rgba(230,120,23,.15);color:var(--pve)}
+.arrow{color:var(--text3)}
+
+/* Stepper rail */
+.steps{display:flex;align-items:center;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:12px 18px;margin-bottom:18px;overflow-x:auto}
+.step{display:flex;align-items:center;gap:9px;white-space:nowrap}
+.step-num{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;background:var(--border);color:var(--text3)}
+.step.done .step-num{background:var(--green);color:#fff}
+.step.active .step-num{background:var(--blue);color:#fff;box-shadow:0 0 0 4px rgba(59,130,246,.2)}
+.step-lbl{font-size:12.5px;font-weight:600;color:var(--text3)}
+.step.done .step-lbl,.step.active .step-lbl{color:var(--text)}
+.step-conn{flex:1;height:2px;background:var(--border);margin:0 12px;min-width:18px}
+.step.done+.step-conn,.step-conn.done{background:var(--green)}
+
+.card{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:16px}
+.card-hdr{padding:14px 18px;border-bottom:1px solid var(--border);font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:space-between}
+.card-body{padding:18px}
+.sec-h{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);font-weight:700;margin:6px 0 12px}
+
+/* Resource mapping table — the heart of step 2 */
+.map{width:100%;border-collapse:collapse;font-size:13px}
+.map th{text-align:left;padding:9px 12px;background:var(--bg);border-bottom:1px solid var(--border);color:var(--text2);font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+.map td{padding:11px 12px;border-bottom:1px solid var(--border);vertical-align:middle}
+.map tr:last-child td{border-bottom:none}
+.src-val{font-variant-numeric:tabular-nums;color:var(--text2)}
+.map-arrow{color:var(--text3);text-align:center}
+.tgt-input{background:var(--bg-input);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px;font-family:inherit;width:100%;outline:none}
+.tgt-input:focus{border-color:var(--blue)}
+select.tgt-input{cursor:pointer}
+.flag{display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:2px 8px;border-radius:4px;font-weight:600}
+.flag.warn{background:rgba(245,158,11,.13);color:var(--yellow)}
+.flag.auto{background:rgba(139,92,246,.13);color:var(--purple)}
+.flag.ok{background:rgba(34,197,94,.12);color:var(--green)}
+
+/* Precheck list */
+.checks{display:flex;flex-direction:column;gap:1px}
+.chk{display:flex;align-items:center;gap:12px;padding:11px 12px;border-radius:8px}
+.chk:hover{background:var(--bg-hover)}
+.chk-ico{width:22px;height:22px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700}
+.chk-ico.pass{background:rgba(34,197,94,.15);color:var(--green)}
+.chk-ico.warn{background:rgba(245,158,11,.15);color:var(--yellow)}
+.chk-ico.fail{background:rgba(239,68,68,.15);color:var(--red)}
+.chk-main{flex:1;min-width:0}
+.chk-ttl{font-size:13px;font-weight:600}
+.chk-sub{font-size:11.5px;color:var(--text3)}
+
+.callout{display:flex;gap:10px;padding:12px 14px;border-radius:8px;font-size:12.5px;line-height:1.6;margin-top:6px}
+.callout.warn{background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.3);color:var(--text2)}
+.callout.info{background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.3);color:var(--text2)}
+.callout b{color:var(--text)}
+
+.foot{display:flex;align-items:center;gap:10px;justify-content:space-between;margin-top:6px}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:9px 18px;border-radius:6px;border:1px solid var(--border);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;background:var(--bg-hover);color:var(--text)}
+.btn-primary{background:var(--blue);color:#fff;border:none}
+.fcheck{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12.5px;color:var(--text2)}
+.fcheck input{width:15px;height:15px;accent-color:var(--blue)}
+.muted{color:var(--text3);font-size:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="page-ttl">
+  Migrate VM
+  <span class="pbadge hv"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><rect x="2" y="3" width="20" height="14" rx="2"/></svg>Hyper-V</span>
+  <span class="arrow">→</span>
+  <span class="pbadge pve"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 2 7v10l10 5 10-5V7z"/></svg>Proxmox</span>
+</div>
+<div class="page-sub"><b style="color:var(--text)">FILESERVER-03</b> on HV-PROD-02 → pve-node-01 · Gen2 (UEFI) · WinServer 2019 · 1 vCPU=8, 32 GB RAM, 2 disks (520 GB)</div>
+
+<!-- Stepper -->
+<div class="steps">
+  <div class="step done"><div class="step-num">✓</div><div class="step-lbl">Precheck</div></div>
+  <div class="step-conn done"></div>
+  <div class="step active"><div class="step-num">2</div><div class="step-lbl">Map resources</div></div>
+  <div class="step-conn"></div>
+  <div class="step"><div class="step-num">3</div><div class="step-lbl">Run</div></div>
+  <div class="step-conn"></div>
+  <div class="step"><div class="step-num">4</div><div class="step-lbl">Validate</div></div>
+  <div class="step-conn"></div>
+  <div class="step"><div class="step-num">5</div><div class="step-lbl">Cutover</div></div>
+</div>
+
+<!-- Step 1 recap (collapsed precheck result) -->
+<div class="card">
+  <div class="card-hdr">
+    <span>Step 1 · Precheck <span class="muted" style="font-weight:500;margin-left:6px">1 warning, 0 blockers</span></span>
+    <button class="btn" style="padding:5px 12px;font-size:12px">Re-run precheck</button>
+  </div>
+  <div class="card-body" style="padding-top:8px;padding-bottom:8px">
+    <div class="checks">
+      <div class="chk"><div class="chk-ico pass">✓</div><div class="chk-main"><div class="chk-ttl">Target capability match</div><div class="chk-sub">pve-node-01 advertises ImportDisk + CreateVmShell + OVMF (UEFI)</div></div></div>
+      <div class="chk"><div class="chk-ico pass">✓</div><div class="chk-main"><div class="chk-ttl">Target free space</div><div class="chk-sub">local-zfs has 1.8 TB free · need ≈ 540 GB for converted disks + staging</div></div></div>
+      <div class="chk"><div class="chk-ico pass">✓</div><div class="chk-main"><div class="chk-ttl">Guest OS supported by virt-v2v</div><div class="chk-sub">Windows Server 2019 — virtio drivers will be injected automatically</div></div></div>
+      <div class="chk"><div class="chk-ico warn">!</div><div class="chk-main"><div class="chk-ttl">Power state</div><div class="chk-sub">VM is <b style="color:var(--yellow)">Running</b> — migration requires a quiesce point (cold export or checkpoint). Configure in Step 3.</div></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- Step 2 — resource mapping (active) -->
+<div class="card">
+  <div class="card-hdr"><span>Step 2 · Map resources</span><span class="muted" style="font-weight:500">edit any target value</span></div>
+  <div class="card-body">
+    <div class="sec-h">Compute &amp; firmware</div>
+    <table class="map">
+      <thead><tr><th style="width:18%">Resource</th><th style="width:24%">Source (Hyper-V)</th><th style="width:6%"></th><th style="width:34%">Target (Proxmox)</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>vCPU</td><td class="src-val">8 vCPU (2 sockets × 4)</td><td class="map-arrow">→</td>
+          <td><input class="tgt-input" value="8 cores · 1 socket"></td>
+          <td><span class="flag ok">direct</span></td>
+        </tr>
+        <tr>
+          <td>RAM</td><td class="src-val">32 GB (static)</td><td class="map-arrow">→</td>
+          <td><input class="tgt-input" value="32768 MB"></td>
+          <td><span class="flag ok">direct</span></td>
+        </tr>
+        <tr>
+          <td>Firmware</td><td class="src-val">Gen2 / UEFI + Secure Boot</td><td class="map-arrow">→</td>
+          <td><select class="tgt-input"><option>OVMF (UEFI) + EFI disk</option><option>SeaBIOS</option></select></td>
+          <td><span class="flag auto">auto-mapped</span> <span class="flag warn">Secure Boot off on import</span></td>
+        </tr>
+        <tr>
+          <td>Machine type</td><td class="src-val">—</td><td class="map-arrow">→</td>
+          <td><select class="tgt-input"><option>q35 (recommended for UEFI)</option><option>i440fx</option></select></td>
+          <td><span class="flag auto">auto-mapped</span></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="sec-h" style="margin-top:22px">Storage — disks</div>
+    <table class="map">
+      <thead><tr><th style="width:24%">Source VHDX</th><th style="width:16%">Size (used/prov)</th><th style="width:6%"></th><th style="width:22%">Target storage</th><th style="width:16%">Format</th><th>Bus</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>fileserver-os.vhdx</td><td class="src-val">42 / 80 GB</td><td class="map-arrow">→</td>
+          <td><select class="tgt-input"><option>local-zfs</option><option>ceph-pool</option></select></td>
+          <td><select class="tgt-input"><option>raw (thin)</option><option>qcow2</option></select></td>
+          <td><select class="tgt-input"><option>scsi0 (virtio-scsi)</option><option>sata0</option></select></td>
+        </tr>
+        <tr>
+          <td>fileserver-data.vhdx</td><td class="src-val">388 / 440 GB</td><td class="map-arrow">→</td>
+          <td><select class="tgt-input"><option>local-zfs</option><option>ceph-pool</option></select></td>
+          <td><select class="tgt-input"><option>raw (thin)</option><option>qcow2</option></select></td>
+          <td><select class="tgt-input"><option>scsi1 (virtio-scsi)</option><option>sata1</option></select></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="sec-h" style="margin-top:22px">Network</div>
+    <table class="map">
+      <thead><tr><th style="width:24%">Source NIC</th><th style="width:22%">VLAN / switch</th><th style="width:6%"></th><th style="width:22%">Target bridge</th><th>Model</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Network Adapter (00:15:5D:01:0A:3F)</td><td class="src-val">vSwitch-Prod · VLAN 20</td><td class="map-arrow">→</td>
+          <td><select class="tgt-input"><option>vmbr0</option><option>vmbr1</option></select></td>
+          <td><select class="tgt-input"><option>virtio (recommended)</option><option>e1000</option></select></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <label class="fcheck" style="margin-top:18px"><input type="checkbox" checked> Preserve MAC address (00:15:5D:01:0A:3F) on the target NIC</label>
+
+    <div class="callout warn" style="margin-top:14px">
+      <span>⚠</span><div><b>Secure Boot will be disabled</b> on first boot under OVMF. Re-enrol keys inside the guest after validation if required. This is informational, not a blocker.</div>
+    </div>
+  </div>
+</div>
+
+<div class="foot">
+  <button class="btn">← Back to precheck</button>
+  <div style="display:flex;gap:10px;align-items:center">
+    <span class="muted">Mapping is saved to the migration job and is editable until you hit Run.</span>
+    <button class="btn">Save &amp; close</button>
+    <button class="btn btn-primary">Continue to Run →</button>
+  </div>
+</div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VMentory — Migration Run (Direction B: control room / job DAG)</title>
+<style>
+:root {
+  --bg:#0f172a; --bg-card:#1e293b; --bg-hover:#263347; --bg-input:#0f172a;
+  --border:#334155; --border-lt:#475569;
+  --text:#f1f5f9; --text2:#94a3b8; --text3:#64748b;
+  --blue:#3b82f6; --green:#22c55e; --yellow:#f59e0b; --red:#ef4444;
+  --purple:#8b5cf6; --cyan:#06b6d4;
+  --hv:#0ea5e9; --pve:#e67817;
+}
+[data-theme="light"]{--bg:#f1f5f9;--bg-card:#fff;--bg-hover:#f8fafc;--bg-input:#fff;--border:#e2e8f0;--border-lt:#cbd5e1;--text:#0f172a;--text2:#475569;--text3:#94a3b8}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);font-size:15px;line-height:1.5;padding:24px}
+.wrap{max-width:1120px;margin:0 auto}
+.pbadge{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700}
+.pbadge.hv{background:rgba(14,165,233,.14);color:var(--hv)}
+.pbadge.pve{background:rgba(230,120,23,.15);color:var(--pve)}
+
+/* Top run-status banner */
+.runbar{display:flex;align-items:center;gap:16px;background:var(--bg-card);border:1px solid var(--border);border-left:3px solid var(--red);border-radius:10px;padding:14px 18px;margin-bottom:16px}
+.runbar.running{border-left-color:var(--blue)}
+.run-ttl{font-weight:700;font-size:15px;display:flex;align-items:center;gap:8px}
+.run-sub{color:var(--text3);font-size:12px;margin-top:2px}
+.run-sp{flex:1}
+.status-pill{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:14px;font-size:12px;font-weight:700}
+.status-pill.failed{background:rgba(239,68,68,.14);color:var(--red)}
+.status-pill.running{background:rgba(59,130,246,.14);color:var(--blue)}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 15px;border-radius:6px;border:1px solid var(--border);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;background:var(--bg-hover);color:var(--text)}
+.btn-primary{background:var(--blue);color:#fff;border:none}
+.btn-danger{background:var(--red);color:#fff;border:none}
+.btn-warn{background:rgba(245,158,11,.16);color:var(--yellow);border:1px solid rgba(245,158,11,.4)}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spin{width:13px;height:13px;border:2px solid transparent;border-top-color:currentColor;border-radius:50%;animation:spin .7s linear infinite;display:inline-block}
+
+.cols{display:grid;grid-template-columns:340px 1fr;gap:16px;align-items:start}
+.card{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.card-hdr{padding:13px 16px;border-bottom:1px solid var(--border);font-weight:700;font-size:13.5px;display:flex;align-items:center;justify-content:space-between}
+
+/* Step DAG / timeline (left) */
+.dag{padding:8px 8px 12px}
+.dstep{display:flex;gap:12px;padding:10px 12px;border-radius:8px;cursor:pointer;position:relative}
+.dstep:hover{background:var(--bg-hover)}
+.dstep.sel{background:rgba(59,130,246,.1)}
+.dstep::before{content:"";position:absolute;left:23px;top:34px;bottom:-10px;width:2px;background:var(--border)}
+.dstep:last-child::before{display:none}
+.dstep.done::before{background:var(--green)}
+.dnode{width:24px;height:24px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;z-index:1}
+.dnode.done{background:var(--green);color:#fff}
+.dnode.running{background:var(--blue);color:#fff}
+.dnode.failed{background:var(--red);color:#fff}
+.dnode.pending{background:var(--border);color:var(--text3)}
+.dnode.skipped{background:var(--bg);border:1px dashed var(--border-lt);color:var(--text3)}
+.dmain{flex:1;min-width:0}
+.dttl{font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px}
+.dttl .tool{font-size:10px;font-weight:600;color:var(--text3);background:var(--bg);padding:1px 6px;border-radius:4px}
+.dsub{font-size:11.5px;color:var(--text3);margin-top:2px}
+.dsub.fail{color:var(--red)}
+.dbar{height:4px;background:var(--border);border-radius:2px;margin-top:6px;overflow:hidden}
+.dbar > div{height:100%;border-radius:2px;background:var(--blue)}
+
+/* Right pane — detail of selected/failed step */
+.detail-body{padding:16px}
+.dl{display:grid;grid-template-columns:auto 1fr;gap:6px 18px;font-size:12.5px;margin-bottom:14px}
+.dl dt{color:var(--text3)}
+.dl dd{color:var(--text);font-variant-numeric:tabular-nums}
+.callout{display:flex;gap:10px;padding:12px 14px;border-radius:8px;font-size:12.5px;line-height:1.6;margin-bottom:14px}
+.callout.fail{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.35);color:var(--text2)}
+.callout b{color:var(--text)}
+.recovery{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+/* log console */
+.log{background:#0b1120;border:1px solid var(--border);border-radius:8px;font-family:ui-monospace,'Cascadia Code',Consolas,monospace;font-size:11.5px;line-height:1.65;padding:12px 14px;max-height:280px;overflow:auto;color:var(--text2)}
+.log .t{color:var(--text3)}
+.log .ok{color:var(--green)}
+.log .warn{color:var(--yellow)}
+.log .err{color:var(--red)}
+.log .info{color:var(--cyan)}
+.rollback-note{font-size:11.5px;color:var(--text3);margin-top:10px;display:flex;gap:8px;align-items:flex-start;line-height:1.6}
+.rollback-note svg{flex-shrink:0;margin-top:2px;color:var(--green)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="runbar">
+  <div>
+    <div class="run-ttl">FILESERVER-03 <span style="color:var(--text3);font-weight:500">migration</span>
+      <span class="pbadge hv">Hyper-V</span><span style="color:var(--text3)">→</span><span class="pbadge pve">Proxmox</span>
+    </div>
+    <div class="run-sub">Job #m-2026-0615-0042 · started 14:02 · elapsed 18m 41s · resumable</div>
+  </div>
+  <div class="run-sp"></div>
+  <span class="status-pill failed">● Failed at step 5 — paused, source intact</span>
+  <button class="btn">View mapping</button>
+  <button class="btn">Pause job</button>
+</div>
+
+<div class="cols">
+
+  <!-- LEFT: step DAG -->
+  <div class="card">
+    <div class="card-hdr"><span>Steps</span><span style="font-weight:500;color:var(--text3);font-size:11.5px">4 done · 1 failed · 3 pending</span></div>
+    <div class="dag">
+      <div class="dstep done"><div class="dnode done">✓</div><div class="dmain"><div class="dttl">Precheck</div><div class="dsub">0 blockers · 22s</div></div></div>
+      <div class="dstep done"><div class="dnode done">✓</div><div class="dmain"><div class="dttl">Quiesce <span class="tool">checkpoint</span></div><div class="dsub">Production checkpoint taken · 41s</div></div></div>
+      <div class="dstep done"><div class="dnode done">✓</div><div class="dmain"><div class="dttl">Export disks <span class="tool">agent</span></div><div class="dsub">2 VHDX → staging · 520 GB · 9m 12s</div></div></div>
+      <div class="dstep done"><div class="dnode done">✓</div><div class="dmain"><div class="dttl">Convert <span class="tool">virt-v2v</span></div><div class="dsub">virtio injected · 2 disks → raw · 7m 30s</div></div></div>
+      <div class="dstep sel"><div class="dnode failed">✕</div><div class="dmain"><div class="dttl">Provision VM shell <span class="tool">PVE API</span></div><div class="dsub fail">HTTP 500 — storage 'local-zfs' rejected EFI disk</div></div></div>
+      <div class="dstep"><div class="dnode pending">6</div><div class="dmain"><div class="dttl">Attach disks <span class="tool">qm importdisk</span></div><div class="dsub">waiting on step 5</div></div></div>
+      <div class="dstep"><div class="dnode pending">7</div><div class="dmain"><div class="dttl">First boot + validate</div><div class="dsub">pending</div></div></div>
+      <div class="dstep"><div class="dnode pending">8</div><div class="dmain"><div class="dttl">Cutover</div><div class="dsub">pending — gated on validation</div></div></div>
+    </div>
+  </div>
+
+  <!-- RIGHT: failed-step detail + recovery + log -->
+  <div class="card">
+    <div class="card-hdr">
+      <span>Step 5 · Provision VM shell</span>
+      <span class="status-pill failed" style="padding:2px 10px;font-size:11px">Failed</span>
+    </div>
+    <div class="detail-body">
+      <dl class="dl">
+        <dt>Tool</dt><dd>PVE REST — <code>POST /nodes/pve-node-01/qemu</code></dd>
+        <dt>Started</dt><dd>14:20:51 · failed after 3.2s</dd>
+        <dt>Attempt</dt><dd>2 of 3 (auto-retried once)</dd>
+        <dt>Idempotency</dt><dd>VMID 9043 reserved · safe to retry</dd>
+      </dl>
+
+      <div class="callout fail">
+        <span>✕</span>
+        <div><b>Provisioning failed: target storage 'local-zfs' does not support the <code>efidisk0</code> content type.</b> The OVMF EFI disk needs a storage that allows <code>images</code>. Pick a different target storage for the EFI disk and retry this step — converted disks in staging are untouched.</div>
+      </div>
+
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);font-weight:700;margin-bottom:8px">Recovery</div>
+      <div class="recovery">
+        <button class="btn btn-primary">Edit step input &amp; retry</button>
+        <button class="btn">Retry as-is</button>
+        <button class="btn">Skip step (advanced)</button>
+        <button class="btn btn-danger">Roll back &amp; abort</button>
+      </div>
+      <div class="rollback-note">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6 9 17l-5-5"/></svg>
+        <span><b style="color:var(--text2)">Rollback is safe.</b> Source VM is shut down via checkpoint but <b style="color:var(--text2)">not deleted</b>. Roll back removes the half-created target (VMID 9043 + any imported disks + staging) and restores the source to Running. Nothing on Hyper-V has been destroyed.</span>
+      </div>
+
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);font-weight:700;margin:18px 0 8px">Step log <span style="font-weight:500;text-transform:none;letter-spacing:0">· streamed over SSE · persisted</span></div>
+      <div class="log">
+<span class="t">14:20:48</span> <span class="info">INFO</span>  resolving target node pve-node-01 capabilities… ok
+<span class="t">14:20:49</span> <span class="info">INFO</span>  building qemu config: cores=8 sockets=1 memory=32768 bios=ovmf machine=q35
+<span class="t">14:20:49</span> <span class="info">INFO</span>  reserving VMID 9043 … reserved
+<span class="t">14:20:50</span> <span class="ok">POST</span>  /nodes/pve-node-01/qemu  (attempt 1)
+<span class="t">14:20:50</span> <span class="warn">WARN</span>  efidisk0=local-zfs:1,efitype=4m  → storage validation pending
+<span class="t">14:20:51</span> <span class="err">ERR</span>   500 storage 'local-zfs' does not support content type 'images' for efidisk0
+<span class="t">14:20:51</span> <span class="info">INFO</span>  auto-retry in 1s (backoff)…
+<span class="t">14:20:53</span> <span class="ok">POST</span>  /nodes/pve-node-01/qemu  (attempt 2)
+<span class="t">14:20:54</span> <span class="err">ERR</span>   500 same error — not transient, halting step
+<span class="t">14:20:54</span> <span class="err">FAIL</span>  step 5 marked FAILED · job paused · awaiting operator
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div style="margin-top:16px;font-size:12px;color:var(--text3);background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:14px 16px;line-height:1.7">
+  <b style="color:var(--text2)">Direction B — control room for a resumable job.</b> The migration is modelled as a <b>persisted DAG of steps</b> (left rail: done ✓ / running / failed ✕ / pending), not a one-shot wizard. This is the screen you live on for an 18-minute, failure-prone run.<br>
+  • <b>Partial failure is first-class.</b> The job stops at the failed step, keeps everything completed before it, and offers per-step recovery: <b>edit input &amp; retry · retry as-is · skip · roll back &amp; abort</b>. Idempotency + reserved-VMID state make "retry" safe.<br>
+  • <b>Rollback safety is always visible.</b> "Source intact" lives in the top banner and the rollback note spells out exactly what a rollback destroys (only the half-built target) and what it never touches (Hyper-V source).<br>
+  • <b>Live + persisted logs.</b> Per-step log streams over SSE (reusing EventHub) and is persisted, so reopening the job after a browser refresh — or days later — shows the same history. Resumable means you can close the tab and the job survives.
+</div>
+
+</div>
+</body>
+</html>

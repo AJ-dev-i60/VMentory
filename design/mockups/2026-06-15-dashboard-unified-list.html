@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VMentory — Unified Dashboard (Direction A: single list + badges)</title>
+<style>
+:root {
+  --bg:#0f172a; --bg-card:#1e293b; --bg-hover:#263347; --bg-input:#0f172a;
+  --border:#334155; --border-lt:#475569;
+  --text:#f1f5f9; --text2:#94a3b8; --text3:#64748b;
+  --blue:#3b82f6; --green:#22c55e; --yellow:#f59e0b; --red:#ef4444;
+  --purple:#8b5cf6; --cyan:#06b6d4;
+  /* Phase 2 additions — platform accents (proposed tokens) */
+  --hv:#0ea5e9;      /* Hyper-V — azure */
+  --pve:#e67817;     /* Proxmox — its brand orange */
+}
+[data-theme="light"]{--bg:#f1f5f9;--bg-card:#fff;--bg-hover:#f8fafc;--bg-input:#fff;--border:#e2e8f0;--border-lt:#cbd5e1;--text:#0f172a;--text2:#475569;--text3:#94a3b8}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);font-size:15px;line-height:1.5;padding:24px}
+
+.page-hdr{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px}
+.page-ttl{font-size:18px;font-weight:700}
+.page-sub{color:var(--text3);font-size:12px;margin-top:2px}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:6px;border:none;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit;background:var(--bg-hover);color:var(--text);border:1px solid var(--border)}
+.btn-primary{background:var(--blue);color:#fff;border:none}
+
+/* Toolbar */
+.toolbar{display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:14px;background:var(--bg-card);border:1px solid var(--border);color:var(--text2);font-size:12px;cursor:pointer;user-select:none;transition:all .12s}
+.chip:hover{border-color:var(--border-lt);color:var(--text)}
+.chip.active{background:rgba(59,130,246,.12);border-color:var(--blue);color:var(--blue)}
+.chip.active.hv{background:rgba(14,165,233,.12);border-color:var(--hv);color:var(--hv)}
+.chip.active.pve{background:rgba(230,120,23,.14);border-color:var(--pve);color:var(--pve)}
+.chip-count{background:rgba(255,255,255,.08);padding:1px 6px;border-radius:8px;font-size:11px}
+.tb-sp{flex:1}
+.search{background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text);font-size:13px;width:240px;font-family:inherit;outline:none}
+.search::placeholder{color:var(--text3)}
+
+/* Platform badge — the core unification element */
+.pbadge{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:4px;font-size:10.5px;font-weight:700;letter-spacing:.02em;white-space:nowrap}
+.pbadge.hv{background:rgba(14,165,233,.14);color:var(--hv)}
+.pbadge.pve{background:rgba(230,120,23,.15);color:var(--pve)}
+.pbadge svg{flex-shrink:0}
+
+/* Host list (same grid idiom as the live app, + platform column) */
+.hlist{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.hrow{display:grid;grid-template-columns:20px 1.5fr 92px 60px 60px 60px 1.3fr 80px 110px 56px;gap:12px;align-items:center;padding:11px 16px;border-bottom:1px solid var(--border);transition:background .12s}
+.hrow:last-child{border-bottom:none}
+.hrow:hover{background:var(--bg-hover)}
+.hrow.head{background:rgba(0,0,0,.18);padding-top:8px;padding-bottom:8px;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);font-weight:600}
+.hrow.head:hover{background:rgba(0,0,0,.18)}
+.health{width:8px;height:8px;border-radius:50%;justify-self:center}
+.health.ok{background:var(--green);box-shadow:0 0 0 3px rgba(34,197,94,.18)}
+.health.warn{background:var(--yellow);box-shadow:0 0 0 3px rgba(245,158,11,.18)}
+.health.bad{background:var(--red);box-shadow:0 0 0 3px rgba(239,68,68,.18)}
+.health.unk{background:var(--text3);box-shadow:0 0 0 3px rgba(148,163,184,.12)}
+.hname-cell{display:flex;align-items:center;gap:8px;min-width:0}
+.hname-stack{min-width:0}
+.hname{font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hsub{color:var(--text3);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.metric{font-variant-numeric:tabular-nums;font-weight:600;font-size:13px}
+.metric.na{color:var(--text3);font-weight:500}
+.metric-sub{color:var(--text3);font-size:11px;font-weight:400}
+.hardware{color:var(--text2);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.boot{font-variant-numeric:tabular-nums;color:var(--text2);font-size:12px;text-align:right}
+.cap-cell{display:flex;flex-direction:column;gap:3px}
+.cap-row{display:flex;align-items:center;gap:4px}
+.cap-lbl{width:24px;flex-shrink:0;font-size:10px;color:var(--text3);text-transform:uppercase}
+.cap-bar{flex:1;height:4px;background:var(--border);border-radius:2px;overflow:hidden;min-width:28px}
+.cap-fill{height:100%;border-radius:2px}
+.cap-pct{width:30px;text-align:right;flex-shrink:0;font-size:10.5px;font-variant-numeric:tabular-nums;color:var(--text2)}
+.cap-pct.warn{color:var(--yellow)}.cap-pct.crit{color:var(--red)}
+
+/* capability-aware action set */
+.actions{display:flex;gap:4px;justify-self:end}
+.act-btn{width:26px;height:26px;border-radius:6px;border:none;background:transparent;color:var(--text2);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:all .12s}
+.act-btn:hover{background:var(--bg);color:var(--text)}
+.act-btn:disabled{opacity:.25;cursor:not-allowed}
+
+.note{margin-top:18px;font-size:12px;color:var(--text3);background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:14px 16px;line-height:1.7}
+.note b{color:var(--text2)}
+.dot{display:inline-block;width:9px;height:9px;border-radius:2px;vertical-align:middle;margin:0 4px}
+.cl-pill{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--text2);padding:1px 8px;background:rgba(139,92,246,.12);border-radius:10px;color:var(--purple)}
+</style>
+</head>
+<body>
+
+<div class="page-hdr">
+  <div>
+    <div class="page-ttl">Infrastructure</div>
+    <div class="page-sub">7 hosts across 2 platforms · 41 VMs · <span class="cl-pill">PVE cluster: pve-cluster-01 (3 nodes)</span> · last scan 2m ago</div>
+  </div>
+  <div style="display:flex;gap:8px">
+    <button class="btn">+ Add host</button>
+    <button class="btn btn-primary">Scan all</button>
+  </div>
+</div>
+
+<div class="toolbar">
+  <div class="chip active">All <span class="chip-count">7</span></div>
+  <div class="chip active hv">
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="2" y="3" width="20" height="14" rx="2"/></svg>
+    Hyper-V <span class="chip-count">4</span></div>
+  <div class="chip active pve">
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 2 7v10l10 5 10-5V7z"/></svg>
+    Proxmox <span class="chip-count">3</span></div>
+  <div class="chip">Healthy <span class="chip-count">5</span></div>
+  <div class="chip">Warnings <span class="chip-count">2</span></div>
+  <div class="tb-sp"></div>
+  <input class="search" placeholder="Search hosts / VMs…">
+</div>
+
+<div class="hlist">
+  <div class="hrow head">
+    <div></div><div>Host</div><div>Platform</div><div style="text-align:right">vCPU</div><div style="text-align:right">VMs</div>
+    <div style="text-align:right">Cores</div><div>Hardware</div><div>Uptime</div><div>Capacity</div><div></div>
+  </div>
+
+  <!-- Hyper-V host -->
+  <div class="hrow">
+    <div class="health ok"></div>
+    <div class="hname-cell">
+      <div class="hname-stack"><div class="hname">HV-PROD-01</div><div class="hsub">192.168.10.21 · WinServer 2022</div></div>
+    </div>
+    <div><span class="pbadge hv"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><rect x="2" y="3" width="20" height="14" rx="2"/></svg>Hyper-V</span></div>
+    <div class="metric" style="text-align:right">48<span class="metric-sub"> /32</span></div>
+    <div class="metric" style="text-align:right">9</div>
+    <div class="metric" style="text-align:right">32</div>
+    <div class="hardware">2× Xeon Gold 6248 · 256 GB</div>
+    <div class="boot">14d 6h</div>
+    <div class="cap-cell">
+      <div class="cap-row"><span class="cap-lbl">RAM</span><div class="cap-bar"><div class="cap-fill" style="width:73%;background:var(--yellow)"></div></div><span class="cap-pct warn">73%</span></div>
+      <div class="cap-row"><span class="cap-lbl">Disk</span><div class="cap-bar"><div class="cap-fill" style="width:41%;background:var(--green)"></div></div><span class="cap-pct">41%</span></div>
+    </div>
+    <div class="actions">
+      <button class="act-btn" title="Rescan"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg></button>
+      <button class="act-btn" title="Migrate VMs from this host →"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+    </div>
+  </div>
+
+  <!-- Hyper-V host warn -->
+  <div class="hrow">
+    <div class="health warn"></div>
+    <div class="hname-cell">
+      <div class="hname-stack"><div class="hname">HV-PROD-02</div><div class="hsub">192.168.10.22 · WinServer 2019 · vCPU oversubscribed 2.1×</div></div>
+    </div>
+    <div><span class="pbadge hv"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><rect x="2" y="3" width="20" height="14" rx="2"/></svg>Hyper-V</span></div>
+    <div class="metric" style="text-align:right;color:var(--red)">68<span class="metric-sub"> /32</span></div>
+    <div class="metric" style="text-align:right">11</div>
+    <div class="metric" style="text-align:right">32</div>
+    <div class="hardware">2× Xeon Silver 4214 · 128 GB</div>
+    <div class="boot">61d 2h</div>
+    <div class="cap-cell">
+      <div class="cap-row"><span class="cap-lbl">RAM</span><div class="cap-bar"><div class="cap-fill" style="width:91%;background:var(--red)"></div></div><span class="cap-pct crit">91%</span></div>
+      <div class="cap-row"><span class="cap-lbl">Disk</span><div class="cap-bar"><div class="cap-fill" style="width:34%;background:var(--green)"></div></div><span class="cap-pct">34%</span></div>
+    </div>
+    <div class="actions">
+      <button class="act-btn" title="Rescan"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg></button>
+      <button class="act-btn" title="Migrate VMs from this host →"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+    </div>
+  </div>
+
+  <!-- Proxmox node -->
+  <div class="hrow">
+    <div class="health ok"></div>
+    <div class="hname-cell">
+      <div class="hname-stack"><div class="hname">pve-node-01</div><div class="hsub">192.168.10.31 · PVE 8.2 · cluster pve-cluster-01</div></div>
+    </div>
+    <div><span class="pbadge pve"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 2 7v10l10 5 10-5V7z"/></svg>Proxmox</span></div>
+    <div class="metric" style="text-align:right">24<span class="metric-sub"> /48</span></div>
+    <div class="metric" style="text-align:right">7</div>
+    <div class="metric" style="text-align:right">48</div>
+    <div class="hardware">EPYC 7402P · 512 GB</div>
+    <div class="boot">22d 8h</div>
+    <div class="cap-cell">
+      <div class="cap-row"><span class="cap-lbl">RAM</span><div class="cap-bar"><div class="cap-fill" style="width:38%;background:var(--green)"></div></div><span class="cap-pct">38%</span></div>
+      <div class="cap-row"><span class="cap-lbl">Disk</span><div class="cap-bar"><div class="cap-fill" style="width:52%;background:var(--green)"></div></div><span class="cap-pct">52%</span></div>
+    </div>
+    <div class="actions">
+      <button class="act-btn" title="Rescan"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg></button>
+      <button class="act-btn" disabled title="Migrate FROM Proxmox not supported (capability-gated)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+    </div>
+  </div>
+
+  <!-- Proxmox node — live CPU% present (PVE gives real util; HV doesn't) -->
+  <div class="hrow">
+    <div class="health ok"></div>
+    <div class="hname-cell">
+      <div class="hname-stack"><div class="hname">pve-node-02</div><div class="hsub">192.168.10.32 · PVE 8.2 · cluster pve-cluster-01</div></div>
+    </div>
+    <div><span class="pbadge pve"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 2 7v10l10 5 10-5V7z"/></svg>Proxmox</span></div>
+    <div class="metric" style="text-align:right">16<span class="metric-sub"> /48</span></div>
+    <div class="metric" style="text-align:right">5</div>
+    <div class="metric" style="text-align:right">48</div>
+    <div class="hardware">EPYC 7402P · 512 GB</div>
+    <div class="boot">22d 8h</div>
+    <div class="cap-cell">
+      <!-- PVE exposes live CPU util that HV doesn't; capability-aware extra row -->
+      <div class="cap-row"><span class="cap-lbl">CPU</span><div class="cap-bar"><div class="cap-fill" style="width:21%;background:var(--green)"></div></div><span class="cap-pct">21%</span></div>
+      <div class="cap-row"><span class="cap-lbl">RAM</span><div class="cap-bar"><div class="cap-fill" style="width:29%;background:var(--green)"></div></div><span class="cap-pct">29%</span></div>
+    </div>
+    <div class="actions">
+      <button class="act-btn" title="Rescan"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg></button>
+      <button class="act-btn" disabled title="Migrate FROM Proxmox not supported (capability-gated)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+    </div>
+  </div>
+</div>
+
+<div class="note">
+  <b>Direction A — one list, platform as a column.</b> Every host lives in a single sortable/filterable list (the live app's <code>.hrow</code> grid, extended by one <span class="pbadge hv">Hyper-V</span> / <span class="pbadge pve">Proxmox</span> badge column). Differences are surfaced, not hidden:<br>
+  • <b>Platform accent tokens</b> proposed: <code>--hv</code> azure, <code>--pve</code> Proxmox-orange. Badges, filter chips, and the migration source/target accents reuse them.<br>
+  • <b>Capability-aware columns.</b> Proxmox exposes live CPU util; Hyper-V doesn't. The Capacity cell renders whatever the provider advertises — pve-node-02 shows a live <span class="dot" style="background:var(--green)"></span>CPU row, HV hosts show RAM+Disk allocation only. Same widget, capability-driven content.<br>
+  • <b>Capability-gated verbs.</b> The "Migrate →" action is enabled on Hyper-V rows (we support HV→PVE) and disabled (greyed, with reason tooltip) on Proxmox rows. No verb a provider can't honour is ever live.<br>
+  • <b>Cluster awareness.</b> PVE nodes carry a cluster tag; the header surfaces the cluster as a <span class="cl-pill">grouped</span> unit while nodes stay individually addressable.
+</div>
+
+</body>
+</html>

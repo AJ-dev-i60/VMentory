@@ -1,5 +1,10 @@
 # VMentory
 
+> **Phase 2 in planning.** This document describes the shipping Phase-1 app (below). For the
+> multi-platform (Hyper-V + Proxmox) management/migration direction, start at
+> [`docs/phase2/PROGRESS.md`](docs/phase2/PROGRESS.md) → `ARCHITECTURE.md` / `ROADMAP.md`, and
+> `docs/engineering/REGISTER.md` for open decisions. Agents live in `.claude/agents/`.
+
 Single-exe Windows tool that inventories Hyper-V hosts over WinRM and serves a local web dashboard on 127.0.0.1.
 
 - **Repo**: https://github.com/AJ-dev-i60/VMentory

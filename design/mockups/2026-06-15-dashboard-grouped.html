@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VMentory — Unified Dashboard (Direction B: platform-grouped sections)</title>
+<style>
+:root {
+  --bg:#0f172a; --bg-card:#1e293b; --bg-hover:#263347; --bg-input:#0f172a;
+  --border:#334155; --border-lt:#475569;
+  --text:#f1f5f9; --text2:#94a3b8; --text3:#64748b;
+  --blue:#3b82f6; --green:#22c55e; --yellow:#f59e0b; --red:#ef4444;
+  --purple:#8b5cf6; --cyan:#06b6d4;
+  --hv:#0ea5e9; --pve:#e67817;
+}
+[data-theme="light"]{--bg:#f1f5f9;--bg-card:#fff;--bg-hover:#f8fafc;--bg-input:#fff;--border:#e2e8f0;--border-lt:#cbd5e1;--text:#0f172a;--text2:#475569;--text3:#94a3b8}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);font-size:15px;line-height:1.5;padding:24px}
+.page-hdr{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px}
+.page-ttl{font-size:18px;font-weight:700}
+.page-sub{color:var(--text3);font-size:12px;margin-top:2px}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:6px;border:1px solid var(--border);font-size:13px;font-weight:500;cursor:pointer;font-family:inherit;background:var(--bg-hover);color:var(--text)}
+.btn-primary{background:var(--blue);color:#fff;border:none}
+
+/* Platform section header */
+.psec{margin-bottom:24px}
+.psec-hdr{display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:10px 10px 0 0;border:1px solid var(--border);border-bottom:none;background:var(--bg-card)}
+.psec.hv .psec-hdr{border-left:3px solid var(--hv)}
+.psec.pve .psec-hdr{border-left:3px solid var(--pve)}
+.psec-ico{width:26px;height:26px;border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.psec.hv .psec-ico{background:rgba(14,165,233,.15);color:var(--hv)}
+.psec.pve .psec-ico{background:rgba(230,120,23,.16);color:var(--pve)}
+.psec-name{font-weight:700;font-size:14px}
+.psec.hv .psec-name{color:var(--hv)}
+.psec.pve .psec-name{color:var(--pve)}
+.psec-meta{color:var(--text3);font-size:12px}
+.psec-sp{flex:1}
+/* capability legend chips per platform */
+.caps{display:flex;gap:6px;flex-wrap:wrap}
+.cap{font-size:10.5px;padding:2px 8px;border-radius:10px;font-weight:600;letter-spacing:.02em;background:rgba(148,163,184,.12);color:var(--text2)}
+.cap.on{background:rgba(34,197,94,.13);color:var(--green)}
+.cap.off{background:rgba(148,163,184,.1);color:var(--text3);text-decoration:line-through;opacity:.7}
+
+.hlist{background:var(--bg-card);border:1px solid var(--border);border-radius:0 0 10px 10px;overflow:hidden}
+.hrow{display:grid;grid-template-columns:20px 1.6fr 60px 60px 60px 1.3fr 80px 110px 56px;gap:12px;align-items:center;padding:11px 16px;border-bottom:1px solid var(--border);transition:background .12s}
+.hrow:last-child{border-bottom:none}
+.hrow:hover{background:var(--bg-hover)}
+.hrow.head{background:rgba(0,0,0,.18);padding:8px 16px;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);font-weight:600}
+.health{width:8px;height:8px;border-radius:50%;justify-self:center}
+.health.ok{background:var(--green);box-shadow:0 0 0 3px rgba(34,197,94,.18)}
+.health.warn{background:var(--yellow);box-shadow:0 0 0 3px rgba(245,158,11,.18)}
+.hname{font-weight:600;font-size:13px}
+.hsub{color:var(--text3);font-size:11px}
+.metric{font-variant-numeric:tabular-nums;font-weight:600;font-size:13px;text-align:right}
+.metric-sub{color:var(--text3);font-size:11px;font-weight:400}
+.hardware{color:var(--text2);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.boot{font-variant-numeric:tabular-nums;color:var(--text2);font-size:12px;text-align:right}
+.cap-cell{display:flex;flex-direction:column;gap:3px}
+.cap-row{display:flex;align-items:center;gap:4px}
+.cap-lbl{width:24px;font-size:10px;color:var(--text3);text-transform:uppercase}
+.cap-bar{flex:1;height:4px;background:var(--border);border-radius:2px;overflow:hidden;min-width:28px}
+.cap-fill{height:100%;border-radius:2px}
+.cap-pct{width:30px;text-align:right;font-size:10.5px;font-variant-numeric:tabular-nums;color:var(--text2)}
+.cap-pct.warn{color:var(--yellow)}.cap-pct.crit{color:var(--red)}
+.actions{display:flex;gap:4px;justify-self:end}
+.act-btn{width:26px;height:26px;border-radius:6px;border:none;background:transparent;color:var(--text2);cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+.act-btn:hover{background:var(--bg);color:var(--text)}
+.act-btn:disabled{opacity:.25;cursor:not-allowed}
+.cluster-tag{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--purple);background:rgba(139,92,246,.12);padding:1px 8px;border-radius:10px}
+.note{margin-top:8px;font-size:12px;color:var(--text3);background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:14px 16px;line-height:1.7}
+.note b{color:var(--text2)}
+</style>
+</head>
+<body>
+
+<div class="page-hdr">
+  <div>
+    <div class="page-ttl">Infrastructure</div>
+    <div class="page-sub">7 hosts · 2 platforms · 41 VMs · last scan 2m ago</div>
+  </div>
+  <div style="display:flex;gap:8px">
+    <button class="btn">+ Add host</button>
+    <button class="btn btn-primary">Scan all</button>
+  </div>
+</div>
+
+<!-- HYPER-V SECTION -->
+<div class="psec hv">
+  <div class="psec-hdr">
+    <div class="psec-ico"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8" stroke="currentColor" stroke-width="2"/></svg></div>
+    <div>
+      <div class="psec-name">Hyper-V</div>
+      <div class="psec-meta">2 hosts · 20 VMs · via VMentory Agent</div>
+    </div>
+    <div class="psec-sp"></div>
+    <div class="caps">
+      <span class="cap on">Inventory</span>
+      <span class="cap on">Lifecycle</span>
+      <span class="cap on">Snapshot</span>
+      <span class="cap on">Migrate source</span>
+      <span class="cap off">Live CPU%</span>
+    </div>
+  </div>
+  <div class="hlist">
+    <div class="hrow head"><div></div><div>Host</div><div>vCPU</div><div>VMs</div><div>Cores</div><div>Hardware</div><div>Uptime</div><div>Capacity</div><div></div></div>
+    <div class="hrow">
+      <div class="health ok"></div>
+      <div><div class="hname">HV-PROD-01</div><div class="hsub">192.168.10.21 · WinServer 2022</div></div>
+      <div class="metric">48<span class="metric-sub"> /32</span></div>
+      <div class="metric">9</div><div class="metric">32</div>
+      <div class="hardware">2× Xeon Gold 6248 · 256 GB</div>
+      <div class="boot">14d 6h</div>
+      <div class="cap-cell">
+        <div class="cap-row"><span class="cap-lbl">RAM</span><div class="cap-bar"><div class="cap-fill" style="width:73%;background:var(--yellow)"></div></div><span class="cap-pct warn">73%</span></div>
+        <div class="cap-row"><span class="cap-lbl">Disk</span><div class="cap-bar"><div class="cap-fill" style="width:41%;background:var(--green)"></div></div><span class="cap-pct">41%</span></div>
+      </div>
+      <div class="actions">
+        <button class="act-btn" title="Rescan"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg></button>
+        <button class="act-btn" title="Migrate VMs →"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+      </div>
+    </div>
+    <div class="hrow">
+      <div class="health warn"></div>
+      <div><div class="hname">HV-PROD-02</div><div class="hsub">192.168.10.22 · WinServer 2019 · vCPU oversub 2.1×</div></div>
+      <div class="metric" style="color:var(--red)">68<span class="metric-sub"> /32</span></div>
+      <div class="metric">11</div><div class="metric">32</div>
+      <div class="hardware">2× Xeon Silver 4214 · 128 GB</div>
+      <div class="boot">61d 2h</div>
+      <div class="cap-cell">
+        <div class="cap-row"><span class="cap-lbl">RAM</span><div class="cap-bar"><div class="cap-fill" style="width:91%;background:var(--red)"></div></div><span class="cap-pct crit">91%</span></div>
+        <div class="cap-row"><span class="cap-lbl">Disk</span><div class="cap-bar"><div class="cap-fill" style="width:34%;background:var(--green)"></div></div><span class="cap-pct">34%</span></div>
+      </div>
+      <div class="actions">
+        <button class="act-btn" title="Rescan"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg></button>
+        <button class="act-btn" title="Migrate VMs →"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- PROXMOX SECTION -->
+<div class="psec pve">
+  <div class="psec-hdr">
+    <div class="psec-ico"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 2 7v10l10 5 10-5V7z"/></svg></div>
+    <div>
+      <div class="psec-name">Proxmox VE</div>
+      <div class="psec-meta">3 nodes · 21 VMs · <span class="cluster-tag">cluster pve-cluster-01</span> · via REST + SSH</div>
+    </div>
+    <div class="psec-sp"></div>
+    <div class="caps">
+      <span class="cap on">Inventory</span>
+      <span class="cap on">Lifecycle</span>
+      <span class="cap on">Snapshot</span>
+      <span class="cap on">Live CPU%</span>
+      <span class="cap off">Migrate source</span>
+    </div>
+  </div>
+  <div class="hlist">
+    <div class="hrow head"><div></div><div>Node</div><div>vCPU</div><div>VMs</div><div>Cores</div><div>Hardware</div><div>Uptime</div><div>Capacity</div><div></div></div>
+    <div class="hrow">
+      <div class="health ok"></div>
+      <div><div class="hname">pve-node-01</div><div class="hsub">192.168.10.31 · PVE 8.2</div></div>
+      <div class="metric">24<span class="metric-sub"> /48</span></div>
+      <div class="metric">7</div><div class="metric">48</div>
+      <div class="hardware">EPYC 7402P · 512 GB</div>
+      <div class="boot">22d 8h</div>
+      <div class="cap-cell">
+        <!-- PVE: live CPU row in addition to RAM allocation -->
+        <div class="cap-row"><span class="cap-lbl">CPU</span><div class="cap-bar"><div class="cap-fill" style="width:18%;background:var(--green)"></div></div><span class="cap-pct">18%</span></div>
+        <div class="cap-row"><span class="cap-lbl">RAM</span><div class="cap-bar"><div class="cap-fill" style="width:38%;background:var(--green)"></div></div><span class="cap-pct">38%</span></div>
+      </div>
+      <div class="actions">
+        <button class="act-btn" title="Rescan"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg></button>
+        <button class="act-btn" disabled title="Migrate FROM Proxmox not supported"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+      </div>
+    </div>
+    <div class="hrow">
+      <div class="health ok"></div>
+      <div><div class="hname">pve-node-02</div><div class="hsub">192.168.10.32 · PVE 8.2</div></div>
+      <div class="metric">16<span class="metric-sub"> /48</span></div>
+      <div class="metric">5</div><div class="metric">48</div>
+      <div class="hardware">EPYC 7402P · 512 GB</div>
+      <div class="boot">22d 8h</div>
+      <div class="cap-cell">
+        <div class="cap-row"><span class="cap-lbl">CPU</span><div class="cap-bar"><div class="cap-fill" style="width:21%;background:var(--green)"></div></div><span class="cap-pct">21%</span></div>
+        <div class="cap-row"><span class="cap-lbl">RAM</span><div class="cap-bar"><div class="cap-fill" style="width:29%;background:var(--green)"></div></div><span class="cap-pct">29%</span></div>
+      </div>
+      <div class="actions">
+        <button class="act-btn" title="Rescan"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg></button>
+        <button class="act-btn" disabled title="Migrate FROM Proxmox not supported"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+      </div>
+    </div>
+    <div class="hrow">
+      <div class="health ok"></div>
+      <div><div class="hname">pve-node-03</div><div class="hsub">192.168.10.33 · PVE 8.2</div></div>
+      <div class="metric">12<span class="metric-sub"> /48</span></div>
+      <div class="metric">9</div><div class="metric">48</div>
+      <div class="hardware">EPYC 7402P · 512 GB</div>
+      <div class="boot">22d 8h</div>
+      <div class="cap-cell">
+        <div class="cap-row"><span class="cap-lbl">CPU</span><div class="cap-bar"><div class="cap-fill" style="width:44%;background:var(--green)"></div></div><span class="cap-pct">44%</span></div>
+        <div class="cap-row"><span class="cap-lbl">RAM</span><div class="cap-bar"><div class="cap-fill" style="width:61%;background:var(--yellow)"></div></div><span class="cap-pct warn">61%</span></div>
+      </div>
+      <div class="actions">
+        <button class="act-btn" title="Rescan"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg></button>
+        <button class="act-btn" disabled title="Migrate FROM Proxmox not supported"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="note">
+  <b>Direction B — platform-grouped sections.</b> Each platform owns a banded section with its own accent stripe, icon, transport line ("via VMentory Agent" / "via REST + SSH"), and a <b>per-platform capability legend</b> (the green/struck chips). This makes the providers' differing powers explicit at the section level rather than per-row — an operator immediately sees Proxmox can't be a migration source and Hyper-V has no live CPU%.<br>
+  • <b>Grouping = natural cluster home.</b> The PVE cluster tag lives in the section header; nodes nest under it without a per-row cluster column.<br>
+  • <b>Capability legend ≠ per-row gating.</b> The legend is informational; verbs are still gated per-row (disabled Migrate on PVE).<br>
+  • <b>Trade-off vs Direction A:</b> grouping is great when platforms behave differently, but it prevents a single global sort/filter across all hosts and uses more vertical space. Cross-platform questions ("which host is hottest, any platform?") are harder here than in the single list.
+</div>
+
+</body>
+</html>
