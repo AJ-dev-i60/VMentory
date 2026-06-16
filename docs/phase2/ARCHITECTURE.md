@@ -291,7 +291,24 @@ out of plaintext via `ISecretStore`.
 
 - **Datastore:** SQLite by default (single file in a mounted volume), Postgres as an opt-in for multi-instance. EF Core. **Single-operator — no `tenant_id`** (ENG-0006).
 - **Persisted:** provider/host registry, inventory snapshots (→ real historical diff, not just the session diff in [Store.cs](../../Store.cs)), **operations** jobs + steps + logs (migrate/deploy/backup/restore), the PKI allow/deny list (ENG-0005), audit trail. Secrets are stored **only via `ISecretStore`** — the registry references them by `secret_ref`, never embeds values.
-- **Secret handling (ENG-0002):** an **`ISecretStore` provider abstraction** (`get`/`set`/`rotate`/`delete`, audit-on-access). v1 impl = **app-native envelope encryption** — values encrypted with **AES-256-GCM** in SQLite under a per-DB **DEK**, the DEK wrapped by a **KEK injected at runtime** (Docker/Podman secret, systemd `LoadCredential`, or env var; operator-passphrase is an opt-in mode). Vault/OpenBao + Azure Key Vault are optional providers behind the same interface, later. The Phase-1 zero-on-dispose discipline in [Models.cs:121](../../Models.cs#L121) carries forward for in-memory secret material.
+- **Secret handling (ENG-0002):** an **`ISecretStore` provider abstraction** (`get`/`set`/`rotate`/`delete`, audit-on-access). v1 impl = **app-native envelope encryption** — values encrypted with **AES-256-GCM** in SQLite under a per-DB **DEK**, the DEK wrapped by a **KEK injected at runtime** (Docker/Podman secret, systemd `LoadCredential`, or env var; operator-passphrase is an opt-in mode). Vault/OpenBao + Azure Key Vault are optional providers behind the same interface, later. The Phase-1 zero-on-dispose discipline in [Models.cs:121](../../VMentory.Core/Models.cs#L121) carries forward for in-memory secret material.
+
+> **Built (slice 3, commit `a423a62`).** The host **registry** and inventory **snapshots** now exist
+> in [`VMentory.Core/Persistence`](../../VMentory.Core/Persistence) (EF Core + SQLite, `Initial`
+> migration): `HostRegistrationEntity` (`id, platform, address, use_global_creds, added_at` — **no
+> creds, no runtime/scan state**) and `InventorySnapshotEntity` (`id, host_id` FK cascade, `taken_at`,
+> `payload_json` = the scanned `Host` inventory serialized, creds excluded via `[JsonIgnore]`), behind
+> `IInventoryStore`/`EfInventoryStore`. The in-memory `Store` stays the working set: seeded from the
+> registry at startup and **written through** on host add/remove and snapshot-on-successful-scan. **The
+> diff is now snapshot-fed** — its "previous" is the latest two persisted snapshots, ordered by the
+> autoincrement `Id` (SQLite can't `ORDER BY` a `DateTimeOffset`), replacing the in-memory pre-scan
+> copy. Persistence is **always-on in real mode**, off under `--mock` (which registers no `DbContext`
+> and touches no disk); DB path = `VMENTORY_DB` env var (mounted volume) else
+> `%LocalAppData%\VMentory\vmentory.db`. `/api/quit` is now **graceful shutdown only** — it still zeroes
+> in-memory secrets but **does not purge** the persisted registry/snapshots.
+> **Deferred to their owning slices:** the `operations`/`jobs`, `secret_metadata`, `agent_identity`
+> (PKI), `audit_event`, and `app_user` tables; **secrets persist via `ISecretStore` only (ENG-0002,
+> next slice)** — until then restored hosts have null creds and must re-enter them.
 
 ### 4. Operations engine (generalized from the migration engine · ENG-0006)
 The original "migration job engine" generalizes into a **general operations engine**:
@@ -331,7 +348,7 @@ The Phase-1 model — random port, session token, 127.0.0.1 only ([Program.cs:82
 |---|---|
 | `Models.cs` domain types | **Generalize** into `VMentory.Core` domain |
 | `Scanner.cs` / `Reachability.cs` PowerShell logic | **Reimplement natively in .NET** inside `VMentory.Agent` (runs locally on host, ENG-0001/0004) — no Python, no winrun.py in the product |
-| `Store.cs` in-memory state | **Replaced** by persistence layer; keep the diff logic, back it with snapshots |
+| `Store.cs` in-memory state | **Kept as the in-memory working set, now seeded from + written through to the persistence layer** (slice 3) — not replaced; the diff logic is retained but fed from persisted snapshots |
 | `EventHub.cs` SSE | **Keep** — reuse for job/scan progress |
 | `Exporter.cs` | **Keep/extend** |
 | `wwwroot/index.html` SPA | **Evolve** — add provider switching, management verbs, the migration/deploy/backup wizards (design agent owns this) |

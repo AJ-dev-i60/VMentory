@@ -3,7 +3,7 @@
 > **Purpose:** pick up Phase 2 from a clean clone on any machine. Read this top-to-bottom and you
 > know where we are, what's decided, what's open, and what to do next.
 >
-> **Last updated:** 2026-06-16 · **Phase:** 2.0 foundation — implementation started (slices 1–2 landed) · **Branch:** `dev`
+> **Last updated:** 2026-06-16 · **Phase:** 2.0 foundation — implementation started (slices 1–3 landed) · **Branch:** `dev`
 
 ---
 
@@ -155,6 +155,13 @@ VMentory's migration engine — its step graph, safety rules, and scripts feed t
   `app_user.role` schema and every write verb's authorization. **Needs an owner decision** before 2.2
   auth hardening; specs note the dependency and proceed against a small fixed-role recommendation. See
   `discussions/0008-rbac-scoped-console-auth.md`.
+- **Persistence open questions — now active (slice 3 shipped).** Engineering agent to pick up, since
+  durable storage now exists: (a) **snapshot retention / cadence** — how often to snapshot and how long
+  to keep, to bound SQLite growth (no pruning today; every successful scan writes a snapshot); (b)
+  **DB at-rest encryption** — the DB holds no plaintext secrets, but inventory/audit may be sensitive
+  (encrypt the SQLite file / require encrypted Postgres, or treat the volume as the trust boundary).
+  Both are in `persistence-and-security.md §7`; consider promoting to ENG topics. **`ISecretStore`
+  (ENG-0002) is the next build slice** — until it lands, the registry persists **no** credentials.
 - **Docs reconciliation (held):** demote virt-v2v, ground `migration-job-model.md` in the skill,
   fold in the safety rules + scripts. Held pending owner review of the agents' first output.
 - **Review backlog:** the five specs and the four design mockups are first-drafts awaiting owner review.
