@@ -40,6 +40,7 @@ builder.WebHost.UseUrls($"http://127.0.0.1:{config.Port}");
 builder.Services.AddSingleton(config);
 builder.Services.AddSingleton(store);
 builder.Services.AddSingleton(hub);
+builder.Services.AddSingleton<IVirtualizationProvider, HyperVProvider>();
 builder.Services.AddHostedService<Poller>();
 builder.Services.ConfigureHttpJsonOptions(o =>
 {
@@ -131,7 +132,7 @@ app.MapPost("/api/credentials", async (HttpContext ctx, Store s, EventHub h) =>
 });
 
 // Add host(s)
-app.MapPost("/api/hosts", async (HttpContext ctx, Store s, EventHub h, AppConfig cfg) =>
+app.MapPost("/api/hosts", async (HttpContext ctx, Store s, EventHub h, AppConfig cfg, IVirtualizationProvider provider) =>
 {
     var body = await ctx.Request.ReadFromJsonAsync<AddHostsDto>();
     if (body == null || string.IsNullOrWhiteSpace(body.Addresses))
@@ -256,7 +257,7 @@ app.MapPost("/api/hosts", async (HttpContext ctx, Store s, EventHub h, AppConfig
                     var storedHost = s.GetHost(host.Id);
                     if (storedHost != null)
                     {
-                        (bool ok, string err) = await Scanner.QuickConnectAsync(storedHost, creds, cfg.WinRmPort);
+                        (bool ok, string err) = await provider.QuickConnectAsync(storedHost);
                         s.UpdateHost(host.Id, hh => { if (!ok) hh.AddError = err; hh.Connecting = false; });
                     }
                 }
@@ -295,7 +296,7 @@ app.MapDelete("/api/hosts/{id}", (string id, Store s, EventHub h) =>
 });
 
 // Trigger full scan (fire-and-forget — returns immediately while scans run in background)
-app.MapPost("/api/scan", async (HttpContext ctx, Store s, EventHub h, AppConfig cfg) =>
+app.MapPost("/api/scan", async (HttpContext ctx, Store s, EventHub h, AppConfig cfg, IVirtualizationProvider provider) =>
 {
     if (cfg.MockMode)
     {
@@ -347,7 +348,7 @@ app.MapPost("/api/scan", async (HttpContext ctx, Store s, EventHub h, AppConfig 
                 return;
             }
 
-            var (ok, err) = await Scanner.ScanHostAsync(host, creds, cfg.WinRmPort);
+            var (ok, err) = await provider.ScanAsync(host);
             var now = DateTimeOffset.UtcNow;
 
             s.UpdateHost(host.Id, hh =>

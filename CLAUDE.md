@@ -38,7 +38,11 @@ Update `STATUS.md` when you start a request (move to *In progress*) and when you
 _**Phase-2 layout (2.0 slice 1):** the solution `VMentory.sln` has two projects — **`VMentory.Core`** (classlib, `namespace VMentory.Core`, holds the domain model `Models.cs`) and **`VMentory.Web`** (the exe at repo root, `namespace VMentory.Web`, references Core; everything below except `Models.cs`). `Providers.*` / `Agent` projects come in later 2.0 slices._
 
 | `Program.cs` | Entry point: API routes, config, console loop, `ErrorLogger` |
-| `VMentory.Core/Models.cs` | All data types: `Host`, `Vm`, `Vhd`, `Volume`, `Credentials`, enums (in `VMentory.Core`) |
+| `VMentory.Core/Models.cs` | All data types: `Host` (incl. `Platform` discriminator), `Vm`, `Vhd`, `Volume`, `Credentials`, enums (in `VMentory.Core`) |
+| `VMentory.Core/IVirtualizationProvider.cs` | Provider abstraction (`Platform`, `Capabilities`, `QuickConnectAsync`, `ScanAsync`) — the Core↔platform seam |
+| `VMentory.Core/ProviderCapability.cs` | `[Flags]` capability enum + `ProviderCapabilities` (gates UI + ops engine; HV mgmt verbs allowed per ENG-0007) |
+| `VMentory.Core/PlatformKind.cs` | `HyperV` / `Proxmox` discriminator |
+| `HyperVProvider.cs` | `IVirtualizationProvider` for Hyper-V; wraps `Scanner`/`Reachability`, resolves creds from `Store`/`AppConfig`. Inventory reads (quick-connect, scan) now flow through this seam |
 | `Store.cs` | Thread-safe in-memory state (`ConcurrentDictionary`), diff, totals |
 | `Scanner.cs` | WinRM full-inventory scan + quick-connect via PowerShell `Invoke-Command` |
 | `Reachability.cs` | Ping / TCP / WinRM-auth checks + `RunPowerShellAsync` helper |

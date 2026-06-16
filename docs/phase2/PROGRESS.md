@@ -155,8 +155,19 @@ cadence — implementation is proceeding in parallel with the remaining doc prop
      and reproduces the full dashboard (HTML 200, `/api/state`, JSON export, auth gate). _(Env notes
      for this machine: .NET 8 SDK was installed and `nuget.org` added as a package source to enable
      the self-contained publish.)_
-   - Next: define `IVirtualizationProvider` + capability model (with HV management verbs);
-     persistence (SQLite/EF Core); `ISecretStore`; the NativeAOT agent + enrollment + internal CA.
+   - ✅ **Slice 2 (provider abstraction + capability model) done & verified:** `VMentory.Core` now
+     has `IVirtualizationProvider`, the full `[Flags] ProviderCapability` enum + `ProviderCapabilities`
+     (HV mgmt verbs allowed per ENG-0007), and `PlatformKind`; `Host` gained a `Platform` discriminator
+     (defaults HyperV). `HyperVProvider` (in `VMentory.Web`, wrapping `Scanner`/`Reachability`)
+     advertises `Inventory|LiveStats`, and the live HV inventory reads (quick-connect + `/api/scan`)
+     now flow through the seam. **Verified:** build 0/0; mock run unchanged with `platform:"HyperV"` on
+     every host + 401 auth gate; `dist\VMentory.exe` publishes and serves. _Provider lives in Web for
+     now (owner choice); `Providers.HyperV` deferred to the agent slice._
+   - Next: **persistence (SQLite/EF Core)** — host registry + inventory snapshots, migrate diff logic
+     onto snapshots; then `ISecretStore`; then the NativeAOT agent + enrollment + internal CA. Verb
+     methods (lifecycle/migration) + `ProxmoxProvider` land in 2.2 / 2.1.
+   - **Auth:** scoped/role-based console access (backup-operator vs vm-operator vs admin) raised by the
+     owner → **ENG-0008 (Open)** in the register; to be designed before 2.2 auth hardening.
 3. Owner reviews the five specs (`docs/phase2/specs/`) and the four design mockups (`design/`).
 4. Reconcile the migration docs (virt-v2v → qm-importdisk, fold in the skill).
 
