@@ -12,6 +12,7 @@ Protocol in [README.md](README.md). Don't re-open a **Decided** topic without su
 | [ENG-0005](discussions/0005-mtls-pki-ownership.md) | mTLS PKI ownership (agent enrollment & trust) | **Decided** (private CA in Core + external seam; root+intermediate; short-lived certs + auto-renew) | agent-protocol spec, persistence-and-security spec, ROADMAP 2.0 | human |
 | [ENG-0006](discussions/0006-product-scope-four-pillars.md) | Product scope: four-pillar platform (Observe/Migrate/Deploy/Backup) & sequencing | **Decided** (4 pillars on shared foundation; Observe→Migrate→Deploy→Backup; bidirectional migration HV→PVE first; backup buy-vs-build deferred) | ARCHITECTURE, ROADMAP, all specs, design | human |
 | [ENG-0007](discussions/0007-product-strategy-release-scope.md) | Product strategy & release-1 scope: Proxmox-first, HV-as-managed-source, incremental shipping | **Decided** (Proxmox-first super-tool; incremental per-milestone releases, v2.0=planted Observe; HV=light management not parity → provider capability model must allow HV management verbs; weighting Observe→Proxmox mgmt/Deploy→HV→PVE migration; PVE→HV reverse + Backup out of release 1; refines/sequences ENG-0006) | ROADMAP, ARCHITECTURE, PROGRESS, design, ENG-0006 | human |
+| [ENG-0008](discussions/0008-rbac-scoped-console-auth.md) | RBAC / scoped roles for the web console (e.g. backup-operator vs vm-operator vs admin) | **Open** | ARCHITECTURE §Security, ROADMAP 2.2 (auth hardening), persistence schema, all write verbs | human |
 
 <!-- Add new rows at the bottom. Keep IDs sequential. -->
 
