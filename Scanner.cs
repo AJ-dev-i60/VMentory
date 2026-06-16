@@ -1,7 +1,9 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
-namespace HyperInventory;
+using VMentory.Core;
+
+namespace VMentory.Web;
 
 public static class Scanner
 {

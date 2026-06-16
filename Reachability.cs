@@ -2,7 +2,9 @@ using System.Diagnostics;
 using System.Net.Sockets;
 using System.Text.Json;
 
-namespace HyperInventory;
+using VMentory.Core;
+
+namespace VMentory.Web;
 
 public static class ReachabilityChecker
 {

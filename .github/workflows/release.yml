@@ -26,7 +26,7 @@ jobs:
       - name: Publish
         shell: pwsh
         run: |
-          dotnet publish `
+          dotnet publish VMentory.Web.csproj `
             -c Release `
             -r win-x64 `
             --self-contained true `

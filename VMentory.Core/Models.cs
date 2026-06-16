@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace HyperInventory;
+namespace VMentory.Core;
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum AuthState { Unknown, Ok, Failed }

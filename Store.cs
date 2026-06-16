@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
 
-namespace HyperInventory;
+using VMentory.Core;
+
+namespace VMentory.Web;
 
 // Thread-safe in-memory state — no disk writes, no persistence.
 public class Store

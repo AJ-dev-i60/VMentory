@@ -43,7 +43,7 @@ milestone reflects.
 storage**, zero behaviour regression vs Phase 1. **This is a shippable release** (ENG-0007): the
 Phase-1 dashboard, now durable, is usable on its own before management or migration exist.
 
-- [ ] Rename `HyperInventory` → `VMentory.*`; split into `Core` / `Providers.*` / `Web` / `Agent` projects.
+- [~] Rename `HyperInventory` → `VMentory.*`; split into `Core` / `Providers.*` / `Web` / `Agent` projects. **Slice 1 done:** `VMentory.sln` + `VMentory.Core` (domain) + `VMentory.Web` (exe) stood up, namespace renamed, zero behavior change. `Providers.HyperV` / `Providers.Proxmox` / `Agent` projects deferred to their own slices.
 - [ ] Define `IVirtualizationProvider` + **capability model with management verbs gated per provider** (ENG-0007); generalize `Models.cs` into platform-neutral domain. **The capability model must allow management verbs (start/stop/reconfigure) on the Hyper-V provider — not source-only** — so 2.2 light HV management lands without reworking the abstraction (see [ARCHITECTURE.md → Capability model](ARCHITECTURE.md#capability-model--management-verbs-are-capability-gated-per-provider-eng-0007)).
 - [ ] Build **VMentory.Agent** (ENG-0004): **NativeAOT single binary**, Windows Service (+ systemd unit), **constrained verb executor**. Reimplement `Scanner.cs` / `Reachability.cs` logic **natively in .NET** to run locally on the host (no winrun.py / Python, ENG-0001).
 - [ ] Core↔Agent transport: **gRPC over HTTP/2 + mTLS** (ENG-0004); versioned verb contract (source-gen) + capability negotiation.

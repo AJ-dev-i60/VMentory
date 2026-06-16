@@ -2,7 +2,9 @@ using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
 
-namespace HyperInventory;
+using VMentory.Core;
+
+namespace VMentory.Web;
 
 // Manages SSE subscriber channels and broadcasts events to all connected clients.
 public class EventHub

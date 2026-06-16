@@ -1,4 +1,6 @@
-namespace HyperInventory;
+using VMentory.Core;
+
+namespace VMentory.Web;
 
 // Background service: re-checks reachability (ICMP + WinRM port + auth) every 30s.
 // Does NOT re-scan inventory.

@@ -35,8 +35,10 @@ Update `STATUS.md` when you start a request (move to *In progress*) and when you
 
 | File | Purpose |
 |---|---|
+_**Phase-2 layout (2.0 slice 1):** the solution `VMentory.sln` has two projects — **`VMentory.Core`** (classlib, `namespace VMentory.Core`, holds the domain model `Models.cs`) and **`VMentory.Web`** (the exe at repo root, `namespace VMentory.Web`, references Core; everything below except `Models.cs`). `Providers.*` / `Agent` projects come in later 2.0 slices._
+
 | `Program.cs` | Entry point: API routes, config, console loop, `ErrorLogger` |
-| `Models.cs` | All data types: `Host`, `Vm`, `Vhd`, `Volume`, `Credentials`, enums |
+| `VMentory.Core/Models.cs` | All data types: `Host`, `Vm`, `Vhd`, `Volume`, `Credentials`, enums (in `VMentory.Core`) |
 | `Store.cs` | Thread-safe in-memory state (`ConcurrentDictionary`), diff, totals |
 | `Scanner.cs` | WinRM full-inventory scan + quick-connect via PowerShell `Invoke-Command` |
 | `Reachability.cs` | Ping / TCP / WinRM-auth checks + `RunPowerShellAsync` helper |
@@ -46,7 +48,9 @@ Update `STATUS.md` when you start a request (move to *In progress*) and when you
 | `Exporter.cs` | CSV zip + JSON export |
 | `Updater.cs` | GitHub Releases auto-update: apply-on-launch + background download |
 | `wwwroot/index.html` | Entire SPA (CSS + JS inline, ~1600 lines) |
-| `HyperInventory.csproj` | SDK Web project; `AssemblyName=VMentory`; `Version` defaults to `1.0.0` |
+| `VMentory.Web.csproj` | SDK Web project (the exe); `AssemblyName=VMentory`; `Version` defaults to `1.0.0`; references `VMentory.Core` |
+| `VMentory.Core/VMentory.Core.csproj` | Classlib SDK project; domain model |
+| `VMentory.sln` | Solution tying `VMentory.Web` + `VMentory.Core` together |
 | `build.ps1` | Release build: `dotnet publish` win-x64 single-file → `dist\VMentory.exe` |
 | `.github/workflows/release.yml` | CI: push `v*` tag → build → GitHub Release with `VMentory.exe` asset |
 
@@ -55,9 +59,9 @@ Update `STATUS.md` when you start a request (move to *In progress*) and when you
 ## Dev commands
 
 ```powershell
-dotnet run -- --mock                # dev mode: 5 fake hosts, no real WinRM
-dotnet run -- --mock --no-update    # same, skip GitHub update check
-dotnet build                        # compile check
+dotnet run --project VMentory.Web -- --mock              # dev mode: 5 fake hosts, no real WinRM
+dotnet run --project VMentory.Web -- --mock --no-update  # same, skip GitHub update check
+dotnet build VMentory.sln                                # compile check (whole solution)
 .\build.ps1                         # release exe → dist\VMentory.exe
 .\build.ps1 -Version 1.2.0          # embed specific version number
 ```
@@ -94,7 +98,7 @@ All `/api/*` routes require `X-Session-Token` header or `?token=` query param.
 
 1. **PowerShell scripts use `string.Format()`** — never raw string literals (`$"""..."""`). C# interpolation braces conflict with PowerShell `{}` blocks. See `Scanner.cs:BuildRemoteWrapper` and `Reachability.cs`.
 
-2. **`HyperInventory.Host` must be fully qualified** in `Program.cs` — ambiguous with `Microsoft.Extensions.Hosting.Host`. Two locations: snapshot lambda and `AddHost` call.
+2. **`VMentory.Core.Host` must be fully qualified** in `Program.cs` — ambiguous with `Microsoft.Extensions.Hosting.Host`. Three locations: the `hostsToCheck` list, the `AddHost` call, and the snapshot lambda.
 
 3. **HTML served via `Assembly.GetManifestResourceStream()`** — not `StaticFiles` or `ManifestEmbeddedFileProvider` (that requires a NuGet package unavailable offline). See `LoadEmbeddedHtml()` in `Program.cs` and `<EmbeddedResource>` in the csproj.
 

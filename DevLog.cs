@@ -1,6 +1,8 @@
 using System.Text.RegularExpressions;
 
-namespace HyperInventory;
+using VMentory.Core;
+
+namespace VMentory.Web;
 
 // Dev-only verbose console logger. Compile into release builds too — gated by Verbose flag so zero cost when off.
 public static partial class DevLog

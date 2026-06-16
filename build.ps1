@@ -14,7 +14,7 @@ Write-Host "Building VMentory..." -ForegroundColor Cyan
 
 $versionFlag = if ($Version) { "-p:Version=$Version" } else { "" }
 
-dotnet publish `
+dotnet publish VMentory.Web.csproj `
     -c Release `
     -r win-x64 `
     --self-contained true `

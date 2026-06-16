@@ -1,4 +1,6 @@
-namespace HyperInventory;
+using VMentory.Core;
+
+namespace VMentory.Web;
 
 // Generates realistic fake data for --mock mode (no real WinRM calls).
 public static class MockData

@@ -3,7 +3,7 @@
 > **Purpose:** pick up Phase 2 from a clean clone on any machine. Read this top-to-bottom and you
 > know where we are, what's decided, what's open, and what to do next.
 >
-> **Last updated:** 2026-06-16 · **Phase:** planning (pre-implementation) · **Branch:** `dev`
+> **Last updated:** 2026-06-16 · **Phase:** 2.0 foundation — implementation started (slice 1 landed) · **Branch:** `dev`
 
 ---
 
@@ -138,15 +138,25 @@ VMentory's migration engine — its step graph, safety rules, and scripts feed t
 
 ## 5. Immediate next steps (suggested order)
 
-**Build is starting now at the 2.0 foundation (planted Observe)** under the ENG-0007 incremental
-cadence — implementation begins in parallel with the remaining doc propagation below.
+**Build has started at the 2.0 foundation (planted Observe)** under the ENG-0007 incremental
+cadence — implementation is proceeding in parallel with the remaining doc propagation below.
 
-1. **Propagate ENG-0007** into **ROADMAP.md** (release definitions/sequencing aligned to incremental
-   shipping: v2.0 planted Observe → Proxmox mgmt/Deploy → HV→PVE; PVE→HV and Backup deferred) and
-   **ARCHITECTURE.md** (extend the `IVirtualizationProvider` capability model so **HV supports
-   management verbs**, not source-only).
+1. ✅ **Propagate ENG-0007** into **ROADMAP.md** and **ARCHITECTURE.md** (release
+   definitions/sequencing + `IVirtualizationProvider` capability model with HV management verbs) —
+   **done**, committed `087b260` / `8c216ae`.
 2. **Begin 2.0 foundation:** plant Observe — rename `HyperInventory` → `VMentory.*`, split projects,
    add persistence, define `IVirtualizationProvider` + capability model (with HV management verbs).
+   - ✅ **Slice 1 (project split + rename) done & verified:** `VMentory.sln` + `VMentory.Core`
+     (domain) + `VMentory.Web` (exe) stood up, namespace `HyperInventory` → `VMentory.*` across all
+     files, build scripts retargeted, zero behavior change. `Providers.*` / `Agent` projects deferred
+     to their slices. **Verified:** `dotnet build` clean (0/0); mock-mode run serves the SPA + returns
+     the 5 mock hosts with correct VM counts/totals + enforces the auth token (401); `build.ps1`
+     produces `dist\VMentory.exe` (45 MB), and the **published exe itself** was launched (elevated)
+     and reproduces the full dashboard (HTML 200, `/api/state`, JSON export, auth gate). _(Env notes
+     for this machine: .NET 8 SDK was installed and `nuget.org` added as a package source to enable
+     the self-contained publish.)_
+   - Next: define `IVirtualizationProvider` + capability model (with HV management verbs);
+     persistence (SQLite/EF Core); `ISecretStore`; the NativeAOT agent + enrollment + internal CA.
 3. Owner reviews the five specs (`docs/phase2/specs/`) and the four design mockups (`design/`).
 4. Reconcile the migration docs (virt-v2v → qm-importdisk, fold in the skill).
 

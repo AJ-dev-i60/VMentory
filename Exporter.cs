@@ -2,7 +2,9 @@ using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
 
-namespace HyperInventory;
+using VMentory.Core;
+
+namespace VMentory.Web;
 
 public static class Exporter
 {

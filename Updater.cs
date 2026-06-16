@@ -3,7 +3,9 @@ using System.Net.Http.Headers;
 using System.Reflection;
 using System.Text.Json.Nodes;
 
-namespace HyperInventory;
+using VMentory.Core;
+
+namespace VMentory.Web;
 
 public static class Updater
 {

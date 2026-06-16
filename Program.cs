@@ -3,7 +3,8 @@ using System.Reflection;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using HyperInventory;
+using VMentory.Core;
+using VMentory.Web;
 
 // ── Logging: errors only, no host/PII data ───────────────────────────────────
 
@@ -151,10 +152,10 @@ app.MapPost("/api/hosts", async (HttpContext ctx, Store s, EventHub h, AppConfig
 
     // Add all hosts to the store immediately so they appear in the UI right away,
     // then run DNS / reachability / auth checks in the background.
-    var hostsToCheck = new List<HyperInventory.Host>();
+    var hostsToCheck = new List<VMentory.Core.Host>();
     foreach (var addr in addresses)
     {
-        var host = new HyperInventory.Host
+        var host = new VMentory.Core.Host
         {
             Address = addr,
             Fqdn = addr,
@@ -319,7 +320,7 @@ app.MapPost("/api/scan", async (HttpContext ctx, Store s, EventHub h, AppConfig 
         return Results.Ok(new { ok = false, message = "No hosts with valid auth to scan" });
 
     // Snapshot VMs before scan for diff computation
-    var snapshot = s.GetAllHosts().Select(h => new HyperInventory.Host
+    var snapshot = s.GetAllHosts().Select(h => new VMentory.Core.Host
     {
         Id = h.Id,
         Vms = [.. h.Vms.Select(v => new Vm
