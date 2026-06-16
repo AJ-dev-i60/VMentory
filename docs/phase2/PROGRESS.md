@@ -91,6 +91,11 @@ The target design is in [ARCHITECTURE.md](ARCHITECTURE.md); the milestone plan i
   enum + `ProviderCapabilities` record, `PlatformKind`, and a `Host.Platform` discriminator.
   `HyperVProvider` (in `VMentory.Web`) advertises `Inventory|LiveStats` and the live HV inventory reads
   now flow through the seam.
+- **Persistence** (slice 3) in `VMentory.Core/Persistence`: EF Core + SQLite (`VMentoryDbContext`,
+  `HostRegistrationEntity` + `InventorySnapshotEntity`, `IInventoryStore`/`EfInventoryStore`, `Initial`
+  migration). Host registry + inventory snapshots persist; the diff is fed from persisted snapshots;
+  always-on in real mode, **`--mock` stays ephemeral**; DB path via `VMENTORY_DB` (container → volume).
+  **No secrets persisted** (await `ISecretStore`); `/api/quit` is now graceful-shutdown (no purge).
 
 ### Planning docs (`docs/phase2/`)
 - `ARCHITECTURE.md` — target topology, `IVirtualizationProvider` model, persistence, migration engine, carry-over table.
@@ -184,9 +189,15 @@ cadence — implementation is proceeding in parallel with the remaining doc prop
      now flow through the seam. **Verified:** build 0/0; mock run unchanged with `platform:"HyperV"` on
      every host + 401 auth gate; `dist\VMentory.exe` publishes and serves. _Provider lives in Web for
      now (owner choice); `Providers.HyperV` deferred to the agent slice._
-   - Next: **persistence (SQLite/EF Core)** — host registry + inventory snapshots, migrate diff logic
-     onto snapshots; then `ISecretStore`; then the NativeAOT agent + enrollment + internal CA. Verb
-     methods (lifecycle/migration) + `ProxmoxProvider` land in 2.2 / 2.1.
+   - ✅ **Slice 3 (persistence) done & verified:** EF Core + SQLite in `VMentory.Core/Persistence`
+     (`Initial` migration). Host registry + inventory snapshots persist; diff fed from persisted
+     snapshots; `--mock` ephemeral; `VMENTORY_DB` env override; no secrets persisted; `/api/quit`
+     graceful (no purge). **Verified:** build 0/0; add-host→restart→persists→delete→gone; mock writes
+     no DB; single-file `dist\VMentory.exe` loads the SQLite native lib + persists. _(Scan-driven
+     snapshot save is wired + code-traced; full exercise needs a real WinRM host.)_
+   - Next: **`ISecretStore`** (envelope encryption, runtime-injected KEK — ENG-0002) so creds/tokens
+     can persist; then the NativeAOT agent + enrollment + internal CA. Verb methods
+     (lifecycle/migration) + `ProxmoxProvider` land in 2.2 / 2.1.
    - **Auth:** scoped/role-based console access (backup-operator vs vm-operator vs admin) raised by the
      owner → **ENG-0008 (Open)** in the register; to be designed before 2.2 auth hardening.
 3. Owner reviews the five specs (`docs/phase2/specs/`) and the four design mockups (`design/`).

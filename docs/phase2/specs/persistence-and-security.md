@@ -88,6 +88,16 @@ before relying on cross-session diffs.
 
 ---
 
+> **Built so far (slice 3, 2.0 persistence).** Only two of the sketched tables exist today:
+> `host` (as `HostRegistrationEntity` — `id, platform, address, use_global_creds, added_at`) and
+> `inventory_snapshot` (`id, host_id, taken_at, payload_json`) in `VMentory.Core/Persistence`
+> (EF Core + SQLite, `Initial` migration). The diff is **already snapshot-fed** (latest two snapshots,
+> ordered by the autoincrement `id` — SQLite can't `ORDER BY` a `DateTimeOffset`). **Not yet built:**
+> `provider_registration`, `vm_record`, `operation_*`, `secret_metadata`, `agent_identity`,
+> `audit_event`, `app_user` — they arrive with their owning slices (`ISecretStore`, the agent/PKI,
+> the operations engine, auth). **No credentials persist yet** — there is no `secret_ref` wiring until
+> `ISecretStore` lands; restored hosts have null creds.
+
 ## 2. What is persisted
 
 - Provider/host **registry** (addresses, display names, cached capabilities, **secret refs**).

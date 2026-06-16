@@ -13,6 +13,11 @@ VMentory-update.exe
 VMentory-update.tmp
 VMentory.bak.exe
 
+## SQLite database (runtime data + EF design-time db) — never commit
+*.db
+*.db-wal
+*.db-shm
+
 ## Secrets / local config — never commit these
 .env
 .env.*

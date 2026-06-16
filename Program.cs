@@ -3,7 +3,9 @@ using System.Reflection;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.EntityFrameworkCore;
 using VMentory.Core;
+using VMentory.Core.Persistence;
 using VMentory.Web;
 
 // ── Logging: errors only, no host/PII data ───────────────────────────────────
@@ -17,14 +19,17 @@ Updater.ApplyPendingUpdate(logWriter);
 
 // ── Configuration ────────────────────────────────────────────────────────────
 
+var mockMode = args.Contains("--mock");
 var config = new AppConfig
 {
-    MockMode = args.Contains("--mock"),
+    MockMode = mockMode,
     NoUpdate = args.Contains("--no-update"),
     VerboseMode = args.Contains("--verbose"),
     Port = FindFreePort(),
     Token = GenerateToken(),
     WinRmPort = 5985,
+    Persist = !mockMode,
+    DbPath = ResolveDbPath(),
 };
 
 DevLog.Verbose = config.VerboseMode;
@@ -42,6 +47,14 @@ builder.Services.AddSingleton(store);
 builder.Services.AddSingleton(hub);
 builder.Services.AddSingleton<IVirtualizationProvider, HyperVProvider>();
 builder.Services.AddHostedService<Poller>();
+
+// Persistence (slice 3): durable host registry + inventory snapshots. Off in mock mode — nothing
+// touches disk there. The in-memory Store stays the working set; IInventoryStore is write-through.
+if (config.Persist)
+{
+    builder.Services.AddDbContext<VMentoryDbContext>(o => o.UseSqlite($"Data Source={config.DbPath}"));
+    builder.Services.AddScoped<IInventoryStore, EfInventoryStore>();
+}
 builder.Services.ConfigureHttpJsonOptions(o =>
 {
     o.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
@@ -66,6 +79,18 @@ if (config.MockMode)
 // ── Build app ────────────────────────────────────────────────────────────────
 
 var app = builder.Build();
+
+// ── Persistence: apply migrations + reload the registered hosts (non-mock) ─────
+if (config.Persist)
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<VMentoryDbContext>();
+    db.Database.Migrate();
+
+    var invStore = scope.ServiceProvider.GetRequiredService<IInventoryStore>();
+    foreach (var h in await invStore.LoadRegistryAsync())
+        store.AddHost(h);
+}
 
 // All responses: no caching
 app.Use(async (ctx, next) =>
@@ -111,7 +136,8 @@ app.MapGet("/api/state", (Store s, AppConfig cfg) => Results.Ok(new
     mockMode = cfg.MockMode,
 }));
 
-// Quit (purge + shutdown)
+// Quit (graceful shutdown). Zeroes in-memory secrets/state; persisted registry + snapshots are KEPT
+// (a service keeps its memory — the DB lives in a volume). No data purge.
 app.MapPost("/api/quit", (Store s, IHostApplicationLifetime life) =>
 {
     s.ClearAll();
@@ -132,7 +158,7 @@ app.MapPost("/api/credentials", async (HttpContext ctx, Store s, EventHub h) =>
 });
 
 // Add host(s)
-app.MapPost("/api/hosts", async (HttpContext ctx, Store s, EventHub h, AppConfig cfg, IVirtualizationProvider provider) =>
+app.MapPost("/api/hosts", async (HttpContext ctx, Store s, EventHub h, AppConfig cfg, IVirtualizationProvider provider, IServiceScopeFactory scopeFactory) =>
 {
     var body = await ctx.Request.ReadFromJsonAsync<AddHostsDto>();
     if (body == null || string.IsNullOrWhiteSpace(body.Addresses))
@@ -169,6 +195,15 @@ app.MapPost("/api/hosts", async (HttpContext ctx, Store s, EventHub h, AppConfig
         s.AddHost(host);
         h.Broadcast("hostAdded", host);
         hostsToCheck.Add(host);
+    }
+
+    // Persist the registry entries so the hosts survive restart (no creds — those aren't persisted).
+    if (cfg.Persist && hostsToCheck.Count > 0)
+    {
+        using var scope = scopeFactory.CreateScope();
+        var invStore = scope.ServiceProvider.GetRequiredService<IInventoryStore>();
+        foreach (var host in hostsToCheck)
+            await invStore.UpsertRegistrationAsync(host);
     }
 
     _ = Task.Run(async () =>
@@ -288,15 +323,23 @@ app.MapPost("/api/hosts", async (HttpContext ctx, Store s, EventHub h, AppConfig
 });
 
 // Remove host
-app.MapDelete("/api/hosts/{id}", (string id, Store s, EventHub h) =>
+app.MapDelete("/api/hosts/{id}", async (string id, Store s, EventHub h, AppConfig cfg, IServiceScopeFactory scopeFactory) =>
 {
     if (!s.RemoveHost(id)) return Results.NotFound();
+
+    if (cfg.Persist)
+    {
+        using var scope = scopeFactory.CreateScope();
+        var invStore = scope.ServiceProvider.GetRequiredService<IInventoryStore>();
+        await invStore.RemoveAsync(id);   // cascades the host's snapshots
+    }
+
     h.Broadcast("hostRemoved", new { hostId = id });
     return Results.Ok(new { ok = true });
 });
 
 // Trigger full scan (fire-and-forget — returns immediately while scans run in background)
-app.MapPost("/api/scan", async (HttpContext ctx, Store s, EventHub h, AppConfig cfg, IVirtualizationProvider provider) =>
+app.MapPost("/api/scan", async (HttpContext ctx, Store s, EventHub h, AppConfig cfg, IVirtualizationProvider provider, IServiceScopeFactory scopeFactory) =>
 {
     if (cfg.MockMode)
     {
@@ -320,15 +363,14 @@ app.MapPost("/api/scan", async (HttpContext ctx, Store s, EventHub h, AppConfig 
     if (hosts.Count == 0)
         return Results.Ok(new { ok = false, message = "No hosts with valid auth to scan" });
 
-    // Snapshot VMs before scan for diff computation
-    var snapshot = s.GetAllHosts().Select(h => new VMentory.Core.Host
+    // Previous inventory for the diff comes from the latest persisted snapshots (survives restart) —
+    // "migrate diff logic onto snapshots" (ROADMAP 2.0). Loaded before this scan writes new ones.
+    List<VMentory.Core.Host> previous;
     {
-        Id = h.Id,
-        Vms = [.. h.Vms.Select(v => new Vm
-        {
-            Name = v.Name, HostId = v.HostId, VCpuCount = v.VCpuCount, AssignedRamMb = v.AssignedRamMb
-        })]
-    }).ToList();
+        using var scope = scopeFactory.CreateScope();
+        var invStore = scope.ServiceProvider.GetRequiredService<IInventoryStore>();
+        previous = await invStore.GetLatestSnapshotHostsAsync(s.GetAllHosts().Select(hh => hh.Id));
+    }
 
     // Run scans with max 3 concurrent
     var sem = new SemaphoreSlim(3, 3);
@@ -381,6 +423,18 @@ app.MapPost("/api/scan", async (HttpContext ctx, Store s, EventHub h, AppConfig 
                 }
             });
 
+            // Persist a snapshot of the freshly scanned inventory (the historical record + next diff base).
+            if (ok)
+            {
+                var scanned = s.GetHost(host.Id);
+                if (scanned != null)
+                {
+                    using var scope = scopeFactory.CreateScope();
+                    var invStore = scope.ServiceProvider.GetRequiredService<IInventoryStore>();
+                    await invStore.SaveSnapshotAsync(scanned);
+                }
+            }
+
             h.Broadcast("scanProgress", new
             {
                 hostId = host.Id,
@@ -403,7 +457,7 @@ app.MapPost("/api/scan", async (HttpContext ctx, Store s, EventHub h, AppConfig 
 
     _ = Task.WhenAll(tasks).ContinueWith(_ =>
     {
-        s.RecordDiff(snapshot);
+        s.RecordDiff(previous);
         h.Broadcast("scanComplete", new { totals = s.ComputeTotals(), diff = s.GetDiff() });
     });
 
@@ -465,7 +519,7 @@ if (config.VerboseMode)
 }
 Console.WriteLine($"\n  URL   : {url}");
 Console.WriteLine($"  Token : {config.Token}");
-Console.WriteLine("\n  Press Q to quit and purge data");
+Console.WriteLine("\n  Press Q to quit");
 Console.WriteLine("  Press R to re-open browser\n");
 
 await app.StartAsync();
@@ -501,8 +555,8 @@ _ = Task.Run(async () =>
 });
 
 await app.WaitForShutdownAsync();
-store.ClearAll();
-Console.WriteLine("  Session data purged. Goodbye.");
+store.ClearAll();   // zero in-memory secrets/state; persisted data is kept
+Console.WriteLine("  Goodbye.");
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -534,6 +588,19 @@ static string GenerateToken()
         .Replace('+', '-').Replace('/', '_').TrimEnd('=');
 }
 
+// SQLite file path: VMENTORY_DB env var (the container points this at a mounted volume), else a
+// per-user app-data file. The directory is created if missing.
+static string ResolveDbPath()
+{
+    var fromEnv = Environment.GetEnvironmentVariable("VMENTORY_DB");
+    if (!string.IsNullOrWhiteSpace(fromEnv)) return fromEnv;
+
+    var dir = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VMentory");
+    Directory.CreateDirectory(dir);
+    return Path.Combine(dir, "vmentory.db");
+}
+
 static void OpenBrowser(string url)
 {
     try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); }
@@ -556,6 +623,11 @@ public class AppConfig
     public int Port { get; init; }
     public string Token { get; init; } = "";
     public int WinRmPort { get; set; } = 5985;
+
+    // Persistence (slice 3). Off in mock mode (stays ephemeral). DbPath is the SQLite file;
+    // VMENTORY_DB overrides it (the container points this at a mounted volume).
+    public bool Persist { get; init; }
+    public string DbPath { get; init; } = "";
 }
 
 // ── Error logger (errors only, no PII) ────────────────────────────────────────

@@ -45,6 +45,8 @@ _**Phase-2 layout (2.0 slice 1):** the solution `VMentory.sln` has two projects 
 | `VMentory.Core/IVirtualizationProvider.cs` | Provider abstraction (`Platform`, `Capabilities`, `QuickConnectAsync`, `ScanAsync`) — the Core↔platform seam |
 | `VMentory.Core/ProviderCapability.cs` | `[Flags]` capability enum + `ProviderCapabilities` (gates UI + ops engine; HV mgmt verbs allowed per ENG-0007) |
 | `VMentory.Core/PlatformKind.cs` | `HyperV` / `Proxmox` discriminator |
+| `VMentory.Core/Persistence/` | EF Core SQLite layer: `VMentoryDbContext`, entities (`HostRegistrationEntity`, `InventorySnapshotEntity`), `IInventoryStore` + `EfInventoryStore`, design-time factory. Durable host registry + inventory snapshots (no secrets persisted) |
+| `VMentory.Core/Migrations/` | EF Core migrations (`Initial`); applied via `Database.Migrate()` at startup |
 | `GlobalUsings.cs` | Project-wide `global using Host = VMentory.Core.Host;` alias (resolves the domain-vs-framework `Host` ambiguity after the Core/Web split — see gotcha #2) |
 | `HyperVProvider.cs` | `IVirtualizationProvider` for Hyper-V; wraps `Scanner`/`Reachability`, resolves creds from `Store`/`AppConfig`. Inventory reads (quick-connect, scan) now flow through this seam |
 | `Store.cs` | Thread-safe in-memory state (`ConcurrentDictionary`), diff, totals |
@@ -96,7 +98,7 @@ git push && git push --tags         # Actions builds and publishes the release a
 | GET | `/api/events` | SSE stream — token via `?token=` query param |
 | GET | `/api/export/json` | Download JSON export |
 | GET | `/api/export/csv` | Download CSV zip |
-| POST | `/api/quit` | Purge session data + shutdown |
+| POST | `/api/quit` | Graceful shutdown (zeroes in-memory secrets; persisted data is kept) |
 
 All `/api/*` routes require `X-Session-Token` header or `?token=` query param.
 
@@ -115,3 +117,7 @@ All `/api/*` routes require `X-Session-Token` header or `?token=` query param.
 5. **Publish flags are CLI-only** — adding `-r win-x64` to the csproj breaks offline `dotnet restore`. Always pass via `build.ps1` or explicit `dotnet publish` flags.
 
 6. **Auto-update skips dev mode** — `Updater` checks `Path.GetFileName(ProcessPath) == "VMentory.exe"`; `dotnet run` never triggers update logic.
+
+7. **Persistence (slice 3): always-on in real mode, ephemeral in `--mock`.** SQLite via EF Core. DB path = `VMENTORY_DB` env var (the container points this at a mounted volume) else `%LocalAppData%\VMentory\vmentory.db`. **`--mock` registers no DB and writes nothing to disk.** Only the **host registry** + **inventory snapshots** persist; **credentials are never persisted** (ENG-0002 — wait for `ISecretStore`), so restored hosts need creds re-entered. The in-memory `Store` is still the working set; `IInventoryStore` is write-through (add/remove host, snapshot-on-scan) and seeds `Store` at startup.
+
+8. **EF Core / SQLite gotchas:** (a) SQLite **can't `ORDER BY` a `DateTimeOffset`** — order snapshots by the autoincrement `Id` (higher = newer), not `TakenAt`. (b) Migrations live in `VMentory.Core`; **rebuild after `dotnet ef migrations add`** or the running DLL won't contain the new migration and `Migrate()` creates an empty DB. (c) The single-file exe bundles the SQLite native lib via the existing `IncludeNativeLibrariesForSelfExtract=true` — verified working. (d) Generate migrations with `dotnet ef migrations add <Name> --project VMentory.Core --startup-project VMentory.Core` (a design-time factory avoids running the web app).
