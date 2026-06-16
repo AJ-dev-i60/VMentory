@@ -1,14 +1,21 @@
 # VMentory
 
-> **Phase 2 implementation has started (2.0 foundation, slices 1–2 landed).** This document still
-> describes the shipping Phase-1 app (below); Phase 2 turns VMentory into a
-> **container-based, single-operator, multi-platform (Hyper-V + Proxmox) platform** with on-device
-> agents, delivering **four pillars on one shared foundation** —
-> **Observe → Migrate → Deploy → Backup** (ENG-0006). The shared foundation is a .NET-native agent
-> (gRPC/mTLS, ENG-0001/0004), `ISecretStore` (ENG-0002), a private-CA PKI (ENG-0005), persistence,
-> and a general operations engine. **Already built:** the `VMentory.Core`/`VMentory.Web` project
-> split (slice 1) and the `IVirtualizationProvider` + capability model with `HyperVProvider` wiring
-> the live inventory reads (slice 2) — see the file map below. Start at
+> **Phase 2 implementation has started (2.0 foundation; build slices 1–3 landed). Foundation
+> re-baselined and approved 2026-06-16.** This document still describes the shipping Phase-1 app
+> (below); Phase 2 turns VMentory into a **container-based, single-operator, multi-platform (Hyper-V +
+> Proxmox) platform**, delivering **four pillars on one shared foundation** —
+> **Observe → Migrate → Deploy → Backup** (ENG-0006, Proxmox-first per ENG-0007). The foundation is a
+> **hosted, web-first container** (ENG-0010): Core binds `0.0.0.0`, terminates HTTPS itself, ships
+> **login + RBAC** (ENG-0008), `ISecretStore` (ENG-0002), persistence, and a general operations engine.
+> **The end user installs nothing locally beyond the container** — the only two installs are the **Core
+> container** and a **Hyper-V agent on the retiring HV hosts**. **Proxmox is driven by its native REST
+> API + a constrained SSH key, with NO node agent (ENG-0009);** the on-device agent + private-CA mTLS
+> (ENG-0001/0004/0005) is **scoped to the Hyper-V migration source and demoted off the 2.0 critical
+> path** to the migration slice. **Already built:** the `VMentory.Core`/`VMentory.Web` project split
+> (slice 1), the `IVirtualizationProvider` + capability model with `HyperVProvider` wiring the live
+> inventory reads (slice 2), and EF Core/SQLite persistence (slice 3) — see the file map below. **Next:
+> containerized Core + hosted bootstrap** (replaces the loopback/session-token desktop bootstrap in
+> `Program.cs`) → login+RBAC → `ISecretStore` → Proxmox API provider. Start at
 > [`docs/phase2/PROGRESS.md`](docs/phase2/PROGRESS.md) → `ARCHITECTURE.md` / `ROADMAP.md`, and
 > `docs/engineering/REGISTER.md` for the decision register. Agents live in `.claude/agents/`.
 

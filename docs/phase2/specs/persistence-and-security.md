@@ -69,8 +69,11 @@ agent_identity            -- PKI allow/deny + enrolled agents (ENG-0005)
 audit_event
   id, ts, actor (user|agent), action, target_ref, result, detail_json
 
-app_user                  -- only if local accounts (see §3)
+app_user                  -- local accounts now; OIDC seam later (ENG-0008, §5b)
   id, username, password_hash (Argon2id), role, created_at
+
+role_permission           -- the pillar×verb catalog: role -> permission mapping (ENG-0008, §5c)
+  role, permission          -- permission = ProviderCapability verb | console-only permission
 ```
 
 > The encrypted secret blobs live in their own table managed by the app-native `ISecretStore` impl
@@ -94,9 +97,10 @@ before relying on cross-session diffs.
 > (EF Core + SQLite, `Initial` migration). The diff is **already snapshot-fed** (latest two snapshots,
 > ordered by the autoincrement `id` — SQLite can't `ORDER BY` a `DateTimeOffset`). **Not yet built:**
 > `provider_registration`, `vm_record`, `operation_*`, `secret_metadata`, `agent_identity`,
-> `audit_event`, `app_user` — they arrive with their owning slices (`ISecretStore`, the agent/PKI,
-> the operations engine, auth). **No credentials persist yet** — there is no `secret_ref` wiring until
-> `ISecretStore` lands; restored hosts have null creds.
+> `audit_event`, `app_user`, `role_permission` — they arrive with their owning slices (`ISecretStore`,
+> the operations engine, the containerized-Core/login+RBAC slice, the HV agent/PKI). **No credentials
+> persist yet** — there is no `secret_ref` wiring until `ISecretStore` lands; restored hosts have null
+> creds.
 
 ## 2. What is persisted
 
@@ -167,40 +171,111 @@ only, without decrypting every secret to plaintext.
 
 ---
 
-## 5. Auth model
+## 5. Runtime, deployment & auth model
+
+> **Decided:** Core is a **containerized, web-first, install-nothing hosted service** (ENG-0010) and
+> console access is **login + fixed-role RBAC** (ENG-0008) — both Decided 2026-06-16. The Phase-1
+> loopback + single-session-token model is **fully replaced**, not extended.
+
+### 5a. Runtime & deployment contract (decided, ENG-0010)
 
 Phase-1 security — random free port, a 24-byte session token, **127.0.0.1 only**
 ([Program.cs:37](../../../Program.cs#L37) `UseUrls("http://127.0.0.1:…")`,
 [Program.cs:84](../../../Program.cs#L84) token middleware, [Program.cs:528](../../../Program.cs#L528)
-`GenerateToken`) — **does not survive** becoming a shared hosted service
-([ARCHITECTURE.md §5](../ARCHITECTURE.md#5-security-this-is-now-a-hosted-service-not-loopback)).
-It assumes a single local operator on loopback; Phase 2 is reachable over the network by multiple
-users. Replace it:
+`GenerateToken`) — is a **loopback desktop app** and **does not survive** becoming a shared hosted
+service. It assumes a single local operator on loopback; Phase 2 is a container reachable over the
+network by multiple users. ENG-0010 fixes the runtime contract for release 1:
 
-- **UI / user auth:** at minimum a **configured admin credential** (2.0 exit:
-  [ROADMAP.md §2.0](../ROADMAP.md) "Replace session-token/loopback with a configured admin
-  login"); **scoped roles** in 2.2 and **OIDC/SSO optional** ([ROADMAP.md §2.2](../ROADMAP.md)). Local
-  account passwords hashed with **Argon2id**, never the Phase-1 single shared token.
-- **Console RBAC is its own open topic ([ENG-0008](../../engineering/discussions/0008-rbac-scoped-console-auth.md), Open).**
-  The role set (e.g. **backup-operator / vm-operator / admin**) and how roles gate write verbs/pillars
-  are **undecided** — the `app_user.role` column (§1) and per-verb authorization depend on it. This
-  console RBAC is **distinct from** the agent's constrained-verb authz (ENG-0004): RBAC decides
-  *which operator* may invoke *which pillar/verb*; the agent independently fixes *what verbs exist at
-  all*. To be decided before 2.2 auth hardening; until then `role` is a placeholder. *Proceed against
-  the current recommendation (a small fixed role set), noting the dependency.*
+- **Packaging:** single Linux container image (ASP.NET Core 8 app + an SSH client for the Proxmox
+  residue channel, [proxmox-integration.md §1](proxmox-integration.md#1-authentication)); **no
+  `qemu`/`qm` baked in** — those run on the PVE node (ENG-0009). The only install action is
+  `docker run` / compose; the user installs nothing else locally.
+- **Network bind:** bind **`0.0.0.0:{configurable port}`** (env-driven, e.g. `VMENTORY_HTTP_ADDR`),
+  replacing the hardcoded `127.0.0.1:{random}` and dropping `FindFreePort()`
+  ([Program.cs:37](../../../Program.cs#L37)).
+- **TLS termination (decided default):** **Core-terminated HTTPS — Kestrel serves HTTPS directly**
+  with an operator-provided or **self-signed-with-warning** cert (first-run fallback; not
+  refuse-to-start). A **reverse-proxy seam** (nginx/Traefik terminating TLS) is a **documented
+  alternative, NOT required for release 1**. This dashboard TLS is a **distinct trust domain** from
+  the agent mTLS PKI (§5d / ENG-0005) — do not conflate the dashboard cert with the internal CA.
+- **Runtime KEK / cert injection:** the envelope-encryption **KEK is injected at runtime** (ENG-0002,
+  §4); the **dashboard TLS cert/key are likewise injected at runtime** (mounted volume or env). The
+  image bakes in **no secret** of any kind.
+- **Persistence volume:** the SQLite DB lives on a **mounted volume** via `VMENTORY_DB` (already
+  wired; CLAUDE.md gotcha 7); TLS material + operator config mount alongside. Postgres stays the
+  opt-in multi-instance path (§1).
+- **No inbound from PVE nodes:** Core initiates all Proxmox connections outbound (REST 8006 + SSH 22,
+  ENG-0009); nodes never connect *in*. The **first containerized releases expose only the web UI
+  port**. The agent gRPC/mTLS listener is **HV-only and arrives later with the migration slice**
+  (ENG-0009 / §5d), not in the first releases.
+
+### 5b. Console authn — login replaces the session token (decided, ENG-0010 + ENG-0008)
+
+- **Minimal admin login** lands **in the containerized-Core deployment slice** (ENG-0010), replacing
+  the single session token and the `/api/quit` desktop affordance. Local account passwords are hashed
+  with **Argon2id** (the `app_user` table, §1), never the Phase-1 single shared token.
+- **Identity:** **local accounts now** (hashed credential, KEK-wrapped per ENG-0002), with an
+  **OIDC/SSO seam later** (a future identity provider behind the same authz chokepoint, §5c).
 - **Sessions:** issue a real session cookie / bearer after login. The Phase-1 token-in-query-param
   pattern ([Program.cs:88](../../../Program.cs#L88), and `?token=` for SSE
-  [Program.cs:414](../../../Program.cs#L414)) leaks tokens into logs/history and must go for the
-  UI. SSE auth then rides the authenticated session, not a query param.
-- **Core ↔ Agent:** **mutual mTLS** (decided, ENG-0004 — not "or signed tokens"); the agent accepts
-  only the Core's identity ([agent-protocol.md §3](agent-protocol.md#3-authentication-trust--enrollment-decided-eng-00030005)).
-- **Provider secrets:** from `ISecretStore`, scoped (§4).
-- **Transport:** the browser↔Core hop is HTTPS, not the Phase-1 plain-HTTP-on-loopback.
+  [Program.cs:414](../../../Program.cs#L414)) leaks tokens into logs/history and **is removed**; SSE
+  auth rides the authenticated session, not a query param.
 
-### Agent PKI — private CA in Core (decided, ENG-0005)
+### 5c. Console authz — fixed-role RBAC (decided, ENG-0008)
+
+Console RBAC is **Decided (ENG-0008, 2026-06-16): fixed built-in roles over a pillar×verb catalog,
+firm + early** — no longer "roles later / undecided."
+
+- **Roles:** **fixed built-in roles** — **Admin / VM-operator / Backup-operator / Viewer** — backed
+  by an **internal permission catalog keyed on pillar×verb** (role→permission mapping is *data*, not
+  hardcoded `if`s). **No custom-role authoring in release 1**; a custom-roles UI is a non-breaking
+  later addition behind the same enforcement. The `app_user.role` column (§1) carries the assigned
+  role; a `role_permission` mapping (catalog) is the seam for later custom roles.
+- **Permission taxonomy:** **reuse `ProviderCapability`**
+  ([VMentory.Core/ProviderCapability.cs](../../../VMentory.Core/ProviderCapability.cs)) as the
+  provider-action axis (Start/Stop/Reconfigure/Provision/Backup/…), **plus a small console-only
+  permission set** for non-provider actions (`manage-credentials`, `manage-enrollment`, `view-audit`,
+  `manage-users`). One catalog, two sources.
+- **Enforcement — single audited chokepoint:** a **single authorization chokepoint** in
+  `VMentory.Web`/API **and** the operations engine, so a job dispatched by the API and a job resumed
+  by the engine honor the **same** check. This chokepoint **must exist before any write verb is
+  exposed**, and **every allow/deny is audited** (§6). This console RBAC is **distinct from** the
+  agent's constrained-verb authz (ENG-0004): RBAC decides *which operator* may invoke *which
+  pillar/verb*; the agent independently fixes *what verbs exist at all*.
+- **Scoping:** **org-wide only in the first cut** (single-operator tenancy, no `tenant_id` — ENG-0006);
+  per-host / host-group scoping is a later catalog extension.
+- **Sequencing (firm + early):** minimal admin login lands in the ENG-0010 deployment slice; **the
+  fixed roles + pillar×verb catalog + authz chokepoint land *before any write verbs are exposed*** —
+  i.e. with/just-before Proxmox management/Deploy, **not** deferred to a later "auth hardening" pass.
+  Backup-operator simply has no Backup verbs to grant until pillar 4 ships, but the framework exists
+  from the first write-capable release.
+
+### 5d. Channel auth & transport
+
+- **Core ↔ Agent (Hyper-V only):** **mutual mTLS** (decided, ENG-0004 — not "or signed tokens"); the
+  agent accepts only Core's identity
+  ([agent-protocol.md §3](agent-protocol.md#3-authentication-trust--enrollment-decided-eng-00030005)).
+  Per ENG-0009 this channel and its PKI (§5e) are **scoped to the Hyper-V migration source** and
+  **arrive with the migration slice**, not the first containerized releases.
+- **Core → Proxmox (no agent):** scoped, privilege-separated **API token** (REST) + a constrained,
+  forced-command **SSH key** (residue channel), both from `ISecretStore` and revocable (ENG-0009,
+  [proxmox-integration.md §1](proxmox-integration.md#1-authentication)). Core always initiates;
+  nodes never connect in (§5a).
+- **Provider secrets:** from `ISecretStore`, scoped (§4).
+- **Transport:** the browser↔Core hop is **Core-terminated HTTPS** (§5a), not the Phase-1
+  plain-HTTP-on-loopback.
+
+### 5e. Agent PKI — private CA in Core (decided, ENG-0005; HV-scoped, deferred to migration slice)
 
 The mTLS that secures Core↔Agent is backed by a **private CA inside Core** (external-CA / AD CS seam
-deferred). This is a separate trust domain from the operator-facing dashboard TLS.
+deferred). **Scope (ENG-0009 amendment, 2026-06-16):** this CA serves **only the Hyper-V agent
+fleet** (~5 retiring hosts) — **not** "every node on both platforms"; Proxmox uses no agent and no
+internal CA (its node trust is the still-open SSH/TLS question in
+[proxmox-integration.md §5](proxmox-integration.md#5-open-questions-need-a-human-decision)). The PKI
+design below is unchanged and still correct, but it is **deferred off the 2.0 foundation to the
+agent/migration slice** (its only consumer). It is a **separate trust domain from the
+operator-facing dashboard TLS** (§5a / ENG-0010) — the internal CA does **not** terminate the web
+UI's HTTPS.
 
 - **Structure:** an offline-ish **root** signs a single **intermediate**; the intermediate does
   day-to-day signing. **Agents pin the root**; Core signs agent + server certs with the
@@ -238,7 +313,15 @@ rows are **append-only** and must **never** contain secret values.
 - ~~Which secret store for v1~~ → **`ISecretStore` + app-native envelope encryption, runtime-injected
   KEK** (ENG-0002); Vault/Azure KV are optional later providers.
 - ~~mTLS PKI ownership~~ → **private CA in Core**, root+intermediate, short-lived + auto-renew,
-  allow/deny revocation, no CRL/OCSP (ENG-0005).
+  allow/deny revocation, no CRL/OCSP (ENG-0005); **HV-scoped, deferred to the migration slice**
+  (ENG-0009 amendment).
+- ~~Core runtime/deployment model (bind, TLS, KEK injection, volumes)~~ → **containerized Core,
+  `0.0.0.0:{configurable}`, Core-terminated HTTPS (reverse-proxy a documented seam), runtime
+  KEK/TLS injection, SQLite on a mounted volume** (ENG-0010, §5a).
+- ~~Loopback + session-token auth~~ → **replaced by login + RBAC** (ENG-0010 + ENG-0008, §5b–§5c).
+- ~~Console RBAC / scoped roles~~ → **fixed roles (Admin / VM-operator / Backup-operator / Viewer)
+  over a pillar×verb catalog reusing `ProviderCapability` + a small console-permission set; single
+  audited authz chokepoint before any write verb; firm + early** (ENG-0008, §5c).
 
 **Still open (need a human decision):**
 1. **Snapshot retention / cadence.** How often to snapshot inventory and how long to retain
@@ -252,7 +335,7 @@ rows are **append-only** and must **never** contain secret values.
 4. **Storage / repository layer persistence** (ENG-0006) — when Deploy/Backup land, the ISO/image/
    backup repository and its metadata need a home; placement is an open ENG topic. Note the
    dependency; do not schema it yet.
-5. **Console RBAC / scoped roles** ([ENG-0008](../../engineering/discussions/0008-rbac-scoped-console-auth.md),
-   **Open**) — the role set (backup-operator / vm-operator / admin) and the verb-authorization model
-   the `app_user.role` column (§1) feeds. Distinct from agent authz (ENG-0004). To be decided before
-   2.2 auth hardening; the schema reserves `role` but the values/semantics are not yet pinned.
+5. **PVE node SSH/TLS trust model** ([proxmox-integration.md §5](proxmox-integration.md#5-open-questions-need-a-human-decision)) —
+   how the Core container trusts each PVE node's API cert and SSH host key (pin-on-onboard vs
+   supplied fingerprint). Distinct from the agent PKI (§5e) and the dashboard TLS (§5a). **Owner
+   decision; verify against a live node.**

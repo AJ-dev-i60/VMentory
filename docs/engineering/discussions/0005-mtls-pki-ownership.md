@@ -73,3 +73,29 @@ put it on the critical path: no 2.0 agent-enrollment code can be written until i
 - Whether the single-use enrollment token can be bound to an expected host identity to harden TOFU.
 - Code-signing cert for agent packages (ENG-0004) — related custody question, distinct from this
   transport CA; decide who signs and where that key lives.
+
+---
+
+## AMENDMENT (2026-06-16) — DECIDED · via ENG-0009 (operator-approved)
+
+ENG-0009 (Decided) means the **private CA / enrollment / short-lived-cert machinery serves only the
+Hyper-V agent fleet** (~5 retiring hosts) — **not** "every node on both platforms." The PKI design is
+unchanged and still correct, but:
+
+- **Sequencing:** the internal CA is **deferred from the 2.0 foundation** to the agent/migration slice
+  (2.3-era), since nothing in the first re-baselined releases (containerized Core + login/RBAC +
+  planted Observe + Proxmox management/Deploy) requires it. It was on the 2.0 critical path *because the
+  agent was*; once the agent is descoped from 2.0, so is its CA.
+- **Distinct from dashboard TLS:** this record already notes the operator dashboard TLS is a separate
+  trust domain. ENG-0010 (PROPOSED) owns that dashboard/HTTPS trust domain — keep them separate; the
+  internal CA is **not** what terminates the web UI's TLS.
+- **Proxmox trust** is governed by the still-open **PVE node TLS trust model**
+  (proxmox-integration.md §5 OQ1) + the ENG-0009 SSH known-hosts/pinning strategy — **not** by this
+  internal CA.
+
+No content reversal.
+
+**2026-06-16 · Operator approved the ENG-0009 re-baseline; this amendment is now Decided/in-effect.**
+The internal CA is deferred from the 2.0 foundation to the agent/migration slice (2.3-era), and is a
+trust domain distinct from the ENG-0010 dashboard TLS (see ENG-0010's recorded Core-terminated HTTPS
+decision).

@@ -109,3 +109,26 @@ winrun.py in the product; the transport is reimplemented natively in .NET inside
   migration control verbs the skill exercises), `migration-job-model.md` (Hyper-V side driven by the
   agent, not winrun.py), and `ROADMAP.md` (2.0/2.2 agent = gate for 2.3). The virt-v2v→`qm importdisk`
   correction is separate and still pending regardless.
+
+---
+
+## AMENDMENT (2026-06-16) — DECIDED · via ENG-0009 (operator-approved)
+
+**Not a reversal — a scoping amendment.** ENG-0009 (Decided) drives **Proxmox** deep
+actions via its **native REST API + SSH, with no agent on Proxmox nodes** (operator-approved 2026-06-16). That confirms the agent is
+**only the Hyper-V transport** — which is exactly what ENG-0001 already decided. Nothing in this
+decision's *content* reverses; what changes is **scope framing and sequencing**:
+
+- **Scope:** "the agent" is the **Hyper-V-source transport only** (plus any future *in-guest*
+  customization agent, a separate topic). It is **not** a both-platforms transport. The agent's
+  security win (mTLS instead of a stored Windows domain password) **still holds** and is unaffected.
+- **Sequencing (the real change):** the agent + its PKI are **no longer the first foundation slice**.
+  The first re-baselined releases — containerized Core + login/RBAC + planted Observe + Proxmox
+  management/Deploy — **do not touch the agent**. The agent is sequenced with the **HV→PVE migration**
+  work (2.3-era), since migration is its only release-1 consumer. "Agent is the 2.3 gate" still holds;
+  "agent is front-loaded as 2.0's primary build" is **dropped**.
+- **No winrun.py** still holds; the skill remains the behavioral reference spec.
+
+**2026-06-16 · Operator approved the ENG-0009 re-baseline; this amendment is now Decided/in-effect.**
+The agent is scoped to the Hyper-V migration source and de-front-loaded off the 2.0 critical path, as
+described above. No content reversal of the 2026-06-15 decision.

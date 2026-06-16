@@ -47,3 +47,17 @@ container — now or as a planned follow-on.**
 - **Update is separate from install** and does NOT reuse this manual path — once enrolled and
   trusted, the agent self-updates over its own mTLS channel (see ENG-0004).
 - `agent-protocol.md` must specify the enrollment handshake (token → CSR → signed client cert).
+
+---
+
+## AMENDMENT (2026-06-16) — DECIDED · via ENG-0009 (operator-approved)
+
+ENG-0009 (Decided) drives **Proxmox** via REST API + SSH with **no node agent**. Therefore this
+install/onboarding model **applies only to the Hyper-V agent** (and any future in-guest agent) — it
+does **not** extend to Proxmox nodes. **Proxmox onboarding is "paste a scoped API token + an SSH key,"
+not an MSI/enrollment-token install.** This *strengthens* the "user installs nothing" tenet: for the
+primary platform there is literally no agent to install. The manual-install + enrollment-token rationale
+(keep admin creds out of the container, no remote push) stands unchanged for the Hyper-V fleet, which is
+small and being retired. No content reversal; scope narrows to Hyper-V.
+
+**2026-06-16 · Operator approved the ENG-0009 re-baseline; this amendment is now Decided/in-effect.**

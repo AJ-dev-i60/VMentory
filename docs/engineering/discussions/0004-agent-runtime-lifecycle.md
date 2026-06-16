@@ -88,3 +88,22 @@ windows and linux as required").
   intersects ENG-0002).
 - Linux agent host roles: which Linux hosts get an agent vs stay API/SSH-managed (Proxmox stays
   API+SSH per locked decisions; revisit if KVM/other Linux virtualization is added).
+
+---
+
+## AMENDMENT (2026-06-16) — DECIDED · via ENG-0009 (operator-approved)
+
+ENG-0009 (Decided) confirms **Proxmox needs no agent** — the "Linux host role" this runtime spec
+anticipated is **not** a Proxmox-node role (Proxmox stays API+SSH). The NativeAOT/gRPC/mTLS/constrained-
+verb/self-update design **stands as correct for the Hyper-V agent**, but its **scope and urgency drop**:
+
+- **Scope:** Windows-Hyper-V only for release 1 (no Linux/PVE agent). The cross-platform "one agent
+  serves Windows + Linux hosts" framing is **deferred** to a hypothetical future non-Proxmox Linux
+  virtualization target, not built now.
+- **Sequencing:** the agent runtime + self-update are **no longer 2.0 front-loaded foundation**; they
+  sequence with HV→PVE migration (2.3-era), their only release-1 consumer. The "2.3 gate" property
+  (ENG-0001) is unchanged; the "build the whole agent runtime first in 2.0" expectation is dropped.
+
+No content reversal of the runtime/security design.
+
+**2026-06-16 · Operator approved the ENG-0009 re-baseline; this amendment is now Decided/in-effect.**

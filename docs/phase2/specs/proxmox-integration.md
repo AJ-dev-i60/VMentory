@@ -2,15 +2,23 @@
 
 > Component spec · expands [ARCHITECTURE.md §Topology](../ARCHITECTURE.md#topology) (the Proxmox
 > node row) and the `VMentory.Providers.Proxmox` project.
-> Anchored to: Proxmox needs **no** agent — REST + SSH; and the **proven baseline is
-> `qm importdisk` on the PVE node** (`virt-v2v` optional, not baseline — ENG-0001/0006). Secrets
-> via `ISecretStore`, tokens-over-passwords (ENG-0002).
+> **Decided (ENG-0009, 2026-06-16):** Proxmox deep actions are driven by the **native PVE REST API
+> as the primary control plane** + a **constrained, forced-command, dedicated-account SSH key** for
+> the disk-import / conversion / on-node guest-edit residue. **No agent is installed on Proxmox
+> nodes** — onboarding a node is "paste a scoped API token + an SSH key," both held in `ISecretStore`
+> and revocable. The **proven migration baseline is `qm importdisk` on the PVE node** (`virt-v2v`
+> optional, not baseline — ENG-0001/0006). Secrets via `ISecretStore`, tokens-over-passwords
+> (ENG-0002).
 
-Unlike Hyper-V (Decision 1 → host agent, [agent-protocol.md](agent-protocol.md)), Proxmox ships a
-first-class HTTP API and an SSH-reachable shell on every node, so `ProxmoxProvider` talks to it
-**directly**. Two channels, deliberately: the **REST API (port 8006)** for orchestration and
-stats, **SSH** for the disk/conversion operations the API can't express. Knowing which channel
-owns which operation is the core of this spec.
+Unlike Hyper-V — which is a black box from a Linux container and so reaches the host through an
+installed agent ([agent-protocol.md](agent-protocol.md), scoped to the HV migration source per
+ENG-0009) — Proxmox ships a first-class HTTPS API (port 8006) and an SSH-reachable shell on every
+node. It is **not** a black box that needs an agent to become reachable, so `ProxmoxProvider` talks
+to it **directly with no installed software on the node** (ENG-0009). Two channels, deliberately and
+asymmetrically: the **REST API is the primary control plane** for orchestration, stats, lifecycle,
+provisioning and native migration; **SSH is the bounded residue channel** for the four disk/guest
+operations the API cannot express (§3). Knowing which channel owns which operation is the core of
+this spec.
 
 ---
 
@@ -29,10 +37,19 @@ owns which operation is the core of this spec.
   carries forward to whatever holds the token in memory.
 - **TLS:** PVE default certs are self-signed. Provider must support pinning the node's cert /
   CA fingerprint rather than disabling verification. See *Open question 1*.
-- **SSH:** key-based auth to a dedicated account, ideally **forced-command-restricted** (ENG-0002);
-  some operations (`qm importdisk`, `qemu-img`, optional `virt-v2v`) need root or `sudo`. SSH keys
-  are secrets in `ISecretStore`, same handling as the API token. **Dedicated SSH key, not an SSH
-  password** (tokens-over-passwords, ENG-0002).
+- **SSH hardening posture (ENG-0009 + ENG-0002).** SSH is a broad-privilege channel and must be
+  constrained — it is the residue channel, not a general node shell:
+  - **Dedicated account, not root login** where feasible; the few root operations
+    (`qm importdisk`, guest-root mount/edit) go via `sudo` for the specific commands, not a blanket
+    root key. (Account-with-sudo vs root-only forced-command key is *Open question 4*.)
+  - **Forced-command-restricted key** (`command=` in `authorized_keys`, plus `no-port-forwarding`,
+    `no-X11-forwarding`, `no-agent-forwarding`, `no-pty`) so the key can run only the bounded residue
+    command set (§3), never an interactive shell.
+  - **Key, not a password** (tokens-over-passwords, ENG-0002). The private key is a secret in
+    `ISecretStore`, same handling as the API token, and is **revocable** (drop it from the node's
+    `authorized_keys`).
+  - The SSH command set is exactly the validated `migrate-vm` skill's — **bounded and
+    well-understood**, not an open-ended subsystem (ENG-0009).
 
 ---
 
@@ -67,18 +84,40 @@ Proxmox-side equivalent of Phase-1 fire-and-forget scan + progress broadcast
 
 ## 3. REST vs SSH — the boundary
 
+**The boundary (ENG-0009):** REST is the **primary control plane** for orchestration + stats +
+lifecycle + provisioning + native migration; SSH is the **bounded residue channel** for exactly four
+operations the REST API cannot express. Both are node-native; **neither requires installing software
+on the node** (no agent — ENG-0009).
+
+**REST owns everything it covers:**
+
 | Operation | Channel | Why |
 |---|---|---|
-| Inventory, stats, lifecycle, snapshot | **REST** | First-class API endpoints exist. |
-| Create VM shell, set config/boot/EFI | **REST** | `POST /qemu`, `PUT /config`. |
-| Native PVE↔PVE migration | **REST** | `/migrate` endpoint. |
-| `qm importdisk` — **the baseline** (VHDX→raw + attach) | **SSH** | The proven path (ENG-0001). No clean REST equivalent for importing an external disk image into a storage + attaching it. |
-| `qemu-img info` (verify virtual size / no backing file) | **SSH** | Disk inspection on the node's filesystem. |
-| `virt-v2v` — **optional** (Windows virtio injection) | **SSH** | CLI tool, runs on the node (or a conversion host — *Open question 2*). **Not the baseline.** |
-| Reading the source VHDX onto the node (CIFS mount) | **SSH / node-local** | Bulk transfer, out-of-band; `qm importdisk` reads straight off the mount ([agent-protocol.md §6](agent-protocol.md#6-disk-transfer-is-out-of-band--a-proxmox-node-concern-eng-0001)). |
+| Inventory, stats, lifecycle, snapshot | **REST** | First-class API endpoints exist (§2). |
+| Create VM shell, set config/boot/EFI | **REST** | `POST /qemu`, `PUT /config` (§2). |
+| Native PVE↔PVE migration | **REST** | `/migrate` endpoint (§2). |
+| Long-op progress | **REST** | every write returns a UPID; poll `tasks/{upid}/status` (§2). |
 
-`ProxmoxProvider` therefore wraps **two clients**: a typed `HttpClient` (REST) and an SSH command
-executor. The SSH executor is morally the same shape as Phase-1
+**SSH owns exactly these four residue items — and only these:**
+
+| # | SSH-only operation | Why no REST equivalent |
+|---|---|---|
+| 1 | **`qm importdisk`** — the migration baseline (VHDX→raw + attach into a storage) | The proven path (ENG-0001/0009). **No clean REST endpoint** for importing an *external* disk image into a storage and attaching it. *Open question 5* tracks verifying this against a live PVE in case a newer release adds one. |
+| 2 | **`qemu-img info`** — disk inspection (verify virtual size, no backing file) | Reads a file on the node's filesystem; not an API resource. |
+| 3 | **Reading the source disk onto the node** (CIFS mount + node-local bulk transfer) | Out-of-band bulk byte movement, not a control-channel operation; `qm importdisk` reads straight off the mount ([agent-protocol.md §6](agent-protocol.md#6-disk-transfer-is-out-of-band--a-proxmox-node-concern-eng-0001)). |
+| 4 | **On-node guest-root edit** — mount the guest filesystem on the PVE node and edit it (the skill's match-by-MAC netplan fix: activate guest VG, edit, detach) | A node-shell filesystem operation by nature; no API surface mounts and edits a guest's root. |
+
+> **Optional, *not* part of the SSH residue baseline:** `virt-v2v` (Windows virtio injection) is a
+> CLI enhancement that runs on the node or a dedicated conversion host (*Open question 2*) — it is
+> **not** the baseline and not one of the four required residue items above.
+
+Everything outside those four items is REST. If a future deep action seems to "need SSH," check it
+against this list first — the validated `migrate-vm` skill proves these four (plus the optional
+`virt-v2v`) are the *entire* SSH surface; nothing else on the node is driven over SSH (ENG-0009).
+
+`ProxmoxProvider` therefore wraps **two clients**: a typed `HttpClient` (REST, the primary control
+plane) and a constrained SSH command executor (the four-item residue channel, §1 hardening). The SSH
+executor is morally the same shape as Phase-1
 [ReachabilityChecker.RunPowerShellAsync](../../../Reachability.cs#L155): run a command with a
 timeout, **read stdout and stderr concurrently** to avoid pipe-buffer deadlock (the SSH library's
 equivalent of CLAUDE.md gotcha 9), capture exit code. Reuse that discipline.
@@ -104,16 +143,25 @@ equivalent of CLAUDE.md gotcha 9), capture exit code. Reuse that discipline.
    drivers. The **baseline handles this in the guest-fix step** (attach SATA first, install
    virtio-win, switch to virtio-SCSI); **optional `virt-v2v`** can automate the injection. Don't
    attach the virtio bus and hope. See [migration-job-model.md §4](migration-job-model.md#4-disk-import-the-baseline--guest-fix--virt-v2v-is-optional-eng-0001).
-7. **API token ACL scope** — a too-narrow token silently 403s on a path you forgot to grant;
-   document the minimum ACL set per milestone so operators can scope tokens correctly.
+7. **API token ACL scope** — a too-narrow privilege-separated token silently 403s on a path you
+   forgot to grant; document the minimum ACL set per milestone so operators can scope tokens
+   correctly. Enumerating that set is *Open question 5*.
 
 ---
 
 ## 5. Open questions (need a human decision)
 
+> The transport model itself is **Decided** (ENG-0009: REST primary + constrained SSH, no node
+> agent). The items below are **spec details that refine, but do not reopen, that decision** — most
+> are flagged in ENG-0009 to **verify against a live PVE node**.
+
 1. **TLS trust model for PVE nodes.** Fingerprint pinning per node, an operator-supplied CA, or
-   require proper certs? Affects onboarding UX. (Distinct from the agent PKI, which is decided —
-   ENG-0005; PVE node trust is a separate, still-open question.) **Owner decision.**
+   require proper certs? Affects onboarding UX. (Distinct from the agent PKI — ENG-0005 — and from
+   the operator dashboard TLS — ENG-0010; PVE node trust is its own still-open question.) This
+   intersects the **SSH `known_hosts` / host-key pinning** strategy for the residue channel: the Core
+   container needs a defined way to trust each node's SSH host key (pin on first onboard vs supplied
+   fingerprint), tied to ENG-0010's image-needs-an-SSH-client note. **Owner decision; verify against
+   a live node.**
 2. **Where does the *optional* `virt-v2v`/`qemu-img` enhancement run** — on the PVE node over SSH
    (simplest, uses node CPU/disk) or a dedicated conversion container/host? The **baseline
    `qm importdisk` always runs on the PVE node** (ENG-0001), so this concerns only the optional
@@ -123,6 +171,18 @@ equivalent of CLAUDE.md gotcha 9), capture exit code. Reuse that discipline.
 3. **Cluster vs single-node addressing.** Do we register a cluster (one API entry point, resolve
    nodes dynamically) or individual nodes? `/cluster/resources` assumes a cluster; a lone node
    still answers it. Recommend registering a node and discovering the rest — confirm.
+4. **SSH hardening shape (ENG-0009 sub-question).** Dedicated account + `sudo` for the few root ops
+   (`qm importdisk`, guest-root mount/edit) **vs** a root-only forced-command key. Both lock the key
+   to the bounded residue command set (§1); the choice trades least-privilege accounting against
+   setup simplicity. **Owner decision; verify the residue command set runs cleanly under the chosen
+   shape on a live node.**
+5. **Exact API token ACL scopes per milestone (ENG-0009 sub-question).** A privilege-separated token
+   silently 403s on any path not granted (gotcha 7). The **minimum ACL set per milestone** — read
+   for 2.1 Observe, lifecycle/snapshot for 2.2, `VM.Allocate`/storage/`Sys.Modify` for 2.3
+   provisioning + migration — must be enumerated so operators can scope tokens correctly. Also
+   **verify against a live node whether any current PVE release exposes a REST disk-import endpoint**
+   that would shrink the §3 SSH residue (would simplify, not change, the decision). **Verify against a
+   live node.**
 
 > **Deploy/Backup note (ENG-0006):** when those pillars land, `ProxmoxProvider` gains create-from-
 > template / install-from-ISO and snapshot/export/restore surfaces (native PVE backup, PBS

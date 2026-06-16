@@ -3,7 +3,15 @@
 > **Purpose:** pick up Phase 2 from a clean clone on any machine. Read this top-to-bottom and you
 > know where we are, what's decided, what's open, and what to do next.
 >
-> **Last updated:** 2026-06-16 · **Phase:** 2.0 foundation — implementation started (slices 1–3 landed) · **Branch:** `dev`
+> **Last updated:** 2026-06-16 (foundation re-baseline approved; freeze lifted) · **Phase:** 2.0 foundation — original build slices 1–3 landed; re-baselined slice order now in effect · **Branch:** `dev`
+>
+> ✅ **Foundation RE-BASELINED and APPROVED (2026-06-16).** The development freeze is **lifted**. The
+> corrected foundation is locked in the decision records and propagated into ARCHITECTURE/ROADMAP:
+> **containerized Core (web-first, install-nothing — ENG-0010), login + RBAC early (ENG-0008),
+> Proxmox via native REST API + constrained SSH and NO node agent (ENG-0009), and the on-device
+> agent/private-CA foundation demoted + scoped to the Hyper-V migration source (ENG-0001/0003/0004/0005
+> amended).** Build resumes at re-baselined foundation slice (1): **Containerized Core + hosted-service
+> bootstrap** (§5).
 
 ---
 
@@ -14,8 +22,11 @@ VMentory Phase 1 = single-exe, **Windows-only, read-only, ephemeral** Hyper-V in
 `powershell.exe`). It works and ships today.
 
 Phase 2 = turn it into a **container-based, single-operator, multi-platform (Hyper-V + Proxmox)
-platform** with Windows + Linux on-device agents — a Linux-container "Core" that talks to providers,
-persists state, and runs operations.
+platform** — a Linux-container "Core" (web-first, install-nothing, login + RBAC — ENG-0010/0008) that
+talks to providers, persists state, and runs operations. **Proxmox is driven by its native REST API +
+a constrained SSH key, no node agent (ENG-0009);** an on-device agent exists **only** on the retiring
+**Hyper-V** hosts, as the migration source (ENG-0001, demoted off the 2.0 critical path). The only
+installs are (a) the Core container and (b) the Hyper-V agent on the HV hosts.
 
 **North Star (ENG-0007, 2026-06-16):** move **entirely off Hyper-V onto Proxmox**. VMentory v2 is a
 **Proxmox-first management super-tool**; Hyper-V's role **declines over time** and is primarily a
@@ -41,18 +52,23 @@ data-movement-at-scale; the migration job engine generalizes to a **general oper
 > virt-v2v→`qm importdisk` reconciliation in `migration-job-model.md` (see §4).
 
 The target design is in [ARCHITECTURE.md](ARCHITECTURE.md); the milestone plan is in
-[ROADMAP.md](ROADMAP.md). **Phase 2 implementation has started** at the 2.0 foundation — slices 1
-(project split / rename) and 2 (provider abstraction + capability model) are landed and verified on
-`dev` (see §3 and §5); persistence, the agent, and `ISecretStore` are next.
+[ROADMAP.md](ROADMAP.md). **Phase 2 implementation has started** at the 2.0 foundation — the original
+build slices 1 (project split / rename), 2 (provider abstraction + capability model) and 3
+(persistence) are landed and verified on `dev` (see §3 and §5). After the **2026-06-16 re-baseline**,
+the next build is **re-baselined foundation slice (1): containerized Core + hosted-service bootstrap**
+(ENG-0010), then login + RBAC (ENG-0008), then `ISecretStore` (ENG-0002), then the Proxmox API
+provider — see §5. **The agent is no longer next** (demoted + HV-scoped, ENG-0009).
 
 ## 2. Locked decisions (the spine — don't silently revisit)
 
 1. **Hyper-V transport:** a **Windows agent installed on the host**, reimplemented natively in .NET
-   (no winrun.py / Python in the product). **ENG-0001 (Decided, choice B):** the agent ships in
-   2.0/2.2 and drives migration from day one — there is **no winrun.py fallback**, so "agent can
-   drive guest control + the migration step graph" is the **gate** for starting 2.3. winrun.py +
+   (no winrun.py / Python in the product). **ENG-0001 (Decided, choice B; amended 2026-06-16):** the
+   agent is **scoped to the Hyper-V migration source only** and **demoted off the 2.0 critical path** —
+   it now lands **with the migration slice** (re-baselined foundation slice 6, 2.3-era), **not** as the
+   first foundation work. There is still **no winrun.py fallback**, so "agent can drive guest control +
+   the migration step graph" remains the **gate for 2.3** — built then, not first. winrun.py +
    `centralized-access.md` survive as the behavioral reference spec. The agent's mTLS identity
-   eliminates storing any Windows domain password.
+   eliminates storing any Windows domain password. **Proxmox uses no agent (ENG-0009, item 11).**
 2. **Persistence: hybrid** — registry/jobs/history persisted (SQLite/EF Core); **secrets never
    plaintext at rest**. **ENG-0002 (Decided):** `ISecretStore` provider abstraction; v1 = app-native
    envelope encryption (AES-GCM in SQLite, DEK wrapped by a runtime-injected KEK); Vault/OpenBao &
@@ -78,6 +94,23 @@ The target design is in [ARCHITECTURE.md](ARCHITECTURE.md); the milestone plan i
 10. **Release-1 scope cut (ENG-0007):** **PVE→HV reverse migration** (nice-to-have) and
     **Backup/Restore** (needed eventually) are **out of the first v2 release** — deferred, delivered
     later.
+11. **Proxmox deep-action transport (ENG-0009, Decided 2026-06-16 — choice A):** **native PVE REST API
+    as the primary control plane** (orchestration, lifecycle, provisioning, stats/`rrddata`, native
+    PVE↔PVE migration, UPID task progress) + a **constrained, forced-command SSH key** for the disk-
+    import / conversion / on-node guest-edit residue (`qm importdisk`, `qemu-img`, optional `virt-v2v`,
+    mount-and-edit fixes). **NO agent on Proxmox nodes** — onboard = scoped API token + SSH key, both in
+    `ISecretStore`, both revocable. This is **why** the agent foundation (item 1) is demoted + HV-scoped.
+12. **Console RBAC (ENG-0008, Decided 2026-06-16 — firm + early):** **fixed built-in roles** (Admin /
+    VM-operator / Backup-operator / Viewer) over an internal **pillar×verb catalog** reusing
+    `ProviderCapability` + a small console-permission set; **local accounts now**, **OIDC seam later**;
+    a **single audited authz chokepoint** (Web/API + ops engine) that **must exist before any write
+    verb**. Login lands in the deployment slice; the role framework before the first write verbs.
+13. **Core deployment & runtime (ENG-0010, Decided 2026-06-16):** **containerized Core**, bind
+    **`0.0.0.0:{configurable port}`**, **Core-terminated HTTPS** via Kestrel (self-signed/provided cert;
+    reverse-proxy a documented future seam, **not** required for release 1), **runtime KEK + TLS
+    injection** (nothing baked into the image), SQLite on a **mounted volume**, and the
+    **session-token/loopback bootstrap replaced by login + RBAC**. The user **installs nothing locally**
+    beyond the container; the only two installs are the **Core container** and the **Hyper-V agent**.
 
 ## 3. What exists right now
 
@@ -105,11 +138,11 @@ The target design is in [ARCHITECTURE.md](ARCHITECTURE.md); the milestone plan i
 
 ### Engineering decision workspace (`docs/engineering/`)
 - `README.md` — the RFC/ADR protocol. `REGISTER.md` — the board (read first).
-- `discussions/0001`–`0007` — **ENG-0001..0007, all Decided** (transport, secret store, install model,
-  agent runtime, mTLS PKI, four-pillar scope, Proxmox-first strategy).
-- `discussions/0008-rbac-scoped-console-auth.md` — **ENG-0008, Open** — RBAC / scoped console roles
-  (backup-operator / vm-operator / admin), distinct from the agent's constrained-verb authz (ENG-0004);
-  to be decided before 2.2 auth hardening.
+- `discussions/0001`–`0010` — **ENG-0001..0010, all Decided.** Transport, secret store, install model,
+  agent runtime, mTLS PKI, four-pillar scope, Proxmox-first strategy, **RBAC (0008)**, **Proxmox
+  REST+SSH / no node agent (0009)**, **containerized Core deployment model (0010)**. The **2026-06-16
+  re-baseline** (0009/0010, amendments to 0001/0003/0004/0005) demotes the agent/CA foundation to
+  Hyper-V and re-orders the foundation slices — see §2 and §5.
 
 ### Agents (`.claude/agents/`)
 - `ui-design.md` — owns `design/`; produces mockups + specs; never edits `wwwroot/index.html`.
@@ -128,33 +161,50 @@ VMentory's migration engine — its step graph, safety rules, and scripts feed t
 
 ## 4. Open decisions / what needs the owner
 
-- **ENG-0001 (Decided 2026-06-15 — B):** agent first, .NET-native, no winrun.py fallback; agent is
-  the 2.3 gate. Propagation pending in `agent-protocol.md` / `migration-job-model.md` / ROADMAP.
+- **ENG-0001 (Decided 2026-06-15 — B; amended 2026-06-16):** agent .NET-native, no winrun.py
+  fallback; agent is the 2.3 gate — but now **scoped to the Hyper-V source and demoted off the 2.0
+  critical path** to the migration slice (via ENG-0009). Propagation pending in `agent-protocol.md` /
+  `migration-job-model.md`; **ROADMAP/ARCHITECTURE/PROGRESS reflect the amendment.**
 - **ENG-0002 (Decided 2026-06-15):** `ISecretStore` + app-native envelope encryption, runtime-
   injected KEK, tokens-over-passwords (binding). Propagation pending in `persistence-and-security.md`.
 - **ENG-0003 (Decided 2026-06-15):** agent install is **manual/org-managed only** (MSI/GPO/SCCM) +
   enrollment token; no remote push-install; VMentory never gets an admin cred.
 - **ENG-0004 (Decided 2026-06-15):** agent = NativeAOT single binary, gRPC/HTTP2+mTLS, **constrained
   verb executor** (not a shell), gMSA-preferred (local fallback), **self-update over its own mTLS
-  channel** with watchdog rollback. The agent runtime + enrollment + self-update are the **2.0/2.2
-  gate for 2.3 migration**. Propagation pending in `agent-protocol.md` / `migration-job-model.md` /
-  ROADMAP.
-- **ENG-0005 (Decided 2026-06-16):** mTLS PKI = **private CA inside Core** (external-CA seam for
-  later), **root+intermediate**, **short-lived agent certs + auto-renew over the mTLS channel**
+  channel** with watchdog rollback. **Amended 2026-06-16:** Windows-HV only, **descoped from 2.0
+  front-loading** — the agent runtime + enrollment + self-update are the gate for **2.3 migration** but
+  are built **with** that slice (foundation slice 6), not first (via ENG-0009). Propagation pending in
+  `agent-protocol.md` / `migration-job-model.md`.
+- **ENG-0005 (Decided 2026-06-16; amended 2026-06-16):** mTLS PKI = **private CA inside Core**
+  (external-CA seam for later), **root+intermediate**, **short-lived agent certs + auto-renew**
   (revocation = stop-renew + registry allow/deny, no CRL/OCSP). Enrollment = single-use token + CSR,
-  key never leaves host. CA key in `ISecretStore`. Propagation pending in `agent-protocol.md` /
-  `persistence-and-security.md`.
+  key never leaves host. CA key in `ISecretStore`. **Amended:** the CA serves the **HV fleet only** and
+  is **deferred from 2.0 to the migration slice**; it is a **distinct trust domain from the ENG-0010
+  dashboard TLS**. Propagation pending in `agent-protocol.md` / `persistence-and-security.md`.
 - **ENG-0007 (Decided 2026-06-16):** **Proxmox-first North Star** + **incremental release cadence** +
   **light HV management** (provider must allow HV management verbs) + **PVE→HV and Backup out of
   release 1**. Refines ENG-0006 (weighted/sequenced pillars: Observe-plant → Proxmox mgmt/Deploy →
   HV→PVE). ✅ **Propagated** into **ARCHITECTURE.md** (provider capability model) and **ROADMAP.md**
   (release definitions/sequencing) — commits `8c216ae` / `087b260`. See
   `discussions/0007-product-strategy-release-scope.md`.
-- **ENG-0008 (Open, 2026-06-16):** **RBAC / scoped console roles** (backup-operator / vm-operator /
-  admin) for the web UI — distinct from the agent's constrained-verb authz (ENG-0004). Shapes the
-  `app_user.role` schema and every write verb's authorization. **Needs an owner decision** before 2.2
-  auth hardening; specs note the dependency and proceed against a small fixed-role recommendation. See
-  `discussions/0008-rbac-scoped-console-auth.md`.
+- **ENG-0008 (Decided 2026-06-16):** **fixed console roles** (Admin / VM-operator / Backup-operator /
+  Viewer) over a **pillar×verb catalog** reusing `ProviderCapability` + a small console-permission set;
+  **local accounts now**, **OIDC seam later**; a **single audited authz chokepoint** (Web/API + ops
+  engine) that **must exist before any write verb**; login in the deployment slice, roles before the
+  first write verbs. Distinct from the agent's constrained-verb authz (ENG-0004). Shapes the
+  `app_user`/role schema. Propagation pending in `persistence-and-security.md`;
+  **ARCHITECTURE §Security/ROADMAP reflect it.** See `discussions/0008-rbac-scoped-console-auth.md`.
+- **ENG-0009 (Decided 2026-06-16 — A):** **Proxmox via native REST API (primary) + constrained SSH
+  key; NO node agent.** This is what **demotes/scopes the agent foundation (0001/0003/0004/0005) to
+  Hyper-V** and off the 2.0 critical path. Propagation pending in `proxmox-integration.md` (SSH
+  hardening + known-hosts detail); **ARCHITECTURE/ROADMAP/PROGRESS reflect it.** See
+  `discussions/0009-proxmox-deep-action-transport.md`.
+- **ENG-0010 (Decided 2026-06-16):** **containerized Core**, `0.0.0.0` bind, **Core-terminated HTTPS**
+  (Kestrel; reverse-proxy a documented future seam, not required for release 1), **runtime KEK + TLS
+  injection**, SQLite on a mounted volume, **session-token/loopback → login + RBAC**. First foundation
+  slice; **replaces the desktop bootstrap in `Program.cs` first.** Propagation pending in
+  `persistence-and-security.md`; **ARCHITECTURE (new Deployment-model section)/ROADMAP reflect it.** See
+  `discussions/0010-core-deployment-runtime-model.md`.
 - **Persistence open questions — now active (slice 3 shipped).** Engineering agent to pick up, since
   durable storage now exists: (a) **snapshot retention / cadence** — how often to snapshot and how long
   to keep, to bound SQLite growth (no pruning today; every successful scan writes a snapshot); (b)
@@ -171,14 +221,29 @@ VMentory's migration engine — its step graph, safety rules, and scripts feed t
 
 ## 5. Immediate next steps (suggested order)
 
-**Build has started at the 2.0 foundation (planted Observe)** under the ENG-0007 incremental
-cadence — implementation is proceeding in parallel with the remaining doc propagation below.
+**The foundation is re-baselined and approved (2026-06-16); the freeze is lifted.** Build resumes at
+**re-baselined foundation slice (1): containerized Core + hosted-service bootstrap.** The approved
+slice order is:
+
+> **(1) Containerized Core + hosted-service bootstrap (ENG-0010) → (2) Login + RBAC framework
+> (ENG-0008) → (3) `ISecretStore` (ENG-0002) → (4) Proxmox API provider (read / planted Observe) →
+> (5) Proxmox SSH executor + management/Deploy write verbs (capability-gated, RBAC-enforced, audited)
+> → (6) Hyper-V agent + private CA (scoped to HV, ENG-0001/0003/0004/0005) → (7) HV→PVE migration.**
+
+**Do next — slice (1):** replace the desktop bootstrap in [`Program.cs`](../../Program.cs) — the
+loopback `127.0.0.1:{random}` bind + `FindFreePort()` + single **session token** + `/api/quit` desktop
+route are exactly what ENG-0010 retires. Bind **`0.0.0.0:{configurable port}`** (env-driven), serve
+**Core-terminated HTTPS** via Kestrel (self-signed first-run + warn, or operator-provided cert via
+mounted volume/env — nothing baked into the image), and produce the single Linux container image (app +
+SSH client, no `qemu`/`qm`). Re-scope `Updater.cs` from GitHub-exe auto-update to image tags. Then
+slice (2) layers login + the RBAC chokepoint on top (the session token is removed here). **The agent is
+not next** — it is HV-scoped and lands at slice (6) with migration (ENG-0009).
 
 1. ✅ **Propagate ENG-0007** into **ROADMAP.md** and **ARCHITECTURE.md** (release
    definitions/sequencing + `IVirtualizationProvider` capability model with HV management verbs) —
    **done**, committed `087b260` / `8c216ae`.
-2. **Begin 2.0 foundation:** plant Observe — rename `HyperInventory` → `VMentory.*`, split projects,
-   add persistence, define `IVirtualizationProvider` + capability model (with HV management verbs).
+2. **2.0 foundation — original build slices 1–3 landed** (project split, provider abstraction,
+   persistence); the **re-baselined slice order above** governs what comes next.
    - ✅ **Slice 1 (project split + rename) done & verified:** `VMentory.sln` + `VMentory.Core`
      (domain) + `VMentory.Web` (exe) stood up, namespace `HyperInventory` → `VMentory.*` across all
      files, build scripts retargeted, zero behavior change. `Providers.*` / `Agent` projects deferred
@@ -202,11 +267,14 @@ cadence — implementation is proceeding in parallel with the remaining doc prop
      graceful (no purge). **Verified:** build 0/0; add-host→restart→persists→delete→gone; mock writes
      no DB; single-file `dist\VMentory.exe` loads the SQLite native lib + persists. _(Scan-driven
      snapshot save is wired + code-traced; full exercise needs a real WinRM host.)_
-   - Next: **`ISecretStore`** (envelope encryption, runtime-injected KEK — ENG-0002) so creds/tokens
-     can persist; then the NativeAOT agent + enrollment + internal CA. Verb methods
-     (lifecycle/migration) + `ProxmoxProvider` land in 2.2 / 2.1.
-   - **Auth:** scoped/role-based console access (backup-operator vs vm-operator vs admin) raised by the
-     owner → **ENG-0008 (Open)** in the register; to be designed before 2.2 auth hardening.
+   - **Next (re-baselined):** slice (1) **containerized Core + hosted bootstrap** (ENG-0010) → (2)
+     **login + RBAC** (ENG-0008) → (3) **`ISecretStore`** (ENG-0002) → (4) **Proxmox API read provider**.
+     Proxmox write verbs (5) and the **HV-scoped agent + private CA** (6) follow; HV→PVE migration (7).
+     **The agent is no longer the next slice** (demoted + HV-scoped, ENG-0009).
+   - **Auth:** scoped/role-based console access (Admin / VM-operator / Backup-operator / Viewer) →
+     **ENG-0008 (Decided 2026-06-16)** — fixed roles over a pillar×verb catalog, local accounts now,
+     single audited authz chokepoint **before any write verb**; login lands in the slice-(1) deployment
+     work, the role framework before slice-(5) write verbs.
 3. Owner reviews the five specs (`docs/phase2/specs/`) and the four design mockups (`design/`).
 4. Reconcile the migration docs (virt-v2v → qm-importdisk, fold in the skill).
 

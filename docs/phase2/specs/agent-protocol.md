@@ -1,4 +1,4 @@
-# Agent Protocol — Core ↔ On-Device Agent
+# Agent Protocol — Core ↔ Hyper-V Host Agent
 
 > Component spec · expands [ARCHITECTURE.md §1 Topology](../ARCHITECTURE.md#topology) and the
 > `VMentory.Agent` project row in [§Component breakdown](../ARCHITECTURE.md#1-vmentory-core).
@@ -7,6 +7,17 @@
 > transport is **gRPC over HTTP/2 + mTLS** (ENG-0004); install is **manual + enrollment token**
 > (ENG-0003); PKI is a **private CA in Core** (ENG-0005). This spec is the propagation target for
 > ENG-0001/0003/0004/0005.
+>
+> **⚠ Scope & sequencing (ENG-0009 re-baseline, 2026-06-16 — read first):** this agent is the
+> **Hyper-V migration-source transport only.** It is **NOT** the Proxmox transport — Proxmox is
+> driven by its native REST API + a constrained SSH key with **no node agent** (ENG-0009,
+> [proxmox-integration.md](proxmox-integration.md)). The earlier "one agent serves both platforms /
+> all Linux host roles" framing is **withdrawn.** This agent + its private-CA mTLS PKI are also **NOT
+> front-loaded 2.0 foundation work**: they are **demoted off the 2.0 critical path and sequenced with
+> the HV→PVE migration slice (2.3-era)**, their only release-1 consumer. The first containerized
+> releases (Core + login/RBAC + planted Observe + Proxmox management/Deploy) **do not touch this
+> agent.** The runtime/security *design* below is unchanged and still correct — only its scope and
+> sequencing are corrected (ENG-0001/0003/0004/0005 amendments, all Decided via ENG-0009).
 
 The Core runs in a Linux container; Hyper-V management is a Windows/PowerShell/WMI world. Rather
 than bridge that gap with Linux→WinRM (TrustedHosts, Negotiate/Kerberos from non-domain Linux,
@@ -17,9 +28,14 @@ service **on the host** where the Hyper-V module already works natively. `HyperV
 ([provider-abstraction.md §4](provider-abstraction.md#4-how-the-two-providers-differ)) is then a
 thin client of this protocol.
 
-The same agent codebase serves **Windows (Hyper-V)** and **future Linux host roles** — one
-NativeAOT binary, cross-compiled (ENG-0004). It is the **gate for migration** (ENG-0001): there is
-**no winrun.py fallback**, so the agent's migration verbs must exist before 2.3 starts.
+The agent targets **Windows (Hyper-V)** for release 1. The earlier "same codebase also serves future
+Linux host roles" framing is **deferred** (ENG-0009 amendment of ENG-0004): the Linux host role this
+runtime once anticipated is **not** a Proxmox-node role — Proxmox stays API+SSH with no agent — so it
+is shelved against a hypothetical future non-Proxmox Linux virtualization target, not built now. The
+NativeAOT/cross-compile design is retained should that target ever arrive. The agent remains the
+**gate for migration** (ENG-0001): there is **no winrun.py fallback**, so the agent's migration verbs
+must exist before 2.3 starts — but note this gate now sequences *with* the migration slice, not as a
+front-loaded 2.0 build (see the scope banner above).
 
 > **The `migrate-vm` skill is the behavioral reference (ENG-0001), not shipping code.** Its
 > `winrun.py`/WinRM path and the `references/centralized-access.md` 401 gotcha list (NetBIOS-vs-FQDN,
@@ -132,6 +148,13 @@ The agent exposes a **fixed, versioned verb set** — **never arbitrary PowerShe
 This is the decisive security upgrade over `winrun.py`, which ran arbitrary remote PowerShell. The
 catalog is **versioned** and grows with the pillars (ENG-0006); Core and agent negotiate the
 supported version + capabilities at connect (§8). gRPC method names shown.
+
+> **On the milestone labels below (ENG-0009 sequencing):** the parenthesized milestones indicate the
+> *capability tier*, not that the agent is built early. The whole agent — **including** the inventory
+> tier — is **HV-only** and lands **with the migration slice (2.3-era)**, not as front-loaded 2.0
+> foundation. Hyper-V hosts are inventoried through the agent **once it exists**; until then HV
+> inventory in the first releases is reached via the existing `HyperVProvider` path (planted Observe).
+> The verb tiers still ship in this order *within* the agent's own delivery.
 
 **Foundation / inventory (2.0) — maps to `IVirtualizationProvider`
 ([provider-abstraction.md §2](provider-abstraction.md#2-the-interface)):**
@@ -250,5 +273,9 @@ and trusted (§3), the agent self-updates over its mTLS channel:
 3. **Cert TTL + renewal-window defaults** (ENG-0005 sub-question) — e.g. 14-day cert, renew at 7 days.
 4. **Enrollment-token host-binding** (ENG-0005 sub-question) — bind the single-use token to an
    expected host identity to harden TOFU.
-5. **Linux agent host roles** (ENG-0004 sub-question) — which Linux hosts get an agent vs stay
-   API/SSH-managed (Proxmox stays API+SSH per locked decisions).
+5. **Linux agent host roles** — **largely closed by ENG-0009:** Proxmox stays API+SSH with **no
+   agent**, so there is no Linux *node* agent in scope. What remains open is only a *hypothetical
+   future* non-Proxmox Linux virtualization target (would revive the cross-platform agent) and the
+   separate question of an **in-guest** customization agent (sysprep/cloud-init that must run *inside*
+   a guest) — a distinct future ENG topic that does **not** revive a Proxmox-node agent. Flag to
+   verify when/if those targets appear; out of scope for release 1.
