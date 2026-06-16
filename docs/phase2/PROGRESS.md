@@ -3,7 +3,7 @@
 > **Purpose:** pick up Phase 2 from a clean clone on any machine. Read this top-to-bottom and you
 > know where we are, what's decided, what's open, and what to do next.
 >
-> **Last updated:** 2026-06-15 · **Phase:** planning (pre-implementation) · **Branch:** `dev`
+> **Last updated:** 2026-06-16 · **Phase:** planning (pre-implementation) · **Branch:** `dev`
 
 ---
 
@@ -17,19 +17,29 @@ Phase 2 = turn it into a **container-based, single-operator, multi-platform (Hyp
 platform** with Windows + Linux on-device agents — a Linux-container "Core" that talks to providers,
 persists state, and runs operations.
 
+**North Star (ENG-0007, 2026-06-16):** move **entirely off Hyper-V onto Proxmox**. VMentory v2 is a
+**Proxmox-first management super-tool**; Hyper-V's role **declines over time** and is primarily a
+**migration source**. v1 "Observe" is being **"planted"** — made persistent + multi-platform — as the
+**foundation** for everything else (not a fifth pillar).
+
 **Product scope (ENG-0006, 2026-06-16): four pillars on one shared foundation**, each standalone
-value, sequenced **Observe → Migrate → Deploy → Backup**:
-1. **Observe** — resource/load dashboard (Phase-1 root); also feeds placement recommendations.
-2. **Migrate** — wizard-driven **bidirectional HV↔PVE** (end state), **HV→PVE first**.
-3. **Deploy** — VM provisioning: ISO/image repo, creation wizard, guest customization, post-deploy apps.
-4. **Backup/Restore** — to either platform, dedup, off-site replication (**buy-vs-build deferred**).
+value. ENG-0007 **refines** ENG-0006 (does not supersede it): the four pillars are no longer equal —
+they are **weighted and sequenced** toward the Proxmox-first North Star:
+**Observe (plant) → Proxmox management/Deploy → HV→PVE migration**.
+1. **Observe (plant)** — resource/load dashboard (Phase-1 root), made persistent + multi-platform; the foundation, also feeds placement recommendations.
+2. **Proxmox management / Deploy** — Proxmox-first management + VM provisioning: ISO/image repo, creation wizard, guest customization, post-deploy apps.
+3. **Migrate** — wizard-driven **HV→PVE** (the priority direction); **bidirectional HV↔PVE** remains the eventual end state, but **PVE→HV is deferred** (see §2).
+4. **Backup/Restore** — to either platform, dedup, off-site replication (**buy-vs-build deferred**; **out of release 1**, see §2).
 
 New shared subsystems the vision adds (⚠ not yet in ARCHITECTURE/ROADMAP — documentation agent to
 expand): storage/repository layer, guest-customization layer (shared Deploy+Migrate), scheduling,
 data-movement-at-scale; the migration job engine generalizes to a **general operations engine**.
 
 > ⚠ ARCHITECTURE.md and ROADMAP.md still describe the narrower "dashboard + management + one-way
-> migration" scope — they predate ENG-0006 and need expanding to the four-pillar model.
+> migration" scope — they predate ENG-0006/ENG-0007 and need: (a) **release-definition/sequencing
+> aligned to incremental shipping** (each milestone is its own usable release), and (b) the
+> **provider capability model extended so Hyper-V supports management verbs** (not source-only).
+> *Propagation into ARCHITECTURE.md / ROADMAP.md is pending.*
 
 The target design is in [ARCHITECTURE.md](ARCHITECTURE.md); the milestone plan is in
 [ROADMAP.md](ROADMAP.md). **No Phase 2 product code has been written yet** — we are in planning,
@@ -55,6 +65,19 @@ docs, and decision-framing.
 5. **Dashboard:** ship direction **A (unified list)** as default, with **B (grouped)** as a toggle.
 6. **Migration quiesce:** **operator choice per job, with explicit caveats** (static frontend →
    favor uptime/checkpoint; database server → favor consistency/graceful shutdown). Not hardcoded.
+7. **Proxmox-first North Star (ENG-0007):** the product moves **entirely off Hyper-V onto Proxmox**;
+   Proxmox is the primary platform, Hyper-V's role declines and is primarily a migration source.
+   Refines (not supersedes) ENG-0006: the four pillars are **weighted/sequenced**, not equal.
+8. **Incremental release cadence (ENG-0007):** ship **each milestone as its own usable release** —
+   **v2.0 = planted Observe** (persistent, multi-platform), **then Proxmox management/Deploy**, **then
+   HV→PVE migration**. No big-bang release.
+9. **Hyper-V = light management (ENG-0007):** during the transition the HV provider supports **basic
+   start/stop/reconfigure** — **not** full Proxmox parity, and **not** source-only. **Implication
+   (locked):** the **`IVirtualizationProvider` capability model must allow management verbs on the
+   Hyper-V provider** (not just read + migrate-source).
+10. **Release-1 scope cut (ENG-0007):** **PVE→HV reverse migration** (nice-to-have) and
+    **Backup/Restore** (needed eventually) are **out of the first v2 release** — deferred, delivered
+    later.
 
 ## 3. What exists right now
 
@@ -101,6 +124,11 @@ VMentory's migration engine — its step graph, safety rules, and scripts feed t
   (revocation = stop-renew + registry allow/deny, no CRL/OCSP). Enrollment = single-use token + CSR,
   key never leaves host. CA key in `ISecretStore`. Propagation pending in `agent-protocol.md` /
   `persistence-and-security.md`.
+- **ENG-0007 (Decided 2026-06-16):** **Proxmox-first North Star** + **incremental release cadence** +
+  **light HV management** (provider must allow HV management verbs) + **PVE→HV and Backup out of
+  release 1**. Refines ENG-0006 (weighted/sequenced pillars: Observe-plant → Proxmox mgmt/Deploy →
+  HV→PVE). Propagation pending in **ARCHITECTURE.md** (provider capability model) and **ROADMAP.md**
+  (release definitions/sequencing). See `discussions/0007-product-strategy-release-scope.md`.
 - **Docs reconciliation (held):** demote virt-v2v, ground `migration-job-model.md` in the skill,
   fold in the safety rules + scripts. Held pending owner review of the agents' first output.
 - **Review backlog:** the five specs and the four design mockups are first-drafts awaiting owner review.
@@ -109,12 +137,18 @@ VMentory's migration engine — its step graph, safety rules, and scripts feed t
   path above; secret-store v1 target → resolved by ENG-0002.)*
 
 ## 5. Immediate next steps (suggested order)
-1. Owner reviews the five specs (`docs/phase2/specs/`) and the four design mockups (`design/`).
-2. Resolve **ENG-0001** in the engineering session → record the Decision → documentation agent
-   propagates it into `agent-protocol.md` / `migration-job-model.md` / ROADMAP.
-3. Reconcile the migration docs (virt-v2v → qm-importdisk, fold in the skill).
-4. Begin **2.0 foundation**: rename `HyperInventory` → `VMentory.*`, split projects, define
-   `IVirtualizationProvider` + capability model.
+
+**Build is starting now at the 2.0 foundation (planted Observe)** under the ENG-0007 incremental
+cadence — implementation begins in parallel with the remaining doc propagation below.
+
+1. **Propagate ENG-0007** into **ROADMAP.md** (release definitions/sequencing aligned to incremental
+   shipping: v2.0 planted Observe → Proxmox mgmt/Deploy → HV→PVE; PVE→HV and Backup deferred) and
+   **ARCHITECTURE.md** (extend the `IVirtualizationProvider` capability model so **HV supports
+   management verbs**, not source-only).
+2. **Begin 2.0 foundation:** plant Observe — rename `HyperInventory` → `VMentory.*`, split projects,
+   add persistence, define `IVirtualizationProvider` + capability model (with HV management verbs).
+3. Owner reviews the five specs (`docs/phase2/specs/`) and the four design mockups (`design/`).
+4. Reconcile the migration docs (virt-v2v → qm-importdisk, fold in the skill).
 
 ## 6. How to resume on a new machine
 ```
