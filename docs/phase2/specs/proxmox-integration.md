@@ -25,7 +25,7 @@ owns which operation is the core of this spec.
   (ENG-0002) and decrypted into memory only ([persistence-and-security.md §4](persistence-and-security.md#4-secret-handling--isecretstore--envelope-encryption-decided-eng-0002)).
   This is the **tokens-over-passwords** principle (ENG-0002) in practice: a scoped, revocable token,
   not a root password.
-  The Phase-1 zero-on-dispose `Credentials` discipline ([Models.cs:121](../../../Models.cs#L121))
+  The Phase-1 zero-on-dispose `Credentials` discipline ([Models.cs:121](../../../VMentory.Core/Models.cs#L121))
   carries forward to whatever holds the token in memory.
 - **TLS:** PVE default certs are self-signed. Provider must support pinning the node's cert /
   CA fingerprint rather than disabling verification. See *Open question 1*.
@@ -96,7 +96,7 @@ equivalent of CLAUDE.md gotcha 9), capture exit code. Reuse that discipline.
 4. **Storage types differ wildly** (`dir`, `lvm`, `lvmthin`, `zfspool`, `cephfs`) — disk import
    target and free-space precheck must be storage-type aware; `qm importdisk` behaviour and the
    resulting volume reference vary by backend.
-5. **Firmware must match the source.** A Hyper-V Gen2 VM ([Models.cs:39](../../../Models.cs#L39))
+5. **Firmware must match the source.** A Hyper-V Gen2 VM ([Models.cs:39](../../../VMentory.Core/Models.cs#L39))
    is UEFI → the PVE shell needs `bios=ovmf` **and** an `efidisk0`; Gen1 → `seabios`. Getting this
    wrong is the classic "imported VM won't boot." Owned by migration precheck/provision
    ([migration-job-model.md §3](migration-job-model.md#3-step-flow-hyper-v--proxmox-the-proven-path-eng-0001)).

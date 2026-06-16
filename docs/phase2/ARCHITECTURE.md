@@ -140,22 +140,31 @@ this file first.
 ## Component breakdown
 
 ### 1. VMentory Core
-ASP.NET Core 8 (keep the stack — it's already cross-platform and containerizes cleanly). Split the current single project into:
+ASP.NET Core 8 (keep the stack — it's already cross-platform and containerizes cleanly). The single
+`HyperInventory` project splits into the projects below. The **target** layout is five projects; the
+2.0 foundation lands them incrementally.
 
-| Project | Responsibility |
-|---|---|
-| `VMentory.Core` | domain model, provider abstraction, operations engine, `ISecretStore`, internal CA, persistence |
-| `VMentory.Providers.HyperV` | talks to the Windows agent (gRPC/mTLS) |
-| `VMentory.Providers.Proxmox` | PVE REST client + SSH executor |
-| `VMentory.Web` | minimal API, SSE, auth, serves the SPA |
-| `VMentory.Agent` | the NativeAOT on-device service — Windows (Hyper-V) and Linux host roles (separate deployable, ENG-0004) |
+| Project | Responsibility | Status |
+|---|---|---|
+| `VMentory.Core` | domain model, provider abstraction, operations engine, `ISecretStore`, internal CA, persistence | **Exists** (slice 1) — classlib, `namespace VMentory.Core`; today holds `Models.cs` + `IVirtualizationProvider`/`ProviderCapability`/`PlatformKind` (slice 2). Ops engine / secret store / CA / persistence land in later slices. |
+| `VMentory.Web` | minimal API, SSE, auth, serves the SPA | **Exists** (slice 1) — the exe at repo root, `namespace VMentory.Web`, `AssemblyName=VMentory`, references Core. Also currently hosts `HyperVProvider` (see note). |
+| `VMentory.Providers.HyperV` | talks to the Windows agent (gRPC/mTLS) | **Deferred** to the agent slice. `HyperVProvider` lives in `VMentory.Web` for now (it still wraps the in-proc `Scanner`/`Reachability`); it relocates here once the transport becomes the gRPC/mTLS agent client. |
+| `VMentory.Providers.Proxmox` | PVE REST client + SSH executor | **Deferred** to 2.1. |
+| `VMentory.Agent` | the NativeAOT on-device service — Windows (Hyper-V) and Linux host roles (separate deployable, ENG-0004) | **Deferred** to its own slice. |
 
-> **Rename `HyperInventory` → `VMentory.*`.** The namespace is a Phase-1 fossil and will read wrong the moment Proxmox lands. Do this in the 2.0 foundation work, before new code piles on it.
+> **Rename `HyperInventory` → `VMentory.*` — done (slice 1, commit `d57d89d`).** The namespace was a
+> Phase-1 fossil. The solution is now `VMentory.sln` over `VMentory.Core` + `VMentory.Web`; the
+> domain-vs-framework `Host` ambiguity is resolved project-wide by a `global using Host =
+> VMentory.Core.Host;` alias (`GlobalUsings.cs`).
 
 ### 2. Provider abstraction
 The pivot from "Hyper-V tool" to "platform" lives here.
 
+The sketch below is the **illustrative target shape** — the full surface the interface grows into as
+the management/migration/deploy/backup pillars land. It is **not** the current contract.
+
 ```csharp
+// TARGET SHAPE (illustrative) — not what ships in 2.0.
 public interface IVirtualizationProvider
 {
     PlatformKind Platform { get; }                 // HyperV | Proxmox
@@ -174,7 +183,32 @@ public interface IVirtualizationProvider
 }
 ```
 
-- Today's `Host`/`Vm`/`Vhd`/`Volume` ([Models.cs](../../Models.cs)) are already close to platform-neutral — generalize them into the `VMentory.Core` domain, add a `Platform` discriminator and capability flags, drop Hyper-V-only assumptions (e.g. `Generation`, `IntegrationServices` become provider-specific extensions).
+**What actually ships in 2.0 (slice 2, commit `2cb54fd`).** The real interface in
+[`VMentory.Core/IVirtualizationProvider.cs`](../../VMentory.Core/IVirtualizationProvider.cs) is
+deliberately **lean** — the read-only surface the planted-Observe milestone needs, plus the
+capability handles:
+
+```csharp
+public interface IVirtualizationProvider
+{
+    PlatformKind Platform { get; }
+    ProviderCapabilities Capabilities { get; }
+    Task<(bool Ok, string Error)> QuickConnectAsync(Host host, CancellationToken ct = default);
+    Task<(bool Ok, string Error)> ScanAsync(Host host, CancellationToken ct = default);
+}
+```
+
+- **Implemented now:** `Platform`, `Capabilities`, `QuickConnectAsync`, `ScanAsync`. `HyperVProvider`
+  advertises **`Inventory | LiveStats`** only and wraps the existing `Scanner`/`ReachabilityChecker`.
+- **Deferred (2.2/2.3):** the `GetHostAsync`/`GetVmsAsync`/`GetStatsAsync`/`LifecycleAsync`/
+  `ExportDiskAsync`/`ImportDiskAsync`/`CreateVmShellAsync` **verb methods** above. The capability
+  **flags** for them already exist (see the capability model below), so the engine/UI can reason
+  about them before the methods land; growing this single-consumer interface later is non-breaking.
+- The richer ref/DTO surface (`HostInfo`/`VmInfo`/`VmRef`/etc.) is specced in
+  [provider-abstraction.md](specs/provider-abstraction.md) as the target; 2.0 still returns the
+  Phase-1 domain via the `Store` the provider mutates.
+
+- Today's `Host`/`Vm`/`Vhd`/`Volume` ([Models.cs](../../VMentory.Core/Models.cs)) are already close to platform-neutral — they now live in the `VMentory.Core` domain and `Host` carries a `Platform` discriminator (defaults `HyperV`, slice 2). Still to do: drop Hyper-V-only assumptions (e.g. `Generation`, `IntegrationServices` become provider-specific extensions) when the domain is generalized for Proxmox.
 
 #### Capability model — management verbs are capability-gated **per provider** (ENG-0007)
 
@@ -186,7 +220,9 @@ API, and the UI — must honor those flags**. A capability model designed as "Hy
 only, Proxmox = read + write" would have to be reworked later; do **not** build it that way.
 
 Shape: a `[Flags]` enum surfaced per provider via `ProviderCapabilities`, checked before any verb is
-offered or dispatched.
+offered or dispatched. **This is now real code** — the enum and record below are mirrored verbatim in
+[`VMentory.Core/ProviderCapability.cs`](../../VMentory.Core/ProviderCapability.cs) (slice 2); keep the
+two in sync if either changes.
 
 ```csharp
 [Flags]
@@ -220,11 +256,13 @@ public enum ProviderCapability
 public sealed record ProviderCapabilities(ProviderCapability Verbs /* , version, notes ... */);
 ```
 
-Indicative per-provider advertisement (exact sets pinned as each milestone lands):
+Indicative per-provider advertisement (exact sets pinned as each milestone lands). **As of 2.0,
+`HyperVProvider` advertises only `Inventory | LiveStats`** — the management/migration rows below are
+the *target* the flags reserve, flipped on as 2.2/2.3 wire the verb methods:
 
 | Capability group | `HyperVProvider` | `ProxmoxProvider` |
 |---|---|---|
-| Observe (Inventory / LiveStats / HistoricalStats) | ✅ (planted foundation) | ✅ |
+| Observe (Inventory / LiveStats / HistoricalStats) | ✅ `Inventory \| LiveStats` now; HistoricalStats with persistence | ✅ |
 | Light management (Start / Stop / Reconfigure) | ✅ **(ENG-0007 — HV is operable, not source-only)** | ✅ |
 | Snapshot / Reset | ✅ (transition operability) | ✅ |
 | Migration primitives (ExportDisk / ImportDisk / CreateVmShell) | ExportDisk (migrate-out source) | ImportDisk + CreateVmShell (migrate-in target) |
@@ -277,7 +315,7 @@ Engine requirements: each step **idempotent** and **resumable** (survives a Core
 
 ### 5. Security (this is now a hosted service, not loopback)
 The Phase-1 model — random port, session token, 127.0.0.1 only ([Program.cs:82](../../Program.cs#L82)) — does **not** survive becoming a shared hosted service. Phase 2:
-- **User auth** for the UI: at minimum a configured admin credential (2.0); roles later; OIDC/SSO optional. Replace the single session token; browser↔Core is HTTPS.
+- **User auth** for the UI: at minimum a configured admin credential (2.0); **scoped roles** later (e.g. backup-operator / vm-operator / admin — **ENG-0008, Open**); OIDC/SSO optional. This console RBAC is **distinct from** the agent's constrained-verb authz (ENG-0004): roles gate *which operator* may invoke *which pillar/verb* in the UI/API; the agent independently constrains *what verbs exist at all*. Replace the single session token; browser↔Core is HTTPS.
 - **Core ↔ Agent (ENG-0004/0005):** **gRPC over HTTP/2 + mTLS**, mutual. Agent identity is an enrolled client cert; the agent pins Core's root. Certs are **short-lived + auto-renewed** over the mTLS channel; revocation = **stop-renew + a registry allow/deny list** (no CRL/OCSP).
 - **PKI ownership (ENG-0005):** a **private CA inside Core** (root + intermediate) signs agent CSRs at enrollment; an external-CA seam (AD CS) is deferred. The CA private key lives in `ISecretStore` (the natural case for the opt-in operator-passphrase KEK mode).
 - **Enrollment (ENG-0003/0005):** manual install + a **single-use, short-lived enrollment token** → CSR (key never leaves the host) → Core-intermediate-signed client cert + the root to pin. VMentory never receives an admin credential.
@@ -319,6 +357,7 @@ The Phase-1 model — random port, session token, 127.0.0.1 only ([Program.cs:82
 - **Backup buy-vs-build** (ENG-0006) — orchestrate Proxmox Backup Server / Veeam vs build a native dedup/replication engine. **Explicitly deferred and out of release 1** (ENG-0007) — decided when pillars 1–3 are further along. A future ENG topic.
 - **PVE→HV reverse migration** (ENG-0006) — the distinct later effort (reverse drivers, qcow2→VHDX, Gen2/UEFI). **Out of release 1** (ENG-0007). A future ENG topic.
 - **PVE node TLS trust model** ([proxmox-integration.md](specs/proxmox-integration.md#5-open-questions-need-a-human-decision)) and **DB at-rest encryption / snapshot retention** ([persistence-and-security.md](specs/persistence-and-security.md#7-open-questions-need-a-human-decision)).
+- **Console RBAC / scoped roles** ([ENG-0008](../engineering/discussions/0008-rbac-scoped-console-auth.md), **Open**) — the role model for the web console (backup-operator / vm-operator / admin), distinct from the agent's constrained-verb authz (ENG-0004). Shapes the `app_user`/role schema and every write verb's authorization; to be decided before 2.2 auth hardening (§5 user-auth bullet).
 
 See `docs/phase2/specs/` for the expanded component specs and
 [`docs/engineering/REGISTER.md`](../engineering/REGISTER.md) for the decision register.

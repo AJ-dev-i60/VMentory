@@ -1,11 +1,14 @@
 # VMentory
 
-> **Phase 2 in planning.** This document describes the shipping Phase-1 app (below). Phase 2 turns
-> VMentory into a **container-based, single-operator, multi-platform (Hyper-V + Proxmox) platform**
-> with on-device agents, delivering **four pillars on one shared foundation** —
+> **Phase 2 implementation has started (2.0 foundation, slices 1–2 landed).** This document still
+> describes the shipping Phase-1 app (below); Phase 2 turns VMentory into a
+> **container-based, single-operator, multi-platform (Hyper-V + Proxmox) platform** with on-device
+> agents, delivering **four pillars on one shared foundation** —
 > **Observe → Migrate → Deploy → Backup** (ENG-0006). The shared foundation is a .NET-native agent
 > (gRPC/mTLS, ENG-0001/0004), `ISecretStore` (ENG-0002), a private-CA PKI (ENG-0005), persistence,
-> and a general operations engine. Start at
+> and a general operations engine. **Already built:** the `VMentory.Core`/`VMentory.Web` project
+> split (slice 1) and the `IVirtualizationProvider` + capability model with `HyperVProvider` wiring
+> the live inventory reads (slice 2) — see the file map below. Start at
 > [`docs/phase2/PROGRESS.md`](docs/phase2/PROGRESS.md) → `ARCHITECTURE.md` / `ROADMAP.md`, and
 > `docs/engineering/REGISTER.md` for the decision register. Agents live in `.claude/agents/`.
 
@@ -42,6 +45,7 @@ _**Phase-2 layout (2.0 slice 1):** the solution `VMentory.sln` has two projects 
 | `VMentory.Core/IVirtualizationProvider.cs` | Provider abstraction (`Platform`, `Capabilities`, `QuickConnectAsync`, `ScanAsync`) — the Core↔platform seam |
 | `VMentory.Core/ProviderCapability.cs` | `[Flags]` capability enum + `ProviderCapabilities` (gates UI + ops engine; HV mgmt verbs allowed per ENG-0007) |
 | `VMentory.Core/PlatformKind.cs` | `HyperV` / `Proxmox` discriminator |
+| `GlobalUsings.cs` | Project-wide `global using Host = VMentory.Core.Host;` alias (resolves the domain-vs-framework `Host` ambiguity after the Core/Web split — see gotcha #2) |
 | `HyperVProvider.cs` | `IVirtualizationProvider` for Hyper-V; wraps `Scanner`/`Reachability`, resolves creds from `Store`/`AppConfig`. Inventory reads (quick-connect, scan) now flow through this seam |
 | `Store.cs` | Thread-safe in-memory state (`ConcurrentDictionary`), diff, totals |
 | `Scanner.cs` | WinRM full-inventory scan + quick-connect via PowerShell `Invoke-Command` |
@@ -102,7 +106,7 @@ All `/api/*` routes require `X-Session-Token` header or `?token=` query param.
 
 1. **PowerShell scripts use `string.Format()`** — never raw string literals (`$"""..."""`). C# interpolation braces conflict with PowerShell `{}` blocks. See `Scanner.cs:BuildRemoteWrapper` and `Reachability.cs`.
 
-2. **`VMentory.Core.Host` must be fully qualified** in `Program.cs` — ambiguous with `Microsoft.Extensions.Hosting.Host`. Three locations: the `hostsToCheck` list, the `AddHost` call, and the snapshot lambda.
+2. **`Host` ambiguity (domain vs `Microsoft.Extensions.Hosting.Host`)** — resolved project-wide by `GlobalUsings.cs` (`global using Host = VMentory.Core.Host;`). `Program.cs` still spells out `VMentory.Core.Host` in three spots (the `hostsToCheck` list, the `AddHost` call, the snapshot lambda) — harmless and explicit. New code can rely on the bare `Host` alias.
 
 3. **HTML served via `Assembly.GetManifestResourceStream()`** — not `StaticFiles` or `ManifestEmbeddedFileProvider` (that requires a NuGet package unavailable offline). See `LoadEmbeddedHtml()` in `Program.cs` and `<EmbeddedResource>` in the csproj.
 

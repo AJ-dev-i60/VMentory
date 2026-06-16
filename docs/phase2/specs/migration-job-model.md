@@ -79,7 +79,7 @@ capability match (source disk-export, target disk-import + create-shell,
 [provider-abstraction.md §3](provider-abstraction.md#3-capability-model)); target storage free
 space (`/nodes/{n}/storage`, [proxmox-integration.md §2](proxmox-integration.md#2-rest-surface-used-by-milestone));
 guest OS class (Linux vs Windows → drives the guest-fix path, §4); **firmware mapping** Gen2→OVMF
-([Models.cs:39](../../../Models.cs#L39) `Generation` → PVE `bios=ovmf`+`efidisk0`,
+([Models.cs:39](../../../VMentory.Core/Models.cs#L39) `Generation` → PVE `bios=ovmf`+`efidisk0`,
 [proxmox-integration.md gotcha 5](proxmox-integration.md#4-gotchas)); current power state and
 **checkpoint state** (an active `.avhdx` means step 2 must run first — copying a differencing disk
 alone yields a broken image).
@@ -152,10 +152,10 @@ the PVE node**, so this affects only the optional path.
   `virt-v2v` removes the need by injecting drivers, but the baseline SATA-first path is the default.
 - **Generation-1 / BIOS guests:** straightforward `seabios`, no EFI disk.
 - **Multiple VHDs per VM:** Phase-1 inventory already models a list of disks
-  ([Models.cs:44](../../../Models.cs#L44) `List<Vhd>`); expose/import fan out per disk and
+  ([Models.cs:44](../../../VMentory.Core/Models.cs#L44) `List<Vhd>`); expose/import fan out per disk and
   rejoin — each disk is its own idempotency unit.
 - **Dynamic memory / generation-specific fields:** Hyper-V `DynamicMemory`
-  ([Models.cs:43](../../../Models.cs#L43)) has no exact PVE equivalent — map to ballooning min/max
+  ([Models.cs:43](../../../VMentory.Core/Models.cs#L43)) has no exact PVE equivalent — map to ballooning min/max
   and warn on imperfect fidelity rather than failing.
 
 ---

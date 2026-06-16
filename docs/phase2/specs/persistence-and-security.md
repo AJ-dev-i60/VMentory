@@ -131,8 +131,8 @@ sites depend on the interface, never on the mechanism, so the store evolves with
   **not v1**.
 - **In memory:** secrets are decrypted into memory only, held for the operation, and zeroed. The
   Phase-1 discipline **carries forward verbatim** — `Credentials` holds the secret as `byte[]` and
-  `Array.Clear`s it on dispose ([Models.cs:121](../../../Models.cs#L121),
-  [Models.cs:143](../../../Models.cs#L143)); `Store` disposes creds on removal and purge
+  `Array.Clear`s it on dispose ([Models.cs:121](../../../VMentory.Core/Models.cs#L121),
+  [Models.cs:143](../../../VMentory.Core/Models.cs#L143)); `Store` disposes creds on removal and purge
   ([Store.cs:41](../../../Store.cs#L41), [Store.cs:133](../../../Store.cs#L133)). Reuse this for PVE
   tokens, SSH keys, SMB creds, and CA key material.
 
@@ -169,8 +169,15 @@ users. Replace it:
 
 - **UI / user auth:** at minimum a **configured admin credential** (2.0 exit:
   [ROADMAP.md §2.0](../ROADMAP.md) "Replace session-token/loopback with a configured admin
-  login"); **roles** in 2.2 and **OIDC/SSO optional** ([ROADMAP.md §2.2](../ROADMAP.md)). Local
+  login"); **scoped roles** in 2.2 and **OIDC/SSO optional** ([ROADMAP.md §2.2](../ROADMAP.md)). Local
   account passwords hashed with **Argon2id**, never the Phase-1 single shared token.
+- **Console RBAC is its own open topic ([ENG-0008](../../engineering/discussions/0008-rbac-scoped-console-auth.md), Open).**
+  The role set (e.g. **backup-operator / vm-operator / admin**) and how roles gate write verbs/pillars
+  are **undecided** — the `app_user.role` column (§1) and per-verb authorization depend on it. This
+  console RBAC is **distinct from** the agent's constrained-verb authz (ENG-0004): RBAC decides
+  *which operator* may invoke *which pillar/verb*; the agent independently fixes *what verbs exist at
+  all*. To be decided before 2.2 auth hardening; until then `role` is a placeholder. *Proceed against
+  the current recommendation (a small fixed role set), noting the dependency.*
 - **Sessions:** issue a real session cookie / bearer after login. The Phase-1 token-in-query-param
   pattern ([Program.cs:88](../../../Program.cs#L88), and `?token=` for SSE
   [Program.cs:414](../../../Program.cs#L414)) leaks tokens into logs/history and must go for the
@@ -235,3 +242,7 @@ rows are **append-only** and must **never** contain secret values.
 4. **Storage / repository layer persistence** (ENG-0006) — when Deploy/Backup land, the ISO/image/
    backup repository and its metadata need a home; placement is an open ENG topic. Note the
    dependency; do not schema it yet.
+5. **Console RBAC / scoped roles** ([ENG-0008](../../engineering/discussions/0008-rbac-scoped-console-auth.md),
+   **Open**) — the role set (backup-operator / vm-operator / admin) and the verb-authorization model
+   the `app_user.role` column (§1) feeds. Distinct from agent authz (ENG-0004). To be decided before
+   2.2 auth hardening; the schema reserves `role` but the values/semantics are not yet pinned.

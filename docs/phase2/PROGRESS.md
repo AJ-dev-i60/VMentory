@@ -3,7 +3,7 @@
 > **Purpose:** pick up Phase 2 from a clean clone on any machine. Read this top-to-bottom and you
 > know where we are, what's decided, what's open, and what to do next.
 >
-> **Last updated:** 2026-06-16 · **Phase:** 2.0 foundation — implementation started (slice 1 landed) · **Branch:** `dev`
+> **Last updated:** 2026-06-16 · **Phase:** 2.0 foundation — implementation started (slices 1–2 landed) · **Branch:** `dev`
 
 ---
 
@@ -35,15 +35,15 @@ New shared subsystems the vision adds (⚠ not yet in ARCHITECTURE/ROADMAP — d
 expand): storage/repository layer, guest-customization layer (shared Deploy+Migrate), scheduling,
 data-movement-at-scale; the migration job engine generalizes to a **general operations engine**.
 
-> ⚠ ARCHITECTURE.md and ROADMAP.md still describe the narrower "dashboard + management + one-way
-> migration" scope — they predate ENG-0006/ENG-0007 and need: (a) **release-definition/sequencing
-> aligned to incremental shipping** (each milestone is its own usable release), and (b) the
-> **provider capability model extended so Hyper-V supports management verbs** (not source-only).
-> *Propagation into ARCHITECTURE.md / ROADMAP.md is pending.*
+> ✅ ENG-0006/ENG-0007 are **propagated** into ARCHITECTURE.md and ROADMAP.md (commits `8c216ae` /
+> `087b260`): incremental release definitions/sequencing and the **provider capability model with
+> Hyper-V management verbs allowed** are in place. The remaining held propagation is the
+> virt-v2v→`qm importdisk` reconciliation in `migration-job-model.md` (see §4).
 
 The target design is in [ARCHITECTURE.md](ARCHITECTURE.md); the milestone plan is in
-[ROADMAP.md](ROADMAP.md). **No Phase 2 product code has been written yet** — we are in planning,
-docs, and decision-framing.
+[ROADMAP.md](ROADMAP.md). **Phase 2 implementation has started** at the 2.0 foundation — slices 1
+(project split / rename) and 2 (provider abstraction + capability model) are landed and verified on
+`dev` (see §3 and §5); persistence, the agent, and `ISecretStore` are next.
 
 ## 2. Locked decisions (the spine — don't silently revisit)
 
@@ -81,6 +81,17 @@ docs, and decision-framing.
 
 ## 3. What exists right now
 
+### Built code (2.0 foundation — see §5 for slice detail + verification)
+- **Solution `VMentory.sln`** over two projects (slice 1, `d57d89d`): **`VMentory.Core`** (classlib,
+  domain `Models.cs`) + **`VMentory.Web`** (the exe, references Core). `namespace HyperInventory` →
+  `VMentory.*` across all files; `Host` ambiguity aliased in `GlobalUsings.cs`. `Providers.*` / `Agent`
+  projects deferred to later slices.
+- **Provider abstraction** (slice 2, `2cb54fd`) in `VMentory.Core`: `IVirtualizationProvider`
+  (lean — `Platform`, `Capabilities`, `QuickConnectAsync`, `ScanAsync`), the `[Flags] ProviderCapability`
+  enum + `ProviderCapabilities` record, `PlatformKind`, and a `Host.Platform` discriminator.
+  `HyperVProvider` (in `VMentory.Web`) advertises `Inventory|LiveStats` and the live HV inventory reads
+  now flow through the seam.
+
 ### Planning docs (`docs/phase2/`)
 - `ARCHITECTURE.md` — target topology, `IVirtualizationProvider` model, persistence, migration engine, carry-over table.
 - `ROADMAP.md` — milestones **2.0** foundation/re-architecture → **2.1** Proxmox read → **2.2** management → **2.3** migration MVP → **2.4** scale.
@@ -89,7 +100,11 @@ docs, and decision-framing.
 
 ### Engineering decision workspace (`docs/engineering/`)
 - `README.md` — the RFC/ADR protocol. `REGISTER.md` — the board (read first).
-- `discussions/0001-hyperv-migration-transport.md` — **ENG-0001, Awaiting decision**.
+- `discussions/0001`–`0007` — **ENG-0001..0007, all Decided** (transport, secret store, install model,
+  agent runtime, mTLS PKI, four-pillar scope, Proxmox-first strategy).
+- `discussions/0008-rbac-scoped-console-auth.md` — **ENG-0008, Open** — RBAC / scoped console roles
+  (backup-operator / vm-operator / admin), distinct from the agent's constrained-verb authz (ENG-0004);
+  to be decided before 2.2 auth hardening.
 
 ### Agents (`.claude/agents/`)
 - `ui-design.md` — owns `design/`; produces mockups + specs; never edits `wwwroot/index.html`.
@@ -127,8 +142,14 @@ VMentory's migration engine — its step graph, safety rules, and scripts feed t
 - **ENG-0007 (Decided 2026-06-16):** **Proxmox-first North Star** + **incremental release cadence** +
   **light HV management** (provider must allow HV management verbs) + **PVE→HV and Backup out of
   release 1**. Refines ENG-0006 (weighted/sequenced pillars: Observe-plant → Proxmox mgmt/Deploy →
-  HV→PVE). Propagation pending in **ARCHITECTURE.md** (provider capability model) and **ROADMAP.md**
-  (release definitions/sequencing). See `discussions/0007-product-strategy-release-scope.md`.
+  HV→PVE). ✅ **Propagated** into **ARCHITECTURE.md** (provider capability model) and **ROADMAP.md**
+  (release definitions/sequencing) — commits `8c216ae` / `087b260`. See
+  `discussions/0007-product-strategy-release-scope.md`.
+- **ENG-0008 (Open, 2026-06-16):** **RBAC / scoped console roles** (backup-operator / vm-operator /
+  admin) for the web UI — distinct from the agent's constrained-verb authz (ENG-0004). Shapes the
+  `app_user.role` schema and every write verb's authorization. **Needs an owner decision** before 2.2
+  auth hardening; specs note the dependency and proceed against a small fixed-role recommendation. See
+  `discussions/0008-rbac-scoped-console-auth.md`.
 - **Docs reconciliation (held):** demote virt-v2v, ground `migration-job-model.md` in the skill,
   fold in the safety rules + scripts. Held pending owner review of the agents' first output.
 - **Review backlog:** the five specs and the four design mockups are first-drafts awaiting owner review.
