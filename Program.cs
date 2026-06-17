@@ -11,9 +11,11 @@ using VMentory.Core.Persistence;
 using VMentory.Web;
 
 // ── Logging: errors only, no host/PII data ───────────────────────────────────
+// Write to a writable location: VMENTORY_LOG, else the data dir (the mounted /data volume in the
+// container — AppContext.BaseDirectory is the code dir and is NOT writable by the non-root container
+// user). ErrorLogger is fail-safe: a bad/locked path degrades to no-op, never crashes startup.
 
-var logPath = Path.Combine(AppContext.BaseDirectory, "errors.log");
-using var logWriter = new ErrorLogger(logPath);
+using var logWriter = new ErrorLogger(ResolveLogPath());
 
 // ── Apply any pending update before web infrastructure starts ─────────────────
 
@@ -660,6 +662,24 @@ static string ResolveDbPath(string dataDir)
     return Path.Combine(dataDir, "vmentory.db");
 }
 
+// errors.log path: VMENTORY_LOG, else the VMENTORY_DB directory (writable volume in the container),
+// else the app base dir (fine for the Windows desktop exe). Never throws.
+static string ResolveLogPath()
+{
+    try
+    {
+        var env = Environment.GetEnvironmentVariable("VMENTORY_LOG");
+        if (!string.IsNullOrWhiteSpace(env)) return env;
+        var db = Environment.GetEnvironmentVariable("VMENTORY_DB");
+        var dir = !string.IsNullOrWhiteSpace(db)
+            ? Path.GetDirectoryName(Path.GetFullPath(db))
+            : AppContext.BaseDirectory;
+        if (string.IsNullOrWhiteSpace(dir)) dir = AppContext.BaseDirectory;
+        return Path.Combine(dir, "errors.log");
+    }
+    catch { return Path.Combine(AppContext.BaseDirectory, "errors.log"); }
+}
+
 // ── DTOs ──────────────────────────────────────────────────────────────────────
 
 record CredentialsDto(string Username, string Password);
@@ -691,21 +711,44 @@ public class AppConfig
 
 // ── Error logger (errors only, no PII) ────────────────────────────────────────
 
-public class ErrorLogger(string path) : IDisposable
+public class ErrorLogger : IDisposable
 {
-    private readonly StreamWriter _writer = new(
-        new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite)) { AutoFlush = true };
+    private readonly StreamWriter? _writer;   // null → logging disabled (never fatal)
     private readonly object _lock = new();
+
+    public ErrorLogger(string path)
+    {
+        _writer = TryOpen(path) ?? TryOpen(Path.Combine(Path.GetTempPath(), "vmentory-errors.log"));
+        if (_writer == null)
+            Console.Error.WriteLine($"  [warn] error log unavailable at '{path}' — continuing without a log file.");
+    }
+
+    private static StreamWriter? TryOpen(string path)
+    {
+        try
+        {
+            var dir = Path.GetDirectoryName(path);
+            if (!string.IsNullOrWhiteSpace(dir)) Directory.CreateDirectory(dir);
+            return new StreamWriter(
+                new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite)) { AutoFlush = true };
+        }
+        catch { return null; }
+    }
 
     public void LogError(string message, Exception? ex = null)
     {
+        if (_writer == null) return;
         lock (_lock)
         {
-            _writer.WriteLine($"[{DateTimeOffset.UtcNow:o}] ERROR: {message}");
-            if (ex != null)
-                _writer.WriteLine($"  {ex.GetType().Name}: {ex.Message}");
+            try
+            {
+                _writer.WriteLine($"[{DateTimeOffset.UtcNow:o}] ERROR: {message}");
+                if (ex != null)
+                    _writer.WriteLine($"  {ex.GetType().Name}: {ex.Message}");
+            }
+            catch { /* logging must never throw */ }
         }
     }
 
-    public void Dispose() => _writer.Dispose();
+    public void Dispose() => _writer?.Dispose();
 }
