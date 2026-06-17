@@ -19,7 +19,10 @@
 > [`docs/phase2/PROGRESS.md`](docs/phase2/PROGRESS.md) → `ARCHITECTURE.md` / `ROADMAP.md`, and
 > `docs/engineering/REGISTER.md` for the decision register. Agents live in `.claude/agents/`.
 
-Single-exe Windows tool that inventories Hyper-V hosts over WinRM and serves a local web dashboard on 127.0.0.1.
+Inventories Hyper-V hosts over WinRM and serves a web dashboard. **As of 2.0 slice (1) the bootstrap is
+a hosted service** — binds `0.0.0.0:{configurable}` and terminates HTTPS at Core (ENG-0010), packaged as
+a Linux container — not the Phase-1 single-exe loopback desktop app. (The Windows single-exe still builds
+via `build.ps1` for the legacy desktop path.)
 
 - **Repo**: https://github.com/AJ-dev-i60/VMentory
 - **Stack**: ASP.NET Core 8 minimal API · vanilla JS SPA (no framework) · PowerShell subprocess for WinRM · custom Canvas donut charts
@@ -47,7 +50,9 @@ Update `STATUS.md` when you start a request (move to *In progress*) and when you
 |---|---|
 _**Phase-2 layout (2.0 slice 1):** the solution `VMentory.sln` has two projects — **`VMentory.Core`** (classlib, `namespace VMentory.Core`, holds the domain model `Models.cs`) and **`VMentory.Web`** (the exe at repo root, `namespace VMentory.Web`, references Core; everything below except `Models.cs`). `Providers.*` / `Agent` projects come in later 2.0 slices._
 
-| `Program.cs` | Entry point: API routes, config, console loop, `ErrorLogger` |
+| `Program.cs` | Entry point: API routes, config, hosted bootstrap (0.0.0.0 + Kestrel HTTPS), `ErrorLogger` |
+| `TlsSetup.cs` | Resolves the Core-terminated HTTPS cert (ENG-0010): operator PFX → operator PEM → self-signed fallback (cached in `DataDir` in real mode) |
+| `Dockerfile` / `.dockerignore` | Single Linux container image (ENG-0010): .NET app + SSH client, no `qemu`/`qm`; runs as non-root, DB + cert on the `/data` volume |
 | `VMentory.Core/Models.cs` | All data types: `Host` (incl. `Platform` discriminator), `Vm`, `Vhd`, `Volume`, `Credentials`, enums (in `VMentory.Core`) |
 | `VMentory.Core/IVirtualizationProvider.cs` | Provider abstraction (`Platform`, `Capabilities`, `QuickConnectAsync`, `ScanAsync`) — the Core↔platform seam |
 | `VMentory.Core/ProviderCapability.cs` | `[Flags]` capability enum + `ProviderCapabilities` (gates UI + ops engine; HV mgmt verbs allowed per ENG-0007) |
@@ -76,12 +81,25 @@ _**Phase-2 layout (2.0 slice 1):** the solution `VMentory.sln` has two projects 
 ## Dev commands
 
 ```powershell
-dotnet run --project VMentory.Web -- --mock              # dev mode: 5 fake hosts, no real WinRM
-dotnet run --project VMentory.Web -- --mock --no-update  # same, skip GitHub update check
 dotnet build VMentory.sln                                # compile check (whole solution)
+# Dev run — the .exe apphost requires elevation (app.manifest); run the built DLL to avoid the UAC prompt:
+dotnet bin\Debug\net8.0\VMentory.dll --mock --no-update  # dev mode: 5 fake hosts, no real WinRM
 .\build.ps1                         # release exe → dist\VMentory.exe
 .\build.ps1 -Version 1.2.0          # embed specific version number
+
+# Container (ENG-0010): single Linux image, Core-terminated HTTPS on a mounted volume
+docker build -t vmentory:dev .
+docker run --rm -p 8443:8443 -v vmentory-data:/data vmentory:dev   # token printed to container logs
 ```
+
+**Hosted runtime (ENG-0010) — env contract:** `VMENTORY_HTTP_ADDR` (default `0.0.0.0`),
+`VMENTORY_HTTP_PORT` (default 8443 HTTPS / 8080 HTTP), `VMENTORY_HTTP_ONLY=1` (plain HTTP behind a
+reverse proxy / for dev), `VMENTORY_TLS_PFX` (+`_PASSWORD`) or `VMENTORY_TLS_CERT_PEM`+`VMENTORY_TLS_KEY_PEM`
+(operator cert; nothing baked into the image), `VMENTORY_DB` (SQLite path → the `/data` volume).
+The single **session token** is still the interim auth (printed at startup / in container logs; set
+`VMENTORY_TOKEN` for a stable token across restarts); it is replaced by **login + RBAC in slice 2**
+(ENG-0008). `GET /health` is an unauthenticated liveness probe for orchestrator health checks. Behind a
+reverse proxy (e.g. Coolify/Traefik terminating TLS), set `VMENTORY_HTTP_ONLY=1` and let the proxy do HTTPS.
 
 ## Release workflow
 
@@ -128,3 +146,5 @@ All `/api/*` routes require `X-Session-Token` header or `?token=` query param.
 7. **Persistence (slice 3): always-on in real mode, ephemeral in `--mock`.** SQLite via EF Core. DB path = `VMENTORY_DB` env var (the container points this at a mounted volume) else `%LocalAppData%\VMentory\vmentory.db`. **`--mock` registers no DB and writes nothing to disk.** Only the **host registry** + **inventory snapshots** persist; **credentials are never persisted** (ENG-0002 — wait for `ISecretStore`), so restored hosts need creds re-entered. The in-memory `Store` is still the working set; `IInventoryStore` is write-through (add/remove host, snapshot-on-scan) and seeds `Store` at startup.
 
 8. **EF Core / SQLite gotchas:** (a) SQLite **can't `ORDER BY` a `DateTimeOffset`** — order snapshots by the autoincrement `Id` (higher = newer), not `TakenAt`. (b) Migrations live in `VMentory.Core`; **rebuild after `dotnet ef migrations add`** or the running DLL won't contain the new migration and `Migrate()` creates an empty DB. (c) The single-file exe bundles the SQLite native lib via the existing `IncludeNativeLibrariesForSelfExtract=true` — verified working. (d) Generate migrations with `dotnet ef migrations add <Name> --project VMentory.Core --startup-project VMentory.Core` (a design-time factory avoids running the web app).
+
+9. **Hosted bootstrap (slice 1, ENG-0010) replaced the loopback desktop bootstrap.** `Program.cs` now binds `0.0.0.0:{VMENTORY_HTTP_PORT}` via `ConfigureKestrel` and terminates HTTPS itself (`TlsSetup.ResolveServerCertificate`); the old `FindFreePort()` / `OpenBrowser()` / R-key affordances are gone. (a) The **console Q-to-quit loop only runs when `!Console.IsInputRedirected`** — in a container (no TTY) it's skipped and the operator stops via SIGTERM (`docker stop`), which ASP.NET handles as graceful shutdown. (b) The **`app.manifest` (requireAdministrator) is now `Condition="'$(OS)' == 'Windows_NT'"`** so the Linux container publish doesn't fail; the Windows `.exe` still requires elevation — for dev, run the **DLL** (`dotnet bin\Debug\net8.0\VMentory.dll …`) to skip the UAC prompt. (c) The WinRM-service ensure is **Windows-only-guarded** (`OperatingSystem.IsWindows()`) — the Linux container has no PowerShell host. (d) Self-signed cert is **cached in `DataDir`** (real mode) so the browser warning is one-time; **mock mode is ephemeral** (writes nothing). (e) The **session token is interim** — slice 2 (ENG-0008) replaces it with login + RBAC.

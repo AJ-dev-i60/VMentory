@@ -83,7 +83,17 @@ machinery (§4).
 
 VMentory v2 is a **hosted web service in a single Linux container**, not a desktop app. This is the
 tenet the whole foundation is built around (ENG-0010), and it directly replaces the Phase-1
-loopback/desktop bootstrap:
+loopback/desktop bootstrap.
+
+> **Built (re-baselined slice (1), 2026-06-17).** The hosted-service bootstrap below is **in code on
+> `dev`**: [`Program.cs`](../../Program.cs) binds `0.0.0.0:{port}` via `ConfigureKestrel` and
+> terminates HTTPS itself; [`TlsSetup.cs`](../../TlsSetup.cs) resolves the cert (operator PFX → PEM →
+> self-signed, real-mode cached / mock ephemeral, nothing baked in); a [`Dockerfile`](../../Dockerfile)
+> builds a non-root (uid 10001) Linux image (app + openssh-client, no `qemu`/`qm`) with DB + cert on a
+> `/data` volume. **Still interim / pending:** the single **session token** persists as interim auth
+> (login + RBAC retires it in **slice (2)**, not here); the `/api/quit` desktop route + `Updater.cs`
+> image-tag re-scope are **not yet done**; the **container image is authored but unbuilt** (verified at
+> the app level only). The env contract and cert precedence below match the shipped code.
 
 - **The user installs nothing locally — there are exactly two installs.** (a) Stand up the **Core
   container** (`docker run` / compose); (b) install the **Hyper-V agent** on the *retiring* Windows HV
@@ -92,23 +102,37 @@ loopback/desktop bootstrap:
   container.
 - **The container hosts all the tools.** The image carries the .NET app + an SSH client; it does **not**
   bake in `qemu`/`qm`/`virt-v2v` — those run **on the Proxmox node** and are reached over SSH (ENG-0009).
-- **Network bind:** Core binds **`0.0.0.0:{configurable port}`** (env-driven), replacing the Phase-1
-  hardcoded `127.0.0.1:{random}` loopback + `FindFreePort()` ([Program.cs:43](../../Program.cs#L43)).
-  The random-port desktop discovery is dropped.
-- **TLS posture: Core-terminated HTTPS.** Kestrel serves HTTPS **directly** with a self-signed
-  (first-run, warn) or operator-provided cert — this is the **decided default for release 1**
-  (ENG-0010). Running behind a TLS-terminating reverse proxy (nginx/Traefik) is a **documented future
+- **Network bind:** Core binds **`VMENTORY_HTTP_ADDR` (default `0.0.0.0`) : `VMENTORY_HTTP_PORT`**
+  (env-driven) via Kestrel `ConfigureKestrel`, replacing the Phase-1 hardcoded `127.0.0.1:{random}`
+  loopback + `FindFreePort()`. The random-port desktop discovery — and the `OpenBrowser()` / R-key
+  reopen affordances — are **dropped**. The console Q-to-quit loop now runs **only when
+  `!Console.IsInputRedirected`** (a container has no TTY, so it is skipped; the operator stops the
+  service with SIGTERM → ASP.NET graceful shutdown).
+- **TLS posture: Core-terminated HTTPS.** Kestrel serves HTTPS **directly** via `listen.UseHttps(cert)`
+  — the **decided default for release 1** (ENG-0010). Cert resolution precedence
+  ([`TlsSetup.cs`](../../TlsSetup.cs)) is **operator PFX (`VMENTORY_TLS_PFX` +
+  `VMENTORY_TLS_PFX_PASSWORD`) → operator PEM (`VMENTORY_TLS_CERT_PEM` + `VMENTORY_TLS_KEY_PEM`) →
+  self-signed fallback** (first-run, warn; cached in the data dir in real mode for a stable identity +
+  one-time browser warning; **mock mode is ephemeral, writes nothing**). **`VMENTORY_HTTP_ONLY=1`**
+  disables TLS for a TLS-terminating reverse proxy (nginx/Traefik) or local dev — a **documented future
   seam, NOT required for release 1**. This dashboard TLS is a **distinct trust domain** from the agent
   mTLS PKI (ENG-0005 / §5) — do not conflate the two certs.
 - **Runtime injection, nothing baked in:** the envelope-encryption **KEK** (ENG-0002) **and** the
   dashboard **TLS cert/key** are injected at runtime (container secret / `LoadCredential` / env /
   mounted volume / operator-passphrase). The image bakes in **no secret**; the DB holds only
   KEK-wrapped secrets.
-- **Persistence:** SQLite on a **mounted volume** via `VMENTORY_DB` (already wired); TLS material +
-  operator config mount alongside. Postgres stays the opt-in multi-instance path.
+- **Persistence:** SQLite + the cached self-signed cert live on a **mounted `/data` volume** via
+  `VMENTORY_DB` / `DataDir` (already wired); operator-supplied TLS material + config mount alongside.
+  Postgres stays the opt-in multi-instance path.
+- **Container hardening:** the image runs as a **non-root** user (uid 10001); `/data` is the only
+  writable volume; it carries the .NET app + `openssh-client` (ENG-0009) and **no `qemu`/`qm`**;
+  `EXPOSE 8443`. The Windows-only `requireAdministrator` manifest is conditioned off the Linux publish.
 - **Auth swap:** the single session token + `/api/quit` desktop bootstrap are **replaced by login +
-  RBAC** (ENG-0008). A minimal admin login lands in the **first** re-baselined foundation slice (the
-  one that exposes the hosted UI); the fixed-role framework lands before any write verb.
+  RBAC** (ENG-0008). **Sequencing note:** slice (1) (built 2026-06-17) kept the **session token as
+  interim auth** and left `/api/quit` in place; the minimal admin login that **retires the token**, plus
+  the fixed-role framework, land in **re-baselined slice (2)** — before any write verb. (ENG-0010 item 6
+  said login lands "in this deployment slice"; the re-baselined slice split — PROGRESS §5 — moves login
+  into slice (2), which supersedes that wording.)
 - **Inbound surface:** Core initiates **all** Proxmox connections outbound (REST 8006 + SSH 22,
   ENG-0009); nodes never connect in. The first containerized releases therefore expose **only the web
   UI port**. The agent gRPC/mTLS listener is **Hyper-V-only** and arrives later with the migration slice.
@@ -385,7 +409,7 @@ Engine requirements: each step **idempotent** and **resumable** (survives a Core
 
 ### 5. Security (this is now a hosted service, not loopback)
 The Phase-1 model — random port, session token, 127.0.0.1 only ([Program.cs:82](../../Program.cs#L82)) — does **not** survive becoming a shared hosted service. The container runtime contract is in [Deployment model](#deployment-model-eng-0010--containerized-web-first-install-nothing); the auth/transport posture is:
-- **Console authn/authz (ENG-0008, Decided 2026-06-16 — firm + early):** the single session token is replaced by **login**, landing in the **containerized-Core deployment slice** (ENG-0010). **Fixed built-in roles** (Admin / VM-operator / Backup-operator / Viewer) over an **internal pillar×verb permission catalog** that **reuses `ProviderCapability`** plus a **small console-permission set** (manage-credentials, manage-enrollment, view-audit, manage-users); role→permission mapping is **data, not hardcoded `if`s**, so a custom-roles UI is a non-breaking later addition. **Identity = local accounts now** (hashed, KEK-wrapped per ENG-0002), **OIDC seam later** behind the same chokepoint. Enforcement is a **single audited authorization chokepoint** in `VMentory.Web`/API **and** the operations engine (org-wide scope in the first cut; per-host scoping is a later catalog extension). **This chokepoint must exist before any write verb is exposed** — roles before the first write verbs. This console RBAC is **distinct from** the agent's constrained-verb authz (ENG-0004): roles gate *which operator* may invoke *which pillar/verb*; the agent independently constrains *what verbs exist at all*. Browser↔Core is **Core-terminated HTTPS** (ENG-0010).
+- **Console authn/authz (ENG-0008, Decided 2026-06-16 — firm + early):** the single session token is replaced by **login** in **re-baselined slice (2)** — the slice-(1) containerized bootstrap (built 2026-06-17) **keeps the token as interim auth**; PROGRESS §5 split login out of slice (1). **Fixed built-in roles** (Admin / VM-operator / Backup-operator / Viewer) over an **internal pillar×verb permission catalog** that **reuses `ProviderCapability`** plus a **small console-permission set** (manage-credentials, manage-enrollment, view-audit, manage-users); role→permission mapping is **data, not hardcoded `if`s**, so a custom-roles UI is a non-breaking later addition. **Identity = local accounts now** (hashed, KEK-wrapped per ENG-0002), **OIDC seam later** behind the same chokepoint. Enforcement is a **single audited authorization chokepoint** in `VMentory.Web`/API **and** the operations engine (org-wide scope in the first cut; per-host scoping is a later catalog extension). **This chokepoint must exist before any write verb is exposed** — roles before the first write verbs. This console RBAC is **distinct from** the agent's constrained-verb authz (ENG-0004): roles gate *which operator* may invoke *which pillar/verb*; the agent independently constrains *what verbs exist at all*. Browser↔Core is **Core-terminated HTTPS** (ENG-0010).
 - **Core → Proxmox (ENG-0009 — the primary path, no agent):** outbound only. **Scoped, privilege-separated PVE API token** (`Authorization: PVEAPIToken=…`, ACL-restricted — not a root ticket) for orchestration/lifecycle/provisioning/stats/native migration; a **constrained, forced-command, dedicated-account SSH key** for `qm importdisk` / `qemu-img` / optional `virt-v2v` / on-node guest-root edits. Both secrets live in `ISecretStore` and are revocable in the PVE UI. Nodes never connect inbound.
 - **Core ↔ Agent (ENG-0004/0005) — Hyper-V migration source only:** **gRPC over HTTP/2 + mTLS**, mutual. Agent identity is an enrolled client cert; the agent pins Core's root. Certs are **short-lived + auto-renewed** over the mTLS channel; revocation = **stop-renew + a registry allow/deny list** (no CRL/OCSP). This trust domain and its private CA are **separate from the dashboard TLS** (ENG-0010) and are **demoted off the 2.0 critical path** to the migration slice (ENG-0009).
 - **PKI ownership (ENG-0005):** a **private CA inside Core** (root + intermediate) signs agent CSRs at enrollment; an external-CA seam (AD CS) is deferred. The CA private key lives in `ISecretStore` (the natural case for the opt-in operator-passphrase KEK mode).
@@ -406,8 +430,8 @@ The Phase-1 model — random port, session token, 127.0.0.1 only ([Program.cs:82
 | `EventHub.cs` SSE | **Keep** — reuse for job/scan progress |
 | `Exporter.cs` | **Keep/extend** |
 | `wwwroot/index.html` SPA | **Evolve** — add provider switching, management verbs, the migration/deploy/backup wizards (design agent owns this) |
-| Session-token + loopback security | **Replaced** by real auth |
-| `Updater.cs` GitHub auto-update | **Re-scope** — container image tags for Core; the **agent self-updates over its own mTLS channel with watchdog rollback** (ENG-0004), reusing this apply-on-launch pattern |
+| Session-token + loopback security | Loopback **replaced** (slice 1: `0.0.0.0` bind + Core-terminated HTTPS); the session token is **kept as interim auth** until slice (2) login + RBAC retires it |
+| `Updater.cs` GitHub auto-update | **Re-scope (pending)** — still GitHub-exe auto-update after slice (1); to become container image tags for Core; the **agent self-updates over its own mTLS channel with watchdog rollback** (ENG-0004), reusing this apply-on-launch pattern |
 | `migrate-vm/` skill + winrun.py | **Behavioral reference spec** for the agent's migration verbs (ENG-0001) — its step graph, safety rules, and the `centralized-access.md` 401 gotcha list inform the agent design; the WinRM/Python code itself does **not** ship |
 
 ---

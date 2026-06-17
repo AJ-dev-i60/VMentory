@@ -8,7 +8,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
     <Version Condition="'$(Version)' == ''">1.0.0</Version>
-    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- app.manifest (requireAdministrator) is a Windows PE feature — only apply it on Windows builds
+         so the Linux container publish (ENG-0010) doesn't fail. -->
+    <ApplicationManifest Condition="'$(OS)' == 'Windows_NT'">app.manifest</ApplicationManifest>
   </PropertyGroup>
 
   <ItemGroup>

@@ -1,6 +1,8 @@
 using System.Diagnostics;
+using System.Net;
 using System.Reflection;
 using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
@@ -20,16 +22,24 @@ Updater.ApplyPendingUpdate(logWriter);
 // ── Configuration ────────────────────────────────────────────────────────────
 
 var mockMode = args.Contains("--mock");
+var dataDir = mockMode ? "" : ResolveDataDir();   // mock writes nothing to disk
 var config = new AppConfig
 {
     MockMode = mockMode,
     NoUpdate = args.Contains("--no-update"),
     VerboseMode = args.Contains("--verbose"),
-    Port = FindFreePort(),
-    Token = GenerateToken(),
+    // Hosted service (ENG-0010): bind 0.0.0.0:{configurable port}, env-driven. The loopback +
+    // random-port desktop bootstrap is gone. VMENTORY_HTTP_ONLY=1 disables TLS (reverse-proxy/dev).
+    HttpAddr = EnvOr("VMENTORY_HTTP_ADDR", "0.0.0.0"),
+    HttpOnly = EnvFlag("VMENTORY_HTTP_ONLY"),
+    Port = ResolvePort(),
+    // Interim auth (replaced by login + RBAC in slice 2). VMENTORY_TOKEN gives a stable token across
+    // restarts for a hosted dev/prod instance; otherwise a fresh random token is generated each boot.
+    Token = EnvOr("VMENTORY_TOKEN", GenerateToken()),
     WinRmPort = 5985,
     Persist = !mockMode,
-    DbPath = ResolveDbPath(),
+    DataDir = dataDir,
+    DbPath = ResolveDbPath(dataDir),
 };
 
 DevLog.Verbose = config.VerboseMode;
@@ -40,7 +50,29 @@ var store = new Store();
 var hub = new EventHub();
 
 var builder = WebApplication.CreateBuilder(args);
-builder.WebHost.UseUrls($"http://127.0.0.1:{config.Port}");
+
+// ── Network bind + Core-terminated TLS (ENG-0010) ─────────────────────────────
+// Bind the configured address/port directly via Kestrel and (unless VMENTORY_HTTP_ONLY) terminate
+// HTTPS at Core itself. Cert is injected at runtime (operator PFX/PEM) with a self-signed fallback —
+// nothing is baked into the image.
+X509Certificate2? serverCert = null;
+var tlsSource = "disabled (HTTP — VMENTORY_HTTP_ONLY)";
+if (!config.HttpOnly)
+    serverCert = TlsSetup.ResolveServerCertificate(config, out tlsSource);
+
+builder.WebHost.ConfigureKestrel(k =>
+{
+    var ip = config.HttpAddr switch
+    {
+        "0.0.0.0" => IPAddress.Any,
+        "::" => IPAddress.IPv6Any,
+        _ => IPAddress.Parse(config.HttpAddr),
+    };
+    k.Listen(ip, config.Port, listen =>
+    {
+        if (serverCert != null) listen.UseHttps(serverCert);
+    });
+});
 
 builder.Services.AddSingleton(config);
 builder.Services.AddSingleton(store);
@@ -105,6 +137,10 @@ app.Use(async (ctx, next) =>
 var indexHtml = LoadEmbeddedHtml();
 app.MapGet("/", () => Results.Bytes(indexHtml, "text/html; charset=utf-8"));
 app.MapGet("/index.html", () => Results.Bytes(indexHtml, "text/html; charset=utf-8"));
+
+// Unauthenticated liveness probe (not under /api → not token-gated). For container/orchestrator
+// health checks (Coolify, Docker HEALTHCHECK, k8s). Reveals no inventory data.
+app.MapGet("/health", () => Results.Ok(new { status = "ok", version = Updater.CurrentVersion }));
 
 // ── Token middleware (except /health) ────────────────────────────────────────
 
@@ -494,9 +530,12 @@ app.MapGet("/api/export/csv", (Store s) =>
         $"VMentory-{DateTimeOffset.Now:yyyyMMdd-HHmmss}.zip");
 });
 
-// ── Start + console loop ─────────────────────────────────────────────────────
+// ── Start + run ──────────────────────────────────────────────────────────────
 
-var url = $"http://127.0.0.1:{config.Port}/?token={config.Token}";
+var scheme = config.HttpOnly ? "http" : "https";
+// A reachable host for the banner: localhost when bound to all interfaces, else the literal bind addr.
+var displayHost = config.HttpAddr is "0.0.0.0" or "::" ? "localhost" : config.HttpAddr;
+var url = $"{scheme}://{displayHost}:{config.Port}/?token={config.Token}";
 
 Console.ForegroundColor = ConsoleColor.Cyan;
 Console.WriteLine(@"
@@ -517,42 +556,43 @@ if (config.VerboseMode)
     Console.WriteLine("  [VERBOSE] — full diagnostic logging enabled");
     Console.ResetColor();
 }
+Console.WriteLine($"\n  Bind  : {config.HttpAddr}:{config.Port}");
+Console.WriteLine($"  TLS   : {tlsSource}");
+if (!config.HttpOnly && tlsSource.StartsWith("self-signed"))
+{
+    Console.ForegroundColor = ConsoleColor.Yellow;
+    Console.WriteLine("  [TLS]  — self-signed certificate; browsers will warn. Mount an operator cert");
+    Console.WriteLine("           via VMENTORY_TLS_PFX or VMENTORY_TLS_CERT_PEM/VMENTORY_TLS_KEY_PEM.");
+    Console.ResetColor();
+}
 Console.WriteLine($"\n  URL   : {url}");
 Console.WriteLine($"  Token : {config.Token}");
-Console.WriteLine("\n  Press Q to quit");
-Console.WriteLine("  Press R to re-open browser\n");
 
 await app.StartAsync();
 
-// Ensure local WinRM service is running so WSMan:\ provider and TrustedHosts work.
-if (!config.MockMode)
-    await ReachabilityChecker.EnsureWinRmServiceAsync();
-
 Updater.StartBackgroundCheck(config, logWriter);
 
-OpenBrowser(url);
-
-// Console input loop (runs until Q)
+// Interactive dev convenience only: press Q to quit when attached to a real console. In a container
+// (no TTY → stdin redirected) this is skipped; the operator stops the service with SIGTERM
+// (`docker stop`), which ASP.NET Core handles as a graceful shutdown.
 var appLifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
-_ = Task.Run(async () =>
+if (!Console.IsInputRedirected)
 {
-    while (!appLifetime.ApplicationStopping.IsCancellationRequested)
+    Console.WriteLine("\n  Press Q to quit\n");
+    _ = Task.Run(async () =>
     {
-        if (!Console.KeyAvailable) { await Task.Delay(200); continue; }
-        var key = Console.ReadKey(intercept: true).Key;
-        if (key == ConsoleKey.Q)
+        while (!appLifetime.ApplicationStopping.IsCancellationRequested)
         {
-            Console.WriteLine("\n  Purging session data and shutting down...");
-            store.ClearAll();
-            appLifetime.StopApplication();
+            if (!Console.KeyAvailable) { await Task.Delay(200); continue; }
+            var key = Console.ReadKey(intercept: true).Key;
+            if (key == ConsoleKey.Q)
+            {
+                Console.WriteLine("\n  Shutting down...");
+                appLifetime.StopApplication();
+            }
         }
-        else if (key == ConsoleKey.R)
-        {
-            Console.WriteLine("  Re-opening browser...");
-            OpenBrowser(url);
-        }
-    }
-});
+    });
+}
 
 await app.WaitForShutdownAsync();
 store.ClearAll();   // zero in-memory secrets/state; persisted data is kept
@@ -572,15 +612,6 @@ static byte[] LoadEmbeddedHtml()
     return ms.ToArray();
 }
 
-static int FindFreePort()
-{
-    var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
-    listener.Start();
-    var port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
-    listener.Stop();
-    return port;
-}
-
 static string GenerateToken()
 {
     var bytes = RandomNumberGenerator.GetBytes(24);
@@ -588,23 +619,45 @@ static string GenerateToken()
         .Replace('+', '-').Replace('/', '_').TrimEnd('=');
 }
 
+static string EnvOr(string name, string fallback)
+{
+    var v = Environment.GetEnvironmentVariable(name);
+    return string.IsNullOrWhiteSpace(v) ? fallback : v;
+}
+
+static bool EnvFlag(string name)
+{
+    var v = Environment.GetEnvironmentVariable(name);
+    return v is "1" or "true" or "TRUE" or "yes" or "on";
+}
+
+// Listen port: VMENTORY_HTTP_PORT, else a sensible default per scheme (8443 HTTPS / 8080 HTTP).
+static int ResolvePort()
+{
+    var v = Environment.GetEnvironmentVariable("VMENTORY_HTTP_PORT");
+    if (int.TryParse(v, out var p) && p is > 0 and < 65536) return p;
+    return EnvFlag("VMENTORY_HTTP_ONLY") ? 8080 : 8443;
+}
+
+// Durable data directory (the container points this at a mounted volume via VMENTORY_DB). Holds the
+// SQLite DB and the cached self-signed TLS cert. Created if missing. Empty in mock mode (no disk I/O).
+static string ResolveDataDir()
+{
+    var fromEnv = Environment.GetEnvironmentVariable("VMENTORY_DB");
+    var dir = !string.IsNullOrWhiteSpace(fromEnv)
+        ? (Path.GetDirectoryName(Path.GetFullPath(fromEnv)) ?? "")
+        : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VMentory");
+    if (!string.IsNullOrWhiteSpace(dir)) Directory.CreateDirectory(dir);
+    return dir;
+}
+
 // SQLite file path: VMENTORY_DB env var (the container points this at a mounted volume), else a
-// per-user app-data file. The directory is created if missing.
-static string ResolveDbPath()
+// per-user app-data file under the resolved data directory.
+static string ResolveDbPath(string dataDir)
 {
     var fromEnv = Environment.GetEnvironmentVariable("VMENTORY_DB");
     if (!string.IsNullOrWhiteSpace(fromEnv)) return fromEnv;
-
-    var dir = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VMentory");
-    Directory.CreateDirectory(dir);
-    return Path.Combine(dir, "vmentory.db");
-}
-
-static void OpenBrowser(string url)
-{
-    try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); }
-    catch { Console.WriteLine($"  Could not open browser automatically. Navigate to: {url}"); }
+    return Path.Combine(dataDir, "vmentory.db");
 }
 
 // ── DTOs ──────────────────────────────────────────────────────────────────────
@@ -620,13 +673,19 @@ public class AppConfig
     public bool MockMode { get; init; }
     public bool NoUpdate { get; init; }
     public bool VerboseMode { get; init; }
+
+    // Hosted runtime (ENG-0010). Bind 0.0.0.0:{Port} by default; Core terminates HTTPS unless HttpOnly.
+    public string HttpAddr { get; init; } = "0.0.0.0";
     public int Port { get; init; }
+    public bool HttpOnly { get; init; }
+
     public string Token { get; init; } = "";
     public int WinRmPort { get; set; } = 5985;
 
-    // Persistence (slice 3). Off in mock mode (stays ephemeral). DbPath is the SQLite file;
-    // VMENTORY_DB overrides it (the container points this at a mounted volume).
+    // Persistence (slice 3). Off in mock mode (stays ephemeral). DataDir holds the SQLite DB + cached
+    // self-signed TLS cert (the container points VMENTORY_DB at a mounted volume). DbPath is the DB file.
     public bool Persist { get; init; }
+    public string DataDir { get; init; } = "";
     public string DbPath { get; init; } = "";
 }
 

@@ -1,0 +1,16 @@
+# Keep the build context small + reproducible (ENG-0010 container build).
+**/bin
+**/obj
+dist
+.git
+.github
+.vs
+.vscode
+.claude
+design
+docs
+migrate-vm
+memory
+*.user
+*.log
+errors.log

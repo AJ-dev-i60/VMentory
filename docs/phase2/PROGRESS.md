@@ -3,15 +3,17 @@
 > **Purpose:** pick up Phase 2 from a clean clone on any machine. Read this top-to-bottom and you
 > know where we are, what's decided, what's open, and what to do next.
 >
-> **Last updated:** 2026-06-16 (foundation re-baseline approved; freeze lifted) · **Phase:** 2.0 foundation — original build slices 1–3 landed; re-baselined slice order now in effect · **Branch:** `dev`
+> **Last updated:** 2026-06-17 (re-baselined slice (1) — containerized Core + hosted bootstrap — built & verified on `dev`) · **Phase:** 2.0 foundation — original build slices 1–3 + re-baselined slice (1) landed; next is re-baselined slice (2) login + RBAC · **Branch:** `dev`
 >
 > ✅ **Foundation RE-BASELINED and APPROVED (2026-06-16).** The development freeze is **lifted**. The
 > corrected foundation is locked in the decision records and propagated into ARCHITECTURE/ROADMAP:
 > **containerized Core (web-first, install-nothing — ENG-0010), login + RBAC early (ENG-0008),
 > Proxmox via native REST API + constrained SSH and NO node agent (ENG-0009), and the on-device
 > agent/private-CA foundation demoted + scoped to the Hyper-V migration source (ENG-0001/0003/0004/0005
-> amended).** Build resumes at re-baselined foundation slice (1): **Containerized Core + hosted-service
-> bootstrap** (§5).
+> amended).** Re-baselined foundation slice (1) — **Containerized Core + hosted-service bootstrap**
+> (ENG-0010) — is now **built & verified on `dev`** (2026-06-17): hosted `0.0.0.0` bind, Core-terminated
+> HTTPS, Linux container image authored. Build resumes at re-baselined slice (2): **Login + RBAC**
+> (ENG-0008) — the session token is removed there (§5).
 
 ---
 
@@ -55,9 +57,10 @@ The target design is in [ARCHITECTURE.md](ARCHITECTURE.md); the milestone plan i
 [ROADMAP.md](ROADMAP.md). **Phase 2 implementation has started** at the 2.0 foundation — the original
 build slices 1 (project split / rename), 2 (provider abstraction + capability model) and 3
 (persistence) are landed and verified on `dev` (see §3 and §5). After the **2026-06-16 re-baseline**,
-the next build is **re-baselined foundation slice (1): containerized Core + hosted-service bootstrap**
-(ENG-0010), then login + RBAC (ENG-0008), then `ISecretStore` (ENG-0002), then the Proxmox API
-provider — see §5. **The agent is no longer next** (demoted + HV-scoped, ENG-0009).
+**re-baselined foundation slice (1): containerized Core + hosted-service bootstrap (ENG-0010) is also
+built & verified** (2026-06-17). The next build is **re-baselined slice (2): login + RBAC (ENG-0008)**,
+then `ISecretStore` (ENG-0002), then the Proxmox API provider — see §5. **The agent is no longer next**
+(demoted + HV-scoped, ENG-0009).
 
 ## 2. Locked decisions (the spine — don't silently revisit)
 
@@ -129,6 +132,27 @@ provider — see §5. **The agent is no longer next** (demoted + HV-scoped, ENG-
   migration). Host registry + inventory snapshots persist; the diff is fed from persisted snapshots;
   always-on in real mode, **`--mock` stays ephemeral**; DB path via `VMENTORY_DB` (container → volume).
   **No secrets persisted** (await `ISecretStore`); `/api/quit` is now graceful-shutdown (no purge).
+- **Containerized Core + hosted-service bootstrap** (re-baselined slice (1), ENG-0010) — `Program.cs`
+  bootstrap rewritten from the loopback desktop model to a hosted service. Binds **`VMENTORY_HTTP_ADDR`
+  (default `0.0.0.0`)** : **`VMENTORY_HTTP_PORT`** via `ConfigureKestrel`; `FindFreePort()` + the
+  `127.0.0.1:{random}` bind are removed. **Core-terminated HTTPS** via `listen.UseHttps(cert)`;
+  **`VMENTORY_HTTP_ONLY=1`** disables TLS (reverse-proxy/dev). New **`TlsSetup.cs`** resolves the cert
+  with precedence **operator PFX → operator PEM → self-signed fallback** (self-signed cached in the data
+  dir in real mode for a stable identity / one-time warning; mock mode ephemeral, writes nothing —
+  nothing baked into the image). Desktop affordances removed (`OpenBrowser()`, the R-key reopen); the
+  **console Q-to-quit loop now runs only when `!Console.IsInputRedirected`** (container has no TTY →
+  skipped; operator stops via SIGTERM → ASP.NET graceful shutdown). WinRM-service ensure is now
+  **`OperatingSystem.IsWindows()`-guarded** (Linux container has no PowerShell host). New **`Dockerfile`
+  + `.dockerignore`**: single multi-stage Linux image (sdk build → aspnet runtime), installs
+  **openssh-client** (ENG-0009 SSH executor), **no `qemu`/`qm`**, runs **non-root (uid 10001)**, DB +
+  cached cert on the **`/data` volume**, `EXPOSE 8443`. `AppConfig` gained `HttpAddr`/`HttpOnly`/`DataDir`;
+  the csproj `ApplicationManifest` is now Windows-only-conditioned so the Linux publish doesn't choke on
+  the requireAdministrator manifest. **Interim auth: the single session token is KEPT** (printed at
+  startup / container logs) — login + RBAC that retires it is **slice (2)**, not landed here. `/api/quit`
+  was **left in place** (graceful, already neutered) — a desktop affordance still pending retirement,
+  coupled to a UI quit button that must go through the design workflow. **Caveat:** the Dockerfile is
+  **authored but unbuilt** (no Docker on this Windows host) — the image has not been built/run; only the
+  app bootstrap was verified (see §5).
 
 ### Planning docs (`docs/phase2/`)
 - `ARCHITECTURE.md` — target topology, `IVirtualizationProvider` model, persistence, migration engine, carry-over table.
@@ -199,11 +223,15 @@ VMentory's migration engine — its step graph, safety rules, and scripts feed t
   Hyper-V** and off the 2.0 critical path. Propagation pending in `proxmox-integration.md` (SSH
   hardening + known-hosts detail); **ARCHITECTURE/ROADMAP/PROGRESS reflect it.** See
   `discussions/0009-proxmox-deep-action-transport.md`.
-- **ENG-0010 (Decided 2026-06-16):** **containerized Core**, `0.0.0.0` bind, **Core-terminated HTTPS**
-  (Kestrel; reverse-proxy a documented future seam, not required for release 1), **runtime KEK + TLS
-  injection**, SQLite on a mounted volume, **session-token/loopback → login + RBAC**. First foundation
-  slice; **replaces the desktop bootstrap in `Program.cs` first.** Propagation pending in
-  `persistence-and-security.md`; **ARCHITECTURE (new Deployment-model section)/ROADMAP reflect it.** See
+- **ENG-0010 (Decided 2026-06-16; BUILT 2026-06-17):** **containerized Core**, `0.0.0.0` bind,
+  **Core-terminated HTTPS** (Kestrel; reverse-proxy a documented future seam, not required for release 1),
+  **runtime KEK + TLS injection**, SQLite on a mounted volume, **session-token/loopback → login + RBAC**.
+  First foundation slice. ✅ **Built & verified on `dev` (re-baselined slice (1), §5):** hosted-service
+  bootstrap, `TlsSetup.cs` (PFX→PEM→self-signed), `Dockerfile`/`.dockerignore`, non-root `/data` volume
+  image. **Carry-overs:** the session token is **still interim** (login lands in slice (2), not here);
+  `/api/quit` retirement + `Updater.cs` image-tag re-scope are pending; the container image is authored
+  but **unbuilt**. ARCHITECTURE (Deployment-model / Topology / §5 Security) + ROADMAP now reflect what
+  shipped; `persistence-and-security.md §5a` already describes the model (decided, forward-looking). See
   `discussions/0010-core-deployment-runtime-model.md`.
 - **Persistence open questions — now active (slice 3 shipped).** Engineering agent to pick up, since
   durable storage now exists: (a) **snapshot retention / cadence** — how often to snapshot and how long
@@ -221,23 +249,31 @@ VMentory's migration engine — its step graph, safety rules, and scripts feed t
 
 ## 5. Immediate next steps (suggested order)
 
-**The foundation is re-baselined and approved (2026-06-16); the freeze is lifted.** Build resumes at
-**re-baselined foundation slice (1): containerized Core + hosted-service bootstrap.** The approved
+**The foundation is re-baselined and approved (2026-06-16); the freeze is lifted.** Re-baselined slice
+(1) — **containerized Core + hosted-service bootstrap** — is now **built & verified on `dev`**
+(2026-06-17). Build resumes at **re-baselined foundation slice (2): login + RBAC.** The approved
 slice order is:
 
-> **(1) Containerized Core + hosted-service bootstrap (ENG-0010) → (2) Login + RBAC framework
-> (ENG-0008) → (3) `ISecretStore` (ENG-0002) → (4) Proxmox API provider (read / planted Observe) →
+> **(1) Containerized Core + hosted-service bootstrap (ENG-0010) ✅ → (2) Login + RBAC framework
+> (ENG-0008) ← NEXT → (3) `ISecretStore` (ENG-0002) → (4) Proxmox API provider (read / planted Observe) →
 > (5) Proxmox SSH executor + management/Deploy write verbs (capability-gated, RBAC-enforced, audited)
 > → (6) Hyper-V agent + private CA (scoped to HV, ENG-0001/0003/0004/0005) → (7) HV→PVE migration.**
 
-**Do next — slice (1):** replace the desktop bootstrap in [`Program.cs`](../../Program.cs) — the
-loopback `127.0.0.1:{random}` bind + `FindFreePort()` + single **session token** + `/api/quit` desktop
-route are exactly what ENG-0010 retires. Bind **`0.0.0.0:{configurable port}`** (env-driven), serve
-**Core-terminated HTTPS** via Kestrel (self-signed first-run + warn, or operator-provided cert via
-mounted volume/env — nothing baked into the image), and produce the single Linux container image (app +
-SSH client, no `qemu`/`qm`). Re-scope `Updater.cs` from GitHub-exe auto-update to image tags. Then
-slice (2) layers login + the RBAC chokepoint on top (the session token is removed here). **The agent is
-not next** — it is HV-scoped and lands at slice (6) with migration (ENG-0009).
+**Done — slice (1):** the desktop bootstrap in [`Program.cs`](../../Program.cs) was replaced by a hosted
+service — `0.0.0.0:{configurable port}` (env), Core-terminated HTTPS via Kestrel (`TlsSetup.cs`, cert
+precedence PFX → PEM → self-signed, nothing baked in), TTY-gated console loop, `IsWindows()`-guarded
+WinRM ensure, and a single Linux `Dockerfile` (app + SSH client, no `qemu`/`qm`, non-root, `/data`
+volume). **Two carry-overs remain:** (a) the **interim session token + `/api/quit` desktop route** are
+still present — the session token is retired in **slice (2)**, and `/api/quit` (+ its UI quit button) is
+a desktop affordance still pending retirement via the `design/` workflow; (b) **`Updater.cs` re-scope**
+(GitHub-exe auto-update → container image tags) is **not yet done**. The **container image is unbuilt**
+(no Docker on this host) — build/run it before relying on it.
+
+**Do next — slice (2):** layer **login + the RBAC chokepoint** on top — minimal admin login **removes
+the interim session token**, fixed roles (Admin / VM-operator / Backup-operator / Viewer) over a
+pillar×verb catalog reusing `ProviderCapability`, a single audited authz chokepoint before any write
+verb (ENG-0008). **The agent is still not next** — it is HV-scoped and lands at slice (6) with migration
+(ENG-0009).
 
 1. ✅ **Propagate ENG-0007** into **ROADMAP.md** and **ARCHITECTURE.md** (release
    definitions/sequencing + `IVirtualizationProvider` capability model with HV management verbs) —
@@ -267,10 +303,30 @@ not next** — it is HV-scoped and lands at slice (6) with migration (ENG-0009).
      graceful (no purge). **Verified:** build 0/0; add-host→restart→persists→delete→gone; mock writes
      no DB; single-file `dist\VMentory.exe` loads the SQLite native lib + persists. _(Scan-driven
      snapshot save is wired + code-traced; full exercise needs a real WinRM host.)_
-   - **Next (re-baselined):** slice (1) **containerized Core + hosted bootstrap** (ENG-0010) → (2)
-     **login + RBAC** (ENG-0008) → (3) **`ISecretStore`** (ENG-0002) → (4) **Proxmox API read provider**.
-     Proxmox write verbs (5) and the **HV-scoped agent + private CA** (6) follow; HV→PVE migration (7).
-     **The agent is no longer the next slice** (demoted + HV-scoped, ENG-0009).
+
+   **Re-baselined foundation slices (post-2026-06-16):**
+   - ✅ **Re-baselined slice (1) (containerized Core + hosted-service bootstrap, ENG-0010) done &
+     verified (2026-06-17):** `Program.cs` rewritten loopback-desktop → hosted service — binds
+     `VMENTORY_HTTP_ADDR` (default `0.0.0.0`) : `VMENTORY_HTTP_PORT` via `ConfigureKestrel`,
+     `FindFreePort()`/loopback removed; **Core-terminated HTTPS** (`listen.UseHttps`), `VMENTORY_HTTP_ONLY=1`
+     disables TLS. New `TlsSetup.cs` (cert precedence operator-PFX → operator-PEM → self-signed,
+     real-mode cached / mock ephemeral, nothing baked in). Desktop affordances dropped (`OpenBrowser`,
+     R-key); console Q-loop gated on `!Console.IsInputRedirected`; WinRM ensure `IsWindows()`-guarded.
+     New `Dockerfile` + `.dockerignore` (multi-stage, openssh-client, no `qemu`/`qm`, non-root uid 10001,
+     `/data` volume, `EXPOSE 8443`); csproj manifest Windows-only-conditioned; `AppConfig` +
+     `HttpAddr`/`HttpOnly`/`DataDir`. **Interim auth: session token KEPT** (login/RBAC is slice (2));
+     `/api/quit` left in place (graceful) — retirement still pending. **Verified:** `dotnet build
+     VMentory.sln` clean (0/0); DLL run in mock mode bound `0.0.0.0:8444` over **self-signed HTTPS**, SPA
+     200 over HTTPS, `/api/state` 401 without token / 200 with token returning all 5 mock hosts;
+     `VMENTORY_HTTP_ONLY=1` served plain HTTP 200 + the 401 auth gate. **Caveat — container image
+     UNBUILT:** no Docker on this Windows host, so the Dockerfile is authored but **not built/run**; only
+     the app bootstrap was exercised. _The `/api/quit` route + its UI quit button remain a desktop
+     affordance pending retirement (the UI change must go through the `design/` workflow)._
+   - **Next (re-baselined):** slice (2) **login + RBAC** (ENG-0008) — minimal admin login **removes the
+     interim session token** + lands the fixed-role framework / pillar×verb catalog / single audited
+     authz chokepoint, before any write verb. Then (3) **`ISecretStore`** (ENG-0002) → (4) **Proxmox API
+     read provider**. Proxmox write verbs (5) and the **HV-scoped agent + private CA** (6) follow;
+     HV→PVE migration (7). **The agent is still not next** (demoted + HV-scoped, ENG-0009).
    - **Auth:** scoped/role-based console access (Admin / VM-operator / Backup-operator / Viewer) →
      **ENG-0008 (Decided 2026-06-16)** — fixed roles over a pillar×verb catalog, local accounts now,
      single audited authz chokepoint **before any write verb**; login lands in the slice-(1) deployment
