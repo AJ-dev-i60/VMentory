@@ -240,6 +240,14 @@ VMentory's migration engine — its step graph, safety rules, and scripts feed t
   (encrypt the SQLite file / require encrypted Postgres, or treat the volume as the trust boundary).
   Both are in `persistence-and-security.md §7`; consider promoting to ENG topics. **`ISecretStore`
   (ENG-0002) is the next build slice** — until it lands, the registry persists **no** credentials.
+- **ENG-0011 (Open / Raised 2026-06-17 — discuss + plan, NOT decided):** **observability / structured
+  logging / failure-surfacing.** Trigger: the containerized Core on Coolify reports every HV host
+  "unreachable" with no *why* (Linux container has no PowerShell/WinRM host + no line-of-sight). Design a
+  capture→correlate→surface→persist pipeline + structured logging (`Microsoft.Extensions.Logging`?
+  stdout-first vs SQLite-persisted) **before** the failure-prone surfaces (Proxmox REST+SSH, ops/migration
+  engine, agent comms, scheduling, data-at-scale) land at scale, so they fail loudly. Ties to ENG-0008
+  audit chokepoint, ENG-0009 transports, ENG-0010 stdout/env config, ENG-0002 secrets-never-logged, and
+  the open §7 retention/encryption questions above. See `discussions/0011-observability-logging.md`.
 - **Docs reconciliation (held):** demote virt-v2v, ground `migration-job-model.md` in the skill,
   fold in the safety rules + scripts. Held pending owner review of the agents' first output.
 - **Review backlog:** the five specs and the four design mockups are first-drafts awaiting owner review.
