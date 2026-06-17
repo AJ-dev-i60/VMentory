@@ -85,15 +85,18 @@ VMentory v2 is a **hosted web service in a single Linux container**, not a deskt
 tenet the whole foundation is built around (ENG-0010), and it directly replaces the Phase-1
 loopback/desktop bootstrap.
 
-> **Built (re-baselined slice (1), 2026-06-17).** The hosted-service bootstrap below is **in code on
-> `dev`**: [`Program.cs`](../../Program.cs) binds `0.0.0.0:{port}` via `ConfigureKestrel` and
+> **Built (re-baselined slice (1), 2026-06-17) and DEPLOYED (2026-06-18).** The hosted-service bootstrap
+> below is **in code on `dev`** and **running as a Coolify dev instance** at
+> <https://vmentorydev.edgestudios.co.za> (reverse-proxy mode: Traefik terminates TLS, app runs
+> `VMENTORY_HTTP_ONLY=1` on HTTP 8443, `/data` named volume, interim `VMENTORY_TOKEN`).
+> [`Program.cs`](../../Program.cs) binds `0.0.0.0:{port}` via `ConfigureKestrel` and
 > terminates HTTPS itself; [`TlsSetup.cs`](../../TlsSetup.cs) resolves the cert (operator PFX → PEM →
 > self-signed, real-mode cached / mock ephemeral, nothing baked in); a [`Dockerfile`](../../Dockerfile)
 > builds a non-root (uid 10001) Linux image (app + openssh-client, no `qemu`/`qm`) with DB + cert on a
 > `/data` volume. **Still interim / pending:** the single **session token** persists as interim auth
 > (login + RBAC retires it in **slice (2)**, not here); the `/api/quit` desktop route + `Updater.cs`
-> image-tag re-scope are **not yet done**; the **container image is authored but unbuilt** (verified at
-> the app level only). The env contract and cert precedence below match the shipped code.
+> image-tag re-scope are **not yet done**. The env contract and cert precedence below match the shipped
+> code.
 
 - **The user installs nothing locally — there are exactly two installs.** (a) Stand up the **Core
   container** (`docker run` / compose); (b) install the **Hyper-V agent** on the *retiring* Windows HV
@@ -127,9 +130,17 @@ loopback/desktop bootstrap.
 - **Container hardening:** the image runs as a **non-root** user (uid 10001); `/data` is the only
   writable volume; it carries the .NET app + `openssh-client` (ENG-0009) and **no `qemu`/`qm`**;
   `EXPOSE 8443`. The Windows-only `requireAdministrator` manifest is conditioned off the Linux publish.
+  **Constraint (learned in deploy):** a non-root container can write **only** to mounted volumes — any
+  app file write (e.g. `errors.log`) must resolve to a writable path. `ErrorLogger` writes to
+  `VMENTORY_LOG` → the `VMENTORY_DB` `/data` dir → app base and is **fail-safe** (degrades to a no-op;
+  logging never crashes startup) after a uid-10001 write into root-owned `/app` crash-looped the first
+  deploy (exit 139, fixed in `ca196f4`).
+- **Liveness:** an unauthenticated **`GET /health`** probe (added in slice (1)) lets the orchestrator
+  (Coolify/Traefik) health-check the container without a token.
 - **Auth swap:** the single session token + `/api/quit` desktop bootstrap are **replaced by login +
   RBAC** (ENG-0008). **Sequencing note:** slice (1) (built 2026-06-17) kept the **session token as
-  interim auth** and left `/api/quit` in place; the minimal admin login that **retires the token**, plus
+  interim auth** (the deployed dev instance pins it via the **`VMENTORY_TOKEN`** env) and left
+  `/api/quit` in place; the minimal admin login that **retires the token**, plus
   the fixed-role framework, land in **re-baselined slice (2)** — before any write verb. (ENG-0010 item 6
   said login lands "in this deployment slice"; the re-baselined slice split — PROGRESS §5 — moves login
   into slice (2), which supersedes that wording.)

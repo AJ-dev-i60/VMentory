@@ -120,3 +120,78 @@ authn/authz model for release 1 is:
 
 Feeds the documentation agent: ARCHITECTURE §Security, ROADMAP auth sequencing, persistence schema
 (roles/permissions/local accounts), and the ENG-0010 deployment slice.
+
+## Implementation sub-questions (for the slice-(2) build)
+
+> **The decision above stands** — this section records **open implementation specifics**, not new
+> decisions, for the slice-(2) (login + RBAC) planning session to resolve. Slice (1) (containerized
+> Core + hosted bootstrap, ENG-0010) is built and deployed (dev at `vmentorydev.edgestudios.co.za`),
+> so these must be answered against the **headless/containerized runtime** the foundation now is —
+> no interactive desktop, env-injected config (ENG-0010), stdout captured by Coolify.
+
+1. **First-admin bootstrap for a headless container.** There is no interactive first-run setup; the
+   container boots unattended. How is the initial **Admin** account created? Options to weigh at build
+   time (each ties to the ENG-0010 env-injection contract, cf. `Program.cs:38` `EnvOr(...)`):
+   - **Env-provided initial admin** (e.g. `VMENTORY_ADMIN_USER` / `VMENTORY_ADMIN_PASSWORD`) seeded on
+     first boot, with **forced password rotation at first login**. *Trade-off:* simplest for a single
+     operator and fits the env contract, but a plaintext password sits in the orchestrator's env/secret
+     store until rotated, and the seed path needs an idempotency rule (seed only when no users exist).
+   - **One-time first-run setup token** printed to **container logs** (Coolify captures stdout), redeemed
+     once via the login UI to set the first admin. *Trade-off:* no standing password in env, but log
+     access becomes a trust boundary and the token must be single-use + expiring; awkward if logs are
+     shared/forwarded.
+   - **CLI / seed step** (a `dotnet`/container `exec` subcommand that creates the admin). *Trade-off:*
+     explicit and auditable, but adds an operational step the "install nothing but the container" framing
+     (CLAUDE.md) tries to avoid, and is clumsy on a managed PaaS like Coolify.
+   - *Cross-cut:* whichever is chosen must define the **"no users yet" state** of the authz chokepoint
+     (does the UI hard-redirect to a bootstrap flow, or is the app inert until seeded?).
+
+2. **Session mechanism.** Cookie-based session vs bearer token, and how it **cleanly replaces the
+   interim token middleware**. Today a single static token gates everything: the global middleware at
+   `Program.cs:147-155` (`X-Session-Token` header or `?token=` query) and a **separate re-check on SSE
+   `/api/events` at `Program.cs:508-510`; the `VMENTORY_TOKEN` env stopgap is `Program.cs:38-40`.
+   Open points:
+   - **Cookie session** (HttpOnly, Secure, SameSite) vs **bearer token** (Authorization header). Cookie
+     fits a browser SPA and the SSE stream (EventSource can't set headers — today SSE relies on the
+     `?token=` query param, which leaks into logs/URLs); bearer is cleaner for a future API/CLI but needs
+     a custom SSE carrier. *Trade-off to surface:* the SSE auth path is the awkward case either way.
+   - **CSRF posture** if cookies are used (state-changing `/api/*` verbs need anti-CSRF; bearer-in-header
+     sidesteps CSRF but reopens the SSE-header problem).
+   - **Clean replacement:** retire `VMENTORY_TOKEN` + the two token checks **together** so there's no
+     half-authenticated window; decide whether `--mock`/dev keeps a bypass.
+
+3. **Password storage / hashing — and the ENG-0002 boundary.** Algorithm choice (e.g. **PBKDF2** [in
+   the BCL, no new dependency] vs **Argon2id** [stronger, needs a package — weigh against the offline-
+   restore constraints noted in CLAUDE.md gotcha #3/#5]) and **per-user salt + tunable work factor**.
+   Key boundary to clarify in the build: **password hashes are NOT "secrets at rest" in the ENG-0002 KEK
+   sense.** `ISecretStore` (envelope-encrypted, KEK-wrapped) is **slice (3) — AFTER login**, so slice-(2)
+   login **cannot depend on it**. A one-way password **hash** is a verifier, not a recoverable secret, so
+   it can live as a column in the existing EF Core store (`VMentory.Core/Persistence/`) without the KEK.
+   *Open:* confirm hashes-as-plain-column is acceptable pre-`ISecretStore`, and note the seam if any
+   *recoverable* per-user credential (e.g. an OIDC client secret later) ever needs the KEK once slice (3)
+   lands. The Decision's phrase "hashed credential, KEK-wrapped per ENG-0002" should be read as the
+   *long-term* posture, not a slice-(2) blocker — flag this wording for the planning session.
+
+4. **Authz chokepoint placement.** A **single** middleware/filter must cover Web/API **and** the future
+   ops engine (the Decision's "single audited chokepoint before any write verb"). Open specifics:
+   - **Where it sits** relative to the current token middleware (`Program.cs:147`) — replace it in place,
+     or layer authn (who) then authz (may-do-verb) as two stages?
+   - **Role → capability mapping:** how fixed roles resolve to the `ProviderCapability` pillar×verb
+     catalog (`VMentory.Core/ProviderCapability.cs`) **plus** the small console-only permission set
+     (manage-credentials, manage-enrollment, view-audit, manage-users). Where does the mapping table
+     live — data in the EF store, or a static seeded catalog?
+   - **Audit hook:** every allow/deny emits an event. This ties **ENG-0011** (observability/logging) and
+     its **`audit_event`** table idea (persistence-and-security §6); ENG-0011 is still Open, so slice (2)
+     should define the **minimal audit write** (who/verb/allow-deny/correlation-id) without waiting on the
+     full logging design — and mint the **correlation_id at the chokepoint** (the open question in
+     ENG-0011 §"Audit/ops correlation key").
+   - *Note:* in slice (2) there are **no write verbs exposed yet** (Proxmox read/management comes later),
+     so the chokepoint can be **built and tested ahead of** the verbs it will guard — it just needs the
+     seam in place before the first write verb ships, per the Decision.
+
+5. **Login UI dependency (design workflow).** The login screen touches `wwwroot/index.html`, which is
+   owned by the **`design/` workflow** (CLAUDE.md "UI/UX work — read this first"). To avoid blocking:
+   **backend/API (authn endpoints, session, chokepoint) lands first**; the login UI goes through
+   `design/` (raise a `design/requests/from-codebase/` item for the login screen + first-admin/rotation
+   flow). Open: confirm a **minimal/unstyled interim login** is acceptable to unblock end-to-end testing
+   while the designed screen is produced, or whether the API ships dark until the UI is ready.

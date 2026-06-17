@@ -3,7 +3,7 @@
 > **Purpose:** pick up Phase 2 from a clean clone on any machine. Read this top-to-bottom and you
 > know where we are, what's decided, what's open, and what to do next.
 >
-> **Last updated:** 2026-06-17 (re-baselined slice (1) — containerized Core + hosted bootstrap — built & verified on `dev`) · **Phase:** 2.0 foundation — original build slices 1–3 + re-baselined slice (1) landed; next is re-baselined slice (2) login + RBAC · **Branch:** `dev`
+> **Last updated:** 2026-06-18 (re-baselined slice (1) — containerized Core — now **DEPLOYED** as a dev instance on Coolify at https://vmentorydev.edgestudios.co.za) · **Phase:** 2.0 foundation — original build slices 1–3 + re-baselined slice (1) landed & deployed; next is re-baselined slice (2) login + RBAC · **Branch:** `dev`
 >
 > ✅ **Foundation RE-BASELINED and APPROVED (2026-06-16).** The development freeze is **lifted**. The
 > corrected foundation is locked in the decision records and propagated into ARCHITECTURE/ROADMAP:
@@ -150,9 +150,40 @@ then `ISecretStore` (ENG-0002), then the Proxmox API provider — see §5. **The
   the requireAdministrator manifest. **Interim auth: the single session token is KEPT** (printed at
   startup / container logs) — login + RBAC that retires it is **slice (2)**, not landed here. `/api/quit`
   was **left in place** (graceful, already neutered) — a desktop affordance still pending retirement,
-  coupled to a UI quit button that must go through the design workflow. **Caveat:** the Dockerfile is
-  **authored but unbuilt** (no Docker on this Windows host) — the image has not been built/run; only the
-  app bootstrap was verified (see §5).
+  coupled to a UI quit button that must go through the design workflow.
+  - **Two additions made during slice (1) (commit `7bd47f2`):** a **`GET /health`** unauthenticated
+    liveness probe, and a **`VMENTORY_TOKEN`** env override that pins a stable interim token (so the
+    deployed instance keeps a known token across restarts; login retires it in slice (2)).
+  - **DEPLOYED (2026-06-18) — dev instance on Coolify.** The image is now **built and running** on the
+    EdgeStudios **Coolify** host at **https://vmentorydev.edgestudios.co.za** — verified serving:
+    HTTPS via Coolify/Traefik, `/health` 200, SPA 200, auth gate 401 (no token) / 200 (with token).
+    **Reverse-proxy mode:** Traefik terminates TLS; the app runs **`VMENTORY_HTTP_ONLY=1`** and serves
+    plain HTTP on **8443**; SQLite lives on a **`/data` named volume**; interim access via the
+    **`VMENTORY_TOKEN`** env. This supersedes the earlier "authored but unbuilt" caveat for the dev
+    target. _(The "no Docker on this Windows host" note still holds locally — the image builds/runs on
+    the Coolify host, not this workstation.)_
+  - **Post-deploy bug fix (commit `ca196f4`):** the non-root container (uid 10001) crash-looped (exit
+    139) behind Coolify because `ErrorLogger` wrote `errors.log` into `/app` (root-owned) →
+    `UnauthorizedAccessException` at startup. Fixed by resolving the log to a writable path
+    (**`VMENTORY_LOG`** → the `VMENTORY_DB` `/data` dir → app base) and making `ErrorLogger` **fail-safe**
+    (degrades to a no-op / temp-dir fallback — logging never crashes startup). **Generalizable lesson:
+    non-root containers must write only to mounted volumes.**
+  - **Deploy tooling lives OUTSIDE this repo.** The Coolify deploy is driven by a separate **private
+    `claude-ops` repo** (its `deploy` skill; `ssh edgestudios` → the Coolify host; the API token + app
+    UUIDs are server-side only in `/etc/coolify-deploy/config.json`). That repo and the agent memories
+    do **not** travel with this clone — this pointer is here so a future session knows where the deploy
+    lives. **No secret/token is copied into this repo.**
+
+### Live operational facts (from the deployed dev instance — resume here)
+- **The containerized Core cannot inventory Hyper-V — confirmed live.** On the Coolify dev instance,
+  **every** HV host reports "unreachable": a Linux container has **no PowerShell/WinRM host** and **no
+  LAN line-of-sight** to the HV hosts. This is **by design** and validates the HV-agent / Proxmox-REST
+  split (ENG-0001 / ENG-0009). It was the concrete trigger for **ENG-0011** (observability — see §4).
+  **To exercise HV inventory today, run Core on Windows** (the dev DLL or the legacy single-file exe)
+  with WinRM reach to the HV hosts — not from the container.
+- **Future real-platform test target:** once slice (4) (Proxmox read provider) lands, **vega14** (a PVE
+  host on the **same LAN** as the container, reachable from it) is the natural first live target. Unlike
+  Hyper-V, the container→Proxmox network path works (outbound REST 8006 + SSH 22, ENG-0009).
 
 ### Planning docs (`docs/phase2/`)
 - `ARCHITECTURE.md` — target topology, `IVirtualizationProvider` model, persistence, migration engine, carry-over table.
@@ -228,9 +259,10 @@ VMentory's migration engine — its step graph, safety rules, and scripts feed t
   **runtime KEK + TLS injection**, SQLite on a mounted volume, **session-token/loopback → login + RBAC**.
   First foundation slice. ✅ **Built & verified on `dev` (re-baselined slice (1), §5):** hosted-service
   bootstrap, `TlsSetup.cs` (PFX→PEM→self-signed), `Dockerfile`/`.dockerignore`, non-root `/data` volume
-  image. **Carry-overs:** the session token is **still interim** (login lands in slice (2), not here);
-  `/api/quit` retirement + `Updater.cs` image-tag re-scope are pending; the container image is authored
-  but **unbuilt**. ARCHITECTURE (Deployment-model / Topology / §5 Security) + ROADMAP now reflect what
+  image. **DEPLOYED 2026-06-18** as a Coolify dev instance (https://vmentorydev.edgestudios.co.za) — image
+  built + running, verified serving (see §3 / §5). **Carry-overs:** the session token is **still interim**
+  (login lands in slice (2), not here); `/api/quit` retirement + `Updater.cs` image-tag re-scope are
+  pending. ARCHITECTURE (Deployment-model / Topology / §5 Security) + ROADMAP now reflect what
   shipped; `persistence-and-security.md §5a` already describes the model (decided, forward-looking). See
   `discussions/0010-core-deployment-runtime-model.md`.
 - **Persistence open questions — now active (slice 3 shipped).** Engineering agent to pick up, since
@@ -274,14 +306,25 @@ WinRM ensure, and a single Linux `Dockerfile` (app + SSH client, no `qemu`/`qm`,
 volume). **Two carry-overs remain:** (a) the **interim session token + `/api/quit` desktop route** are
 still present — the session token is retired in **slice (2)**, and `/api/quit` (+ its UI quit button) is
 a desktop affordance still pending retirement via the `design/` workflow; (b) **`Updater.cs` re-scope**
-(GitHub-exe auto-update → container image tags) is **not yet done**. The **container image is unbuilt**
-(no Docker on this host) — build/run it before relying on it.
+(GitHub-exe auto-update → container image tags) is **not yet done**. The image is now **built and
+deployed** as a Coolify dev instance (2026-06-18, https://vmentorydev.edgestudios.co.za) — see §3 / the
+slice-(1) detail below; it no longer needs local Docker (no Docker on this Windows host) to exercise.
 
-**Do next — slice (2):** layer **login + the RBAC chokepoint** on top — minimal admin login **removes
-the interim session token**, fixed roles (Admin / VM-operator / Backup-operator / Viewer) over a
-pillar×verb catalog reusing `ProviderCapability`, a single audited authz chokepoint before any write
-verb (ENG-0008). **The agent is still not next** — it is HV-scoped and lands at slice (6) with migration
-(ENG-0009).
+**Do next — slice (2): login + RBAC (ENG-0008).** Owner **confirmed keeping the planned slice order**
+(did **not** bring the Proxmox read provider forward). Layer **login + the RBAC chokepoint** on top —
+minimal admin login **removes the interim `VMENTORY_TOKEN` / session-token auth**, fixed roles (Admin /
+VM-operator / Backup-operator / Viewer) over a pillar×verb catalog reusing `ProviderCapability`, a single
+audited authz chokepoint before any write verb (ENG-0008). **The agent is still not next** — it is
+HV-scoped and lands at slice (6) with migration (ENG-0009).
+
+Two slice-(2) implementation considerations to **pin at planning time**:
+- **(a) First-admin bootstrap for a headless container.** No TTY, no installer — likely an
+  **env-provided initial admin** (e.g. `VMENTORY_ADMIN_USER` / `VMENTORY_ADMIN_PASSWORD`) with **forced
+  rotation** on first login. The exact mechanism (env vs one-time setup token vs first-run claim) is
+  **not yet pinned** — decide before building.
+- **(b) The login screen touches `wwwroot/index.html` → goes through the `design/` workflow.** Build the
+  **backend / API first**; coordinate the login UI with the design agent (don't hand-edit the SPA).
+- **Auth retirement:** the interim `VMENTORY_TOKEN` / session-token auth is **retired in slice (2)**.
 
 1. ✅ **Propagate ENG-0007** into **ROADMAP.md** and **ARCHITECTURE.md** (release
    definitions/sequencing + `IVirtualizationProvider` capability model with HV management verbs) —
@@ -326,15 +369,31 @@ verb (ENG-0008). **The agent is still not next** — it is HV-scoped and lands a
      `/api/quit` left in place (graceful) — retirement still pending. **Verified:** `dotnet build
      VMentory.sln` clean (0/0); DLL run in mock mode bound `0.0.0.0:8444` over **self-signed HTTPS**, SPA
      200 over HTTPS, `/api/state` 401 without token / 200 with token returning all 5 mock hosts;
-     `VMENTORY_HTTP_ONLY=1` served plain HTTP 200 + the 401 auth gate. **Caveat — container image
-     UNBUILT:** no Docker on this Windows host, so the Dockerfile is authored but **not built/run**; only
-     the app bootstrap was exercised. _The `/api/quit` route + its UI quit button remain a desktop
-     affordance pending retirement (the UI change must go through the `design/` workflow)._
-   - **Next (re-baselined):** slice (2) **login + RBAC** (ENG-0008) — minimal admin login **removes the
-     interim session token** + lands the fixed-role framework / pillar×verb catalog / single audited
-     authz chokepoint, before any write verb. Then (3) **`ISecretStore`** (ENG-0002) → (4) **Proxmox API
-     read provider**. Proxmox write verbs (5) and the **HV-scoped agent + private CA** (6) follow;
-     HV→PVE migration (7). **The agent is still not next** (demoted + HV-scoped, ENG-0009).
+     `VMENTORY_HTTP_ONLY=1` served plain HTTP 200 + the 401 auth gate. Slice (1) also added a
+     **`GET /health`** liveness probe + a **`VMENTORY_TOKEN`** stable-interim-token override (`7bd47f2`).
+     _The `/api/quit` route + its UI quit button remain a desktop affordance pending retirement (the UI
+     change must go through the `design/` workflow)._
+   - ✅ **DEPLOYED (2026-06-18) — Coolify dev instance.** Image **built and running** at
+     **https://vmentorydev.edgestudios.co.za**, verified serving (HTTPS via Coolify/Traefik, `/health`
+     200, SPA 200, auth 401/200). Reverse-proxy mode: Traefik terminates TLS; app runs
+     `VMENTORY_HTTP_ONLY=1` on HTTP 8443; SQLite on a `/data` named volume; interim access via
+     `VMENTORY_TOKEN`. **Post-deploy fix (`ca196f4`):** non-root (uid 10001) crash-loop (exit 139) from
+     `ErrorLogger` writing `errors.log` into root-owned `/app` → resolved to a writable path
+     (`VMENTORY_LOG` / `/data` / app base) + made fail-safe (lesson: **non-root containers write only to
+     mounted volumes**). **Deploy lives in a separate private `claude-ops` repo** (`deploy` skill,
+     `ssh edgestudios`; token/UUIDs server-side in `/etc/coolify-deploy/config.json`) — **not in this
+     clone**, no secrets copied here. **Live operational fact:** the container **cannot inventory
+     Hyper-V** (no PowerShell/WinRM + no LAN line-of-sight; every HV host "unreachable" — by design,
+     the ENG-0011 trigger; see §3 "Live operational facts" + §4).
+   - **Next (re-baselined):** slice (2) **login + RBAC** (ENG-0008) — owner **kept the planned order**
+     (Proxmox read **not** pulled forward). Minimal admin login **removes the interim `VMENTORY_TOKEN` /
+     session token** + lands the fixed-role framework / pillar×verb catalog / single audited authz
+     chokepoint, before any write verb. **Pin at planning:** (a) headless **first-admin bootstrap**
+     (likely `VMENTORY_ADMIN_USER`/`_PASSWORD` env + forced rotation — not yet pinned); (b) the **login
+     UI touches `wwwroot/index.html` → design workflow** (backend/API first). Then (3) **`ISecretStore`**
+     (ENG-0002) → (4) **Proxmox API read provider** (first live target: **vega14**, same LAN, reachable).
+     Proxmox write verbs (5) and the **HV-scoped agent + private CA** (6) follow; HV→PVE migration (7).
+     **The agent is still not next** (demoted + HV-scoped, ENG-0009).
    - **Auth:** scoped/role-based console access (Admin / VM-operator / Backup-operator / Viewer) →
      **ENG-0008 (Decided 2026-06-16)** — fixed roles over a pillar×verb catalog, local accounts now,
      single audited authz chokepoint **before any write verb**; login lands in the slice-(1) deployment
