@@ -3,7 +3,7 @@
 > **Purpose:** pick up Phase 2 from a clean clone on any machine. Read this top-to-bottom and you
 > know where we are, what's decided, what's open, and what to do next.
 >
-> **Last updated:** 2026-06-18 (re-baselined slice (1) — containerized Core — now **DEPLOYED** as a dev instance on Coolify at https://vmentorydev.edgestudios.co.za) · **Phase:** 2.0 foundation — original build slices 1–3 + re-baselined slice (1) landed & deployed; next is re-baselined slice (2) login + RBAC · **Branch:** `dev`
+> **Last updated:** 2026-06-18 (re-baselined slice (3) — `ISecretStore` (ENG-0002) — now **BUILT & VERIFIED** on `dev`) · **Phase:** 2.0 foundation — original build slices 1–3 + re-baselined slices (1), (2) & (3) landed; slice (1) deployed on Coolify; **next is re-baselined slice (4): Proxmox API read provider** · **Branch:** `dev`
 >
 > ✅ **Foundation RE-BASELINED and APPROVED (2026-06-16).** The development freeze is **lifted**. The
 > corrected foundation is locked in the decision records and propagated into ARCHITECTURE/ROADMAP:
@@ -270,8 +270,9 @@ VMentory's migration engine — its step graph, safety rules, and scripts feed t
   to keep, to bound SQLite growth (no pruning today; every successful scan writes a snapshot); (b)
   **DB at-rest encryption** — the DB holds no plaintext secrets, but inventory/audit may be sensitive
   (encrypt the SQLite file / require encrypted Postgres, or treat the volume as the trust boundary).
-  Both are in `persistence-and-security.md §7`; consider promoting to ENG topics. **`ISecretStore`
-  (ENG-0002) is the next build slice** — until it lands, the registry persists **no** credentials.
+  Both are in `persistence-and-security.md §7`; consider promoting to ENG topics. ✅ **`ISecretStore`
+  (ENG-0002) is now built (slice (3), 2026-06-18)** — credentials persist when `VMENTORY_KEK` is set;
+  see §5.
 - **ENG-0011 (Open / Raised 2026-06-17 — discuss + plan, NOT decided):** **observability / structured
   logging / failure-surfacing.** Trigger: the containerized Core on Coolify reports every HV host
   "unreachable" with no *why* (Linux container has no PowerShell/WinRM host + no line-of-sight). Design a
@@ -295,7 +296,7 @@ VMentory's migration engine — its step graph, safety rules, and scripts feed t
 slice order is:
 
 > **(1) Containerized Core + hosted-service bootstrap (ENG-0010) ✅ → (2) Login + RBAC framework
-> (ENG-0008) ← NEXT → (3) `ISecretStore` (ENG-0002) → (4) Proxmox API provider (read / planted Observe) →
+> (ENG-0008) ✅ → (3) `ISecretStore` (ENG-0002) ← NEXT → (4) Proxmox API provider (read / planted Observe) →
 > (5) Proxmox SSH executor + management/Deploy write verbs (capability-gated, RBAC-enforced, audited)
 > → (6) Hyper-V agent + private CA (scoped to HV, ENG-0001/0003/0004/0005) → (7) HV→PVE migration.**
 
@@ -310,21 +311,18 @@ a desktop affordance still pending retirement via the `design/` workflow; (b) **
 deployed** as a Coolify dev instance (2026-06-18, https://vmentorydev.edgestudios.co.za) — see §3 / the
 slice-(1) detail below; it no longer needs local Docker (no Docker on this Windows host) to exercise.
 
-**Do next — slice (2): login + RBAC (ENG-0008).** Owner **confirmed keeping the planned slice order**
-(did **not** bring the Proxmox read provider forward). Layer **login + the RBAC chokepoint** on top —
-minimal admin login **removes the interim `VMENTORY_TOKEN` / session-token auth**, fixed roles (Admin /
-VM-operator / Backup-operator / Viewer) over a pillar×verb catalog reusing `ProviderCapability`, a single
-audited authz chokepoint before any write verb (ENG-0008). **The agent is still not next** — it is
-HV-scoped and lands at slice (6) with migration (ENG-0009).
+**Do next — slice (4): Proxmox API read provider (ENG-0009).** Slices (1)–(3) are done. Next is the
+Proxmox REST API read provider: `GET /nodes`, `GET /nodes/{node}/qemu` + `lxc`, `rrddata` for live
+stats. First live target: **vega14** (PVE 9.2, reachable from the container LAN). Scoped API token +
+SSH key go through `ISecretStore`. Carries planted-Observe end state: a multi-platform dashboard showing
+both HV (from agent) and Proxmox (from REST) hosts in one unified list.
 
-Two slice-(2) implementation considerations to **pin at planning time**:
-- **(a) First-admin bootstrap for a headless container.** No TTY, no installer — likely an
-  **env-provided initial admin** (e.g. `VMENTORY_ADMIN_USER` / `VMENTORY_ADMIN_PASSWORD`) with **forced
-  rotation** on first login. The exact mechanism (env vs one-time setup token vs first-run claim) is
-  **not yet pinned** — decide before building.
-- **(b) The login screen touches `wwwroot/index.html` → goes through the `design/` workflow.** Build the
-  **backend / API first**; coordinate the login UI with the design agent (don't hand-edit the SPA).
-- **Auth retirement:** the interim `VMENTORY_TOKEN` / session-token auth is **retired in slice (2)**.
+**Slice (2) carry-overs:**
+- **Login UI (`wwwroot/index.html`):** a functional but unstyled interim login + change-password screen
+  is live. Design request raised at `design/requests/from-codebase/2026-06-18-login-screen.md`;
+  `design/STATUS.md` updated. The designed version lands once the design agent delivers.
+- **`/api/quit` + its UI quit button** remain (desktop affordance, pending design workflow retirement).
+- **`Updater.cs` re-scope** (exe auto-update → container image tags) not yet done.
 
 1. ✅ **Propagate ENG-0007** into **ROADMAP.md** and **ARCHITECTURE.md** (release
    definitions/sequencing + `IVirtualizationProvider` capability model with HV management verbs) —
@@ -385,19 +383,43 @@ Two slice-(2) implementation considerations to **pin at planning time**:
      clone**, no secrets copied here. **Live operational fact:** the container **cannot inventory
      Hyper-V** (no PowerShell/WinRM + no LAN line-of-sight; every HV host "unreachable" — by design,
      the ENG-0011 trigger; see §3 "Live operational facts" + §4).
-   - **Next (re-baselined):** slice (2) **login + RBAC** (ENG-0008) — owner **kept the planned order**
-     (Proxmox read **not** pulled forward). Minimal admin login **removes the interim `VMENTORY_TOKEN` /
-     session token** + lands the fixed-role framework / pillar×verb catalog / single audited authz
-     chokepoint, before any write verb. **Pin at planning:** (a) headless **first-admin bootstrap**
-     (likely `VMENTORY_ADMIN_USER`/`_PASSWORD` env + forced rotation — not yet pinned); (b) the **login
-     UI touches `wwwroot/index.html` → design workflow** (backend/API first). Then (3) **`ISecretStore`**
-     (ENG-0002) → (4) **Proxmox API read provider** (first live target: **vega14**, same LAN, reachable).
-     Proxmox write verbs (5) and the **HV-scoped agent + private CA** (6) follow; HV→PVE migration (7).
+   - ✅ **Re-baselined slice (2) (login + RBAC, ENG-0008) done & verified (2026-06-18):** cookie-based
+     session auth (HttpOnly Secure SameSite=Strict, 12h sliding), `PasswordHasher` (PBKDF2-SHA256,
+     BCL-only, work-factor in hash), EF Core `AppUserEntity` + `AuditEventEntity` (`AddAuth` migration),
+     `IUserStore` / `EfUserStore`, `RbacCatalog` (static role→`ProviderCapability`+`ConsolePermission`
+     mapping). Endpoints: `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/logout`,
+     `POST /api/auth/change-password`. Authz chokepoint middleware replaces the old token middleware —
+     gates all `/api/*`, passes `/api/auth/*`, enforces `MustChangePassword` (returns 403 +
+     `requiresPasswordChange:true` until changed). First-admin seed on startup:
+     `VMENTORY_ADMIN_USER`/`VMENTORY_ADMIN_PASSWORD` env (default username `admin`; if no password,
+     auto-generates + prints to stdout for Coolify log capture); always seeded with `MustChangePassword=true`.
+     `VMENTORY_TOKEN` / session-token interim auth **retired** (removed from `AppConfig` + all routes).
+     SSE (`/api/events`) now uses cookie auth (EventSource sends cookies on same-origin GET; `?token=`
+     removed). Minimal login + change-password walls in `wwwroot/index.html` (functional, unstyled);
+     design request raised at `design/requests/from-codebase/2026-06-18-login-screen.md`.
+     Mock mode: any credentials accepted (no DB), returns Admin role. **Verified:** build 0/0;
+     mock-mode smoke test: unauthenticated `/api/state` → 401; login → 200 + cookie;
+     `/api/auth/me` → `{username,role}`; authenticated `/api/state` → 200 (5 mock hosts);
+     logout → cookie cleared; `/api/state` post-logout → 401.
+     **Carry-overs:** login UI awaiting design; `/api/quit` + Updater re-scope still pending.
+   - ✅ **Re-baselined slice (3) (`ISecretStore`, ENG-0002) done & verified (2026-06-18):** `ISecretStore`
+     interface + two implementations: `AesGcmSecretStore` (scoped, SQLite-backed, AES-256-GCM envelope
+     encryption) and `EphemeralSecretStore` (singleton, in-memory, used when `VMENTORY_KEK` is absent).
+     New persistence entities: `SecretEntity` (encrypted blob + nonce) + `DekEntity` (wrapped DEK);
+     `AddSecrets` EF migration. `DekProvider` (singleton): caches the plaintext DEK in memory after
+     first load; creates + wraps on first run; unwraps on subsequent restarts using the KEK.
+     `VMENTORY_KEK` env var (base64, 32 bytes): if set, credentials and future secrets are AES-256-GCM
+     encrypted in SQLite and survive restarts; if absent, `EphemeralSecretStore` is used (ephemeral,
+     Phase-1 behavior). Startup banner now shows secret-store mode. Startup `LoadPersistedCredsAsync`
+     restores global WinRM creds + per-host creds into `Store` from the secret store on start.
+     `POST /api/credentials` now persists via `ISecretStore`. `POST /api/hosts` (per-host creds) and
+     `DELETE /api/hosts/{id}` both call `ISecretStore` to set/delete the `host_cred:{id}` entry.
+     **Verified:** build 0/0; mock-mode smoke test: `/health` 200, unauthenticated `/api/state` → 401,
+     login → 200 + cookie, `/api/auth/me` → `{username,role}`, authenticated `/api/state` → 200.
+     **Carry-overs:** login UI awaiting design; `/api/quit` + Updater re-scope still pending.
+   - **Next:** slice (4) **Proxmox API read provider** (target: **vega14**, PVE 9.2). Then Proxmox write
+     verbs (5) and the **HV-scoped agent + private CA** (6) follow; HV→PVE migration (7).
      **The agent is still not next** (demoted + HV-scoped, ENG-0009).
-   - **Auth:** scoped/role-based console access (Admin / VM-operator / Backup-operator / Viewer) →
-     **ENG-0008 (Decided 2026-06-16)** — fixed roles over a pillar×verb catalog, local accounts now,
-     single audited authz chokepoint **before any write verb**; login lands in the slice-(1) deployment
-     work, the role framework before slice-(5) write verbs.
 3. Owner reviews the five specs (`docs/phase2/specs/`) and the four design mockups (`design/`).
 4. Reconcile the migration docs (virt-v2v → qm-importdisk, fold in the skill).
 

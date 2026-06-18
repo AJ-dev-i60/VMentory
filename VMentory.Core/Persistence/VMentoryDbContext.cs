@@ -9,6 +9,10 @@ public class VMentoryDbContext(DbContextOptions<VMentoryDbContext> options) : Db
 {
     public DbSet<HostRegistrationEntity> Hosts => Set<HostRegistrationEntity>();
     public DbSet<InventorySnapshotEntity> Snapshots => Set<InventorySnapshotEntity>();
+    public DbSet<AppUserEntity> Users => Set<AppUserEntity>();
+    public DbSet<AuditEventEntity> AuditEvents => Set<AuditEventEntity>();
+    public DbSet<SecretEntity> Secrets => Set<SecretEntity>();
+    public DbSet<DekEntity> Deks => Set<DekEntity>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -26,6 +30,30 @@ public class VMentoryDbContext(DbContextOptions<VMentoryDbContext> options) : Db
         {
             e.HasKey(s => s.Id);
             e.HasIndex(s => new { s.HostId, s.TakenAt });
+        });
+
+        b.Entity<AppUserEntity>(e =>
+        {
+            e.HasKey(u => u.Id);
+            e.HasIndex(u => u.Username).IsUnique();
+            e.Property(u => u.Role).HasConversion<string>();
+        });
+
+        b.Entity<AuditEventEntity>(e =>
+        {
+            e.HasKey(a => a.Id);
+            e.HasIndex(a => new { a.Timestamp, a.Username });
+        });
+
+        b.Entity<SecretEntity>(e =>
+        {
+            e.HasKey(s => s.Id);
+            e.HasIndex(s => s.Key).IsUnique();
+        });
+
+        b.Entity<DekEntity>(e =>
+        {
+            e.HasKey(d => d.Id);
         });
     }
 }

@@ -16,7 +16,9 @@ Live state of design proposals. Newest at the top of each section.
 *(none)*
 
 ## Awaiting design
-*(none)*
+| Date | Title | Request | Notes |
+|---|---|---|---|
+| 2026-06-18 | Login screen + change-password wall + logout button | `requests/from-codebase/2026-06-18-login-screen.md` | Slice (2) login+RBAC backend is live. Interim unstyled screens exist and are wired up — design needs to produce styled versions. High priority: enables retiring the token banner on the deployed dev instance. |
 
 ## Shipped
 | Date | Title | Commit | Notes |

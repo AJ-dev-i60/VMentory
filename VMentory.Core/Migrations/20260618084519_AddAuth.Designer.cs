@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using VMentory.Core.Persistence;
 
@@ -10,9 +11,11 @@ using VMentory.Core.Persistence;
 namespace VMentory.Core.Migrations
 {
     [DbContext(typeof(VMentoryDbContext))]
-    partial class VMentoryDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260618084519_AddAuth")]
+    partial class AddAuth
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "8.0.11");
@@ -84,28 +87,6 @@ namespace VMentory.Core.Migrations
                     b.ToTable("AuditEvents");
                 });
 
-            modelBuilder.Entity("VMentory.Core.Persistence.DekEntity", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("DekNonce")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("WrappedDek")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("Deks");
-                });
-
             modelBuilder.Entity("VMentory.Core.Persistence.HostRegistrationEntity", b =>
                 {
                     b.Property<string>("Id")
@@ -152,38 +133,6 @@ namespace VMentory.Core.Migrations
                     b.HasIndex("HostId", "TakenAt");
 
                     b.ToTable("Snapshots");
-                });
-
-            modelBuilder.Entity("VMentory.Core.Persistence.SecretEntity", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("Ciphertext")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Key")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Nonce")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Key")
-                        .IsUnique();
-
-                    b.ToTable("Secrets");
                 });
 
             modelBuilder.Entity("VMentory.Core.Persistence.InventorySnapshotEntity", b =>
