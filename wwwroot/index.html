@@ -631,7 +631,7 @@ async function loadState(){
     st.hosts=d.hosts||[];st.totals=d.totals||{};st.diff=d.diff||{};
     st.credSet=d.credentialsSet;st.mock=d.mockMode;
     const bs=document.getElementById('build-stamp');
-    if(bs&&d.build&&d.build!=='dev')bs.textContent=d.build;
+    if(bs&&d.build)bs.textContent=d.build;
     updateStrip();
     renderView(st.view,false);
   }catch{}
