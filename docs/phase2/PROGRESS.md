@@ -443,9 +443,14 @@ volume). Image built and deployed as a Coolify dev instance (2026-06-18, https:/
      - **`SkipTlsVerification` is required for self-signed PVE certs** (the default on most PVE
        installs). Set it at registration time; Core will use `HttpClientHandler.ServerCertificateCustomValidationCallback`
        to bypass chain validation only for that host's HTTP client.
-     - **Token format:** the `PVEAPIToken` header value must follow PVE's format:
-       `PVEAPIToken=<user>@<realm>!<tokenid>=<uuid>` (e.g. `PVEAPIToken=root@pam!vmentory=<uuid>`).
-       This is stored verbatim in `ISecretStore` as the per-host cred password field.
+     - **Token format (verified live 2026-06-18 against vega14):** store the **BARE** token —
+       `<user>@<realm>!<tokenid>=<uuid>` (e.g. `root@pam!vmentory1=<uuid>`) — in `ISecretStore` as the
+       per-host cred password field. **Do NOT include the `PVEAPIToken=` prefix:** `ProxmoxProvider`
+       prepends it when building the `Authorization` header ([`ProxmoxProvider.cs:123`](../../ProxmoxProvider.cs)),
+       so storing the prefixed form produces `Authorization: PVEAPIToken=PVEAPIToken=…` → **401**. The SPA
+       add-host placeholder already shows the correct bare form (`user@pam!tokenid=…`). Note the
+       `<user>@<realm>!<tokenid>` must match an **existing** PVE token exactly — a wrong realm or token id
+       gives **401 "Authentication failed!"** (vs **403** for a valid-but-unprivileged token).
      **Carry-overs (unchanged from slice (3)):** login UI awaiting design; `/api/quit` + Updater re-scope
      still pending.
    - **Next:** slice (5) **Proxmox SSH executor + management/Deploy write verbs** (capability-gated,
