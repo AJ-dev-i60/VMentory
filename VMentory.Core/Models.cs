@@ -77,6 +77,7 @@ public class Host
     public string ScanError { get; set; } = "";
     public DateTimeOffset? LastScanned { get; set; }
     public bool UseGlobalCreds { get; set; } = true;
+    public bool SkipTlsVerification { get; set; }
     public string AddError { get; set; } = "";
     public bool Connecting { get; set; }
 

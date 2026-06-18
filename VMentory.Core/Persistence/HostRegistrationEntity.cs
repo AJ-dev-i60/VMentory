@@ -10,6 +10,7 @@ public class HostRegistrationEntity
     public PlatformKind Platform { get; set; } = PlatformKind.HyperV;
     public string Address { get; set; } = "";
     public bool UseGlobalCreds { get; set; } = true;
+    public bool SkipTlsVerification { get; set; }
     public DateTimeOffset AddedAt { get; set; }
 
     public List<InventorySnapshotEntity> Snapshots { get; set; } = [];

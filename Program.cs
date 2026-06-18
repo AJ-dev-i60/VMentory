@@ -95,6 +95,8 @@ builder.Services.AddSingleton(config);
 builder.Services.AddSingleton(store);
 builder.Services.AddSingleton(hub);
 builder.Services.AddSingleton<IVirtualizationProvider, HyperVProvider>();
+builder.Services.AddSingleton<IVirtualizationProvider, ProxmoxProvider>();
+builder.Services.AddSingleton<ProviderRegistry>();
 builder.Services.AddHostedService<Poller>();
 
 // ── Auth: cookie-based session (ENG-0008, slice 2) ────────────────────────────
@@ -388,11 +390,13 @@ app.MapPost("/api/credentials", async (HttpContext ctx, Store s, EventHub h, ISe
     return Results.Ok(new { ok = true });
 });
 
-app.MapPost("/api/hosts", async (HttpContext ctx, Store s, EventHub h, AppConfig cfg, IVirtualizationProvider provider, IServiceScopeFactory scopeFactory) =>
+app.MapPost("/api/hosts", async (HttpContext ctx, Store s, EventHub h, AppConfig cfg, ProviderRegistry registry, IServiceScopeFactory scopeFactory) =>
 {
     var body = await ctx.Request.ReadFromJsonAsync<AddHostsDto>();
     if (body == null || string.IsNullOrWhiteSpace(body.Addresses))
         return Results.BadRequest("addresses required");
+
+    var platform = Enum.TryParse<PlatformKind>(body.Platform, ignoreCase: true, out var pk) ? pk : PlatformKind.HyperV;
 
     if (cfg.MockMode)
         return Results.Ok(new { added = 0, message = "Mock mode: use pre-loaded mock hosts" });
@@ -412,12 +416,16 @@ app.MapPost("/api/hosts", async (HttpContext ctx, Store s, EventHub h, AppConfig
     {
         var host = new VMentory.Core.Host
         {
-            Address        = addr,
-            Fqdn           = addr,
-            UseGlobalCreds = body.UseGlobalCreds,
-            Connecting     = true,
+            Address             = addr,
+            Fqdn                = addr,
+            Platform            = platform,
+            UseGlobalCreds      = platform == PlatformKind.Proxmox ? false : body.UseGlobalCreds,
+            SkipTlsVerification = body.SkipTlsVerification,
+            Connecting          = true,
         };
-        if (!body.UseGlobalCreds && !string.IsNullOrWhiteSpace(body.Username))
+        if (platform == PlatformKind.Proxmox && !string.IsNullOrWhiteSpace(body.Token))
+            host.PerHostCreds = new Credentials("", body.Token!);
+        else if (!body.UseGlobalCreds && !string.IsNullOrWhiteSpace(body.Username))
             host.PerHostCreds = new Credentials(body.Username!, body.Password ?? "");
 
         s.AddHost(host);
@@ -433,8 +441,8 @@ app.MapPost("/api/hosts", async (HttpContext ctx, Store s, EventHub h, AppConfig
         foreach (var host in hostsToCheck)
         {
             await invStore.UpsertRegistrationAsync(host);
-            // Persist per-host creds so they survive restarts (ENG-0002).
-            if (!host.UseGlobalCreds && host.PerHostCreds != null)
+            // Persist per-host creds (HyperV username/password or Proxmox API token) via ISecretStore (ENG-0002).
+            if (host.PerHostCreds != null)
                 await secretStore.SetAsync($"host_cred:{host.Id}",
                     JsonSerializer.Serialize(new { username = host.PerHostCreds.Username, password = host.PerHostCreds.GetPassword() }));
         }
@@ -466,7 +474,46 @@ app.MapPost("/api/hosts", async (HttpContext ctx, Store s, EventHub h, AppConfig
                 }
                 DevLog.Ok($"[ADD]  DNS OK → {fqdn}");
 
-                var icmp  = await ReachabilityChecker.PingAsync(addr, TimeSpan.FromSeconds(2));
+                var icmp = await ReachabilityChecker.PingAsync(addr, TimeSpan.FromSeconds(2));
+
+                // ── Proxmox path ──────────────────────────────────────────────
+                if (host.Platform == PlatformKind.Proxmox)
+                {
+                    var apiPort = await ReachabilityChecker.TestTcpPortAsync(addr, 8006, TimeSpan.FromSeconds(3));
+                    s.UpdateHost(host.Id, hh =>
+                    {
+                        hh.Reachability.CheckedAt = DateTimeOffset.UtcNow;
+                        hh.Reachability.Icmp  = icmp;
+                        hh.Reachability.WinRm = apiPort;
+                    });
+                    var afterPveReach = s.GetHost(host.Id);
+                    if (afterPveReach != null)
+                        h.Broadcast("reachability", new { hostId = host.Id, reachability = afterPveReach.Reachability });
+
+                    if (!apiPort)
+                    {
+                        s.UpdateHost(host.Id, hh =>
+                        {
+                            hh.AddError   = !icmp ? "Host unreachable (ICMP failed)" : "PVE API port (8006) not responding";
+                            hh.Connecting = false;
+                        });
+                        var afterErr = s.GetHost(host.Id);
+                        if (afterErr != null) h.Broadcast("hostUpdated", afterErr);
+                        continue;
+                    }
+
+                    var pveHost = s.GetHost(host.Id);
+                    if (pveHost != null)
+                    {
+                        (bool ok, string err) = await registry.For(PlatformKind.Proxmox).QuickConnectAsync(pveHost);
+                        s.UpdateHost(host.Id, hh => { if (!ok) hh.AddError = err; hh.Connecting = false; });
+                    }
+                    var pveFinal = s.GetHost(host.Id);
+                    if (pveFinal != null) h.Broadcast("hostUpdated", pveFinal);
+                    continue;
+                }
+
+                // ── HyperV path ───────────────────────────────────────────────
                 var winrm = await ReachabilityChecker.TestTcpPortAsync(addr, cfg.WinRmPort, TimeSpan.FromSeconds(3));
                 s.UpdateHost(host.Id, hh =>
                 {
@@ -522,7 +569,7 @@ app.MapPost("/api/hosts", async (HttpContext ctx, Store s, EventHub h, AppConfig
                     var storedHost = s.GetHost(host.Id);
                     if (storedHost != null)
                     {
-                        (bool ok, string err) = await provider.QuickConnectAsync(storedHost);
+                        (bool ok, string err) = await registry.For(PlatformKind.HyperV).QuickConnectAsync(storedHost);
                         s.UpdateHost(host.Id, hh => { if (!ok) hh.AddError = err; hh.Connecting = false; });
                     }
                 }
@@ -569,7 +616,7 @@ app.MapDelete("/api/hosts/{id}", async (string id, Store s, EventHub h, AppConfi
     return Results.Ok(new { ok = true });
 });
 
-app.MapPost("/api/scan", async (HttpContext ctx, Store s, EventHub h, AppConfig cfg, IVirtualizationProvider provider, IServiceScopeFactory scopeFactory) =>
+app.MapPost("/api/scan", async (HttpContext ctx, Store s, EventHub h, AppConfig cfg, ProviderRegistry registry, IServiceScopeFactory scopeFactory) =>
 {
     if (cfg.MockMode)
     {
@@ -610,14 +657,14 @@ app.MapPost("/api/scan", async (HttpContext ctx, Store s, EventHub h, AppConfig 
             h.Broadcast("scanProgress", new { hostId = host.Id, state = "scanning" });
 
             var creds = s.GetEffectiveCreds(host);
-            if (creds == null)
+            if (creds == null && host.Platform == PlatformKind.HyperV)
             {
                 s.UpdateHost(host.Id, h => { h.ScanState = ScanState.Error; h.ScanError = "No credentials"; });
                 h.Broadcast("scanProgress", new { hostId = host.Id, state = "error", error = "No credentials" });
                 return;
             }
 
-            var (ok, err) = await provider.ScanAsync(host);
+            var (ok, err) = await registry.For(host.Platform).ScanAsync(host);
             var now = DateTimeOffset.UtcNow;
 
             s.UpdateHost(host.Id, hh =>
@@ -1001,7 +1048,8 @@ static string ResolveLogPath()
 record LoginDto(string Username, string Password);
 record ChangePasswordDto(string NewPassword, string? OldPassword = null);
 record CredentialsDto(string Username, string Password);
-record AddHostsDto(string Addresses, bool UseGlobalCreds = true, string? Username = null, string? Password = null);
+record AddHostsDto(string Addresses, bool UseGlobalCreds = true, string? Username = null, string? Password = null,
+    string Platform = "HyperV", string? Token = null, bool SkipTlsVerification = false);
 record ScanBody(string? HostId);
 record StoredCred(string? Username, string? Password);
 

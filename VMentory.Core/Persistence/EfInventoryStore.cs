@@ -21,6 +21,7 @@ public class EfInventoryStore(VMentoryDbContext db) : IInventoryStore
                 Platform = reg.Platform,
                 Address = reg.Address,
                 UseGlobalCreds = reg.UseGlobalCreds,
+                SkipTlsVerification = reg.SkipTlsVerification,
             };
 
             var latest = await db.Snapshots.AsNoTracking()
@@ -46,6 +47,7 @@ public class EfInventoryStore(VMentoryDbContext db) : IInventoryStore
                 Platform = host.Platform,
                 Address = host.Address,
                 UseGlobalCreds = host.UseGlobalCreds,
+                SkipTlsVerification = host.SkipTlsVerification,
                 AddedAt = DateTimeOffset.UtcNow,
             });
         }
@@ -54,6 +56,7 @@ public class EfInventoryStore(VMentoryDbContext db) : IInventoryStore
             existing.Platform = host.Platform;
             existing.Address = host.Address;
             existing.UseGlobalCreds = host.UseGlobalCreds;
+            existing.SkipTlsVerification = host.SkipTlsVerification;
         }
         await db.SaveChangesAsync(ct);
     }
