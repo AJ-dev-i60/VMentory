@@ -525,10 +525,10 @@ const st={
 // ── API ───────────────────────────────────────────────────────────────────────
 async function api(m,path,body){
   const r=await fetch(path,{method:m,credentials:'include',headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});
-  if(r.status===401){showLogin();throw new Error('Not authenticated');}
+  if(r.status===401){if(document.getElementById('auth-login').style.display!=='flex')showLogin();throw new Error('Not authenticated');}
   if(r.status===403){
     const j=await r.json().catch(()=>({}));
-    if(j.requiresPasswordChange){showChangePassword();throw new Error('Password change required');}
+    if(j.requiresPasswordChange){if(document.getElementById('auth-chpw').style.display!=='flex')showChangePassword();throw new Error('Password change required');}
     throw new Error('Forbidden');
   }
   if(!r.ok)throw new Error(await r.text());
