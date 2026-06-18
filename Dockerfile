@@ -7,9 +7,6 @@
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
-# git is required so the build stamp step can read the latest commit timestamp.
-RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
-
 # Restore against the project files first for layer caching.
 COPY VMentory.Core/VMentory.Core.csproj VMentory.Core/
 COPY VMentory.Web.csproj ./
@@ -20,10 +17,10 @@ COPY . .
 ARG VERSION=1.0.0
 RUN dotnet publish VMentory.Web.csproj -c Release -o /app --no-restore -p:Version=${VERSION}
 
-# Compute the build stamp from the latest commit timestamp in SAST (UTC+2).
-# Format: v{YY}.{MM}.{DD}.{HHMM} — same convention as TableTopCafe.
-# Falls back to "dev" if .git is unavailable (local docker build without git history).
-RUN git log -1 --format=%cI HEAD > /app/build-stamp.txt 2>/dev/null || echo "dev" > /app/build-stamp.txt
+# Capture the build time as the stamp. Using date (always available) rather than git log
+# because Coolify sends the source as a tarball — no .git in the build context.
+# ComputeBuildStamp() in Program.cs parses this ISO timestamp → v{YY}.{MM}.{DD}.{HHMM} SAST.
+RUN date -u +"%Y-%m-%dT%H:%M:%SZ" > /app/build-stamp.txt
 
 # ── Runtime ───────────────────────────────────────────────────────────────────
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime

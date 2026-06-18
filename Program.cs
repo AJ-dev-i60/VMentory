@@ -796,8 +796,8 @@ static string AppVersion()
     return plus >= 0 ? v[..plus] : v;
 }
 
-// Reads the build-stamp.txt written by the Dockerfile build stage and formats it as
-// v{YY}.{MM}.{DD}.{HHMM} in Africa/Johannesburg (SAST = UTC+2). Same convention as TableTopCafe.
+// Reads the build-stamp.txt written by the Dockerfile build stage (UTC ISO timestamp via `date`)
+// and formats it as v{YY}.{MM}.{DD}.{HHMM} in Africa/Johannesburg (SAST = UTC+2).
 // Falls back to "dev" when running outside Docker (no build-stamp.txt present).
 static string ComputeBuildStamp()
 {
