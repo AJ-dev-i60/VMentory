@@ -120,7 +120,10 @@ public sealed class ProxmoxProvider(Store store) : IVirtualizationProvider
             BaseAddress = new Uri($"https://{host.Address}:8006"),
             Timeout = TimeSpan.FromSeconds(30),
         };
-        http.DefaultRequestHeaders.Add("Authorization", $"PVEAPIToken={token}");
+        // PVE's token scheme ("PVEAPIToken=user@realm!tokenid=uuid") is non-standard — it uses '='
+        // instead of a space and contains '!', so the validating Add() throws FormatException before
+        // the request is sent. TryAddWithoutValidation sends it verbatim, which is what PVE expects.
+        http.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", $"PVEAPIToken={token}");
         return http;
     }
 

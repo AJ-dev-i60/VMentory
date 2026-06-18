@@ -177,4 +177,14 @@ All `/api/*` routes (except `/api/auth/*`) require the `vmentory_session` cookie
     ```
     Without the `chown`, the container will fail to open the DB on restart.
 
+13. **Proxmox auth header must use `TryAddWithoutValidation`.** PVE's token scheme is
+    `Authorization: PVEAPIToken=user@realm!tokenid=uuid` — it uses `=` instead of the standard
+    `scheme<space>credentials` separator and contains `!`. .NET's `HttpRequestHeaders.Add("Authorization", …)`
+    **validates** the value and throws `FormatException` *before the request is sent*, which surfaced as a
+    generic "Unexpected error during connect" and made every Proxmox host look unreachable even with a
+    valid token + open port. `ProxmoxProvider.BuildClient` uses `TryAddWithoutValidation` to send it
+    verbatim (verified live against vega14, 2026-06-18). Also: the stored token is the **bare**
+    `user@realm!tokenid=uuid` (no `PVEAPIToken=` prefix — the provider adds it); a wrong realm/token-id
+    gives HTTP **401 "Authentication failed!"** (vs **403** for a valid-but-unprivileged token).
+
 12. **Admin password recovery.** If the admin password is unknown (e.g. auto-generated and the container was replaced before the startup log was captured): (1) Set `VMENTORY_ADMIN_PASSWORD` in the Coolify environment and restart — this re-seeds the admin account only if no admin exists yet; if the account already exists, the env var is ignored. (2) To force a reset, compute a new PBKDF2-SHA256 hash (`100000:{base64_salt}:{base64_hash}`) and write it directly to the `PasswordHash` column in the DB. The hash format is identical between Python `hashlib.pbkdf2_hmac('sha256', pw.encode(), salt, 100000, dklen=32)` and .NET `Rfc2898DeriveBytes.Pbkdf2(string, ...)` — both use UTF-8 password encoding. Copy the updated DB back to the volume, run `chown 10001:10001` on it (see gotcha #11), then restart the container.
