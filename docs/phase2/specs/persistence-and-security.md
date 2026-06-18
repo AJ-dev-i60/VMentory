@@ -70,10 +70,13 @@ audit_event
   id, ts, actor (user|agent), action, target_ref, result, detail_json
 
 app_user                  -- local accounts now; OIDC seam later (ENG-0008, §5b)
-  id, username, password_hash (Argon2id), role, created_at
+  id, username, password_hash (PBKDF2-SHA256, BCL-only, work-factor in hash), role,
+  must_change_password, created_at, last_login_at
 
 role_permission           -- the pillar×verb catalog: role -> permission mapping (ENG-0008, §5c)
   role, permission          -- permission = ProviderCapability verb | console-only permission
+  -- NOTE: v1 implementation uses static code (RbacCatalog.cs) rather than a DB table.
+  -- A custom-roles DB table is the non-breaking later addition path.
 ```
 
 > The encrypted secret blobs live in their own table managed by the app-native `ISecretStore` impl
@@ -91,16 +94,19 @@ before relying on cross-session diffs.
 
 ---
 
-> **Built so far (slice 3, 2.0 persistence).** Only two of the sketched tables exist today:
-> `host` (as `HostRegistrationEntity` — `id, platform, address, use_global_creds, added_at`) and
-> `inventory_snapshot` (`id, host_id, taken_at, payload_json`) in `VMentory.Core/Persistence`
-> (EF Core + SQLite, `Initial` migration). The diff is **already snapshot-fed** (latest two snapshots,
-> ordered by the autoincrement `id` — SQLite can't `ORDER BY` a `DateTimeOffset`). **Not yet built:**
-> `provider_registration`, `vm_record`, `operation_*`, `secret_metadata`, `agent_identity`,
-> `audit_event`, `app_user`, `role_permission` — they arrive with their owning slices (`ISecretStore`,
-> the operations engine, the containerized-Core/login+RBAC slice, the HV agent/PKI). **No credentials
-> persist yet** — there is no `secret_ref` wiring until `ISecretStore` lands; restored hosts have null
-> creds.
+> **Built (slices 3 / (2) / (3), 2.0 persistence).** Three EF migrations are in
+> `VMentory.Core/Migrations`:
+> - **`Initial`** (slice 3): `host` (as `HostRegistrationEntity`) + `inventory_snapshot`
+>   (`InventorySnapshotEntity`). Diff is snapshot-fed (latest two snapshots, ordered by the autoincrement
+>   `id` — SQLite can't `ORDER BY` a `DateTimeOffset`).
+> - **`AddAuth`** (re-baselined slice (2)): `audit_event` (`AuditEventEntity`) + `app_user`
+>   (`AppUserEntity` — `id, username, password_hash (PBKDF2-SHA256), role, must_change_password,
+>   created_at, last_login_at`). `role_permission` is static code (`RbacCatalog.cs`) — not a DB table.
+> - **`AddSecrets`** (re-baselined slice (3)): `SecretEntity` (encrypted blob + nonce) +
+>   `DekEntity` (wrapped DEK). `AesGcmSecretStore` encrypts credentials in SQLite; `VMENTORY_KEK` gates
+>   persistence; restored hosts load creds from `ISecretStore` at startup.
+> **Not yet built:** `provider_registration`, `vm_record`, `operation_*`, `agent_identity` — they arrive
+> with their owning slices (Proxmox provider, operations engine, HV agent/PKI).
 
 ## 2. What is persisted
 
@@ -127,13 +133,20 @@ before relying on cross-session diffs.
 
 ---
 
-## 4. Secret handling — `ISecretStore` + envelope encryption (decided, ENG-0002)
+## 4. Secret handling — `ISecretStore` + envelope encryption (decided + BUILT, ENG-0002)
+
+> **Built (re-baselined slice (3), 2026-06-18).** `VMentory.Core/Secrets/`: `ISecretStore` interface,
+> `AesGcmSecretStore` (DB-backed, scoped, AES-256-GCM), `EphemeralSecretStore` (singleton, in-memory
+> fallback), `DekProvider` (KEK/DEK manager). `SecretEntity`/`DekEntity` + `AddSecrets` migration.
+> `VMENTORY_KEK` env var (base64, 32 bytes) gates persistence. Global WinRM creds + per-host creds
+> persist and are restored at startup. The `rotate` operation is **not yet implemented** — set+delete
+> is the current API.
 
 **`ISecretStore` is a provider abstraction (ENG-0002), mirroring `IVirtualizationProvider`.** Call
 sites depend on the interface, never on the mechanism, so the store evolves without code churn.
 
-- **Interface:** `get` / `set` / `rotate` / `delete` — **rotation is first-class**, not bolted on —
-  and **emits an audit event per access** to the history store (§6).
+- **Interface:** `get` / `set` / `delete` — **`rotate` is planned but not yet in the interface** (the
+  v1 `ISecretStore` has `SetAsync`/`GetAsync`/`DeleteAsync` only).
 - **v1 default impl = app-native envelope encryption.** Values encrypted with **AES-256-GCM**
   (.NET `AesGcm` / libsodium) and stored in SQLite; a per-DB **Data Encryption Key (DEK)** encrypts
   values; a **Key Encryption Key (KEK)** wraps the DEK. **Only the KEK comes from outside.** No
@@ -209,11 +222,18 @@ network by multiple users. ENG-0010 fixes the runtime contract for release 1:
   port**. The agent gRPC/mTLS listener is **HV-only and arrives later with the migration slice**
   (ENG-0009 / §5d), not in the first releases.
 
-### 5b. Console authn — login replaces the session token (decided, ENG-0010 + ENG-0008)
+### 5b. Console authn — login replaces the session token (decided + BUILT, ENG-0010 + ENG-0008)
 
-- **Minimal admin login** lands **in the containerized-Core deployment slice** (ENG-0010), replacing
-  the single session token and the `/api/quit` desktop affordance. Local account passwords are hashed
-  with **Argon2id** (the `app_user` table, §1), never the Phase-1 single shared token.
+> **Built (re-baselined slice (2), 2026-06-18).** The session token is retired; `POST /api/auth/login`
+> issues an HttpOnly `vmentory_session` cookie (Secure, SameSite=Strict, 12h sliding). SSE auth rides
+> the cookie; no `?token=` query param. The authz chokepoint middleware is live in `Program.cs`.
+
+- **Minimal admin login** landed **in re-baselined slice (2)**, replacing the single session token and
+  the `/api/quit` desktop affordance. **Built in re-baselined slice (2).**
+  Local account passwords are hashed with **PBKDF2-SHA256** (BCL-only, 100k iterations, work-factor
+  stored in the hash; `VMentory.Core/Auth/PasswordHasher.cs`), never the Phase-1 single shared token.
+  *(The schema sketch above used Argon2id; the implementation uses PBKDF2-SHA256 for BCL-only
+  portability — no external NuGet required.)*
 - **Identity:** **local accounts now** (hashed credential, KEK-wrapped per ENG-0002), with an
   **OIDC/SSO seam later** (a future identity provider behind the same authz chokepoint, §5c).
 - **Sessions:** issue a real session cookie / bearer after login. The Phase-1 token-in-query-param
@@ -221,10 +241,14 @@ network by multiple users. ENG-0010 fixes the runtime contract for release 1:
   [Program.cs:414](../../../Program.cs#L414)) leaks tokens into logs/history and **is removed**; SSE
   auth rides the authenticated session, not a query param.
 
-### 5c. Console authz — fixed-role RBAC (decided, ENG-0008)
+### 5c. Console authz — fixed-role RBAC (decided + BUILT, ENG-0008)
 
-Console RBAC is **Decided (ENG-0008, 2026-06-16): fixed built-in roles over a pillar×verb catalog,
-firm + early** — no longer "roles later / undecided."
+> **Built (re-baselined slice (2), 2026-06-18).** `RbacCatalog.cs` (static role→capability mapping),
+> `AppRole` enum (Viewer/VmOperator/BackupOperator/Admin), `ConsolePermission` flags enum. Single
+> authz chokepoint middleware in `Program.cs`. `AddAuth` migration added `app_user` + `audit_event`.
+
+Console RBAC is **Decided (ENG-0008, 2026-06-16) and built**: fixed built-in roles over a pillar×verb catalog,
+firm + early — no longer "roles later / undecided."
 
 - **Roles:** **fixed built-in roles** — **Admin / VM-operator / Backup-operator / Viewer** — backed
   by an **internal permission catalog keyed on pillar×verb** (role→permission mapping is *data*, not

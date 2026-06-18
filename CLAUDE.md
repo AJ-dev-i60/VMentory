@@ -1,6 +1,6 @@
 # VMentory
 
-> **Phase 2 implementation has started (2.0 foundation; build slices 1–3 landed). Foundation
+> **Phase 2 foundation complete (re-baselined slices 1–3 all built and deployed). Foundation
 > re-baselined and approved 2026-06-16.** This document still describes the shipping Phase-1 app
 > (below); Phase 2 turns VMentory into a **container-based, single-operator, multi-platform (Hyper-V +
 > Proxmox) platform**, delivering **four pillars on one shared foundation** —
@@ -11,11 +11,10 @@
 > container** and a **Hyper-V agent on the retiring HV hosts**. **Proxmox is driven by its native REST
 > API + a constrained SSH key, with NO node agent (ENG-0009);** the on-device agent + private-CA mTLS
 > (ENG-0001/0004/0005) is **scoped to the Hyper-V migration source and demoted off the 2.0 critical
-> path** to the migration slice. **Already built:** the `VMentory.Core`/`VMentory.Web` project split
-> (slice 1), the `IVirtualizationProvider` + capability model with `HyperVProvider` wiring the live
-> inventory reads (slice 2), and EF Core/SQLite persistence (slice 3) — see the file map below. **Next:
-> containerized Core + hosted bootstrap** (replaces the loopback/session-token desktop bootstrap in
-> `Program.cs`) → login+RBAC → `ISecretStore` → Proxmox API provider. Start at
+> path** to the migration slice. **Already built:** containerized Core + hosted bootstrap (re-baselined slice (1)), login + RBAC with
+> cookie auth + `RbacCatalog` (slice (2)), `ISecretStore` AES-256-GCM (slice (3)), and EF Core/SQLite
+> persistence (original slice 3) — all deployed at https://vmentorydev.edgestudios.co.za.
+> **Next: Proxmox API read provider (slice (4)).** Start at
 > [`docs/phase2/PROGRESS.md`](docs/phase2/PROGRESS.md) → `ARCHITECTURE.md` / `ROADMAP.md`, and
 > `docs/engineering/REGISTER.md` for the decision register. Agents live in `.claude/agents/`.
 
@@ -25,7 +24,7 @@ a Linux container — not the Phase-1 single-exe loopback desktop app. (The Wind
 via `build.ps1` for the legacy desktop path.)
 
 - **Repo**: https://github.com/AJ-dev-i60/VMentory
-- **Stack**: ASP.NET Core 8 minimal API · vanilla JS SPA (no framework) · PowerShell subprocess for WinRM · custom Canvas donut charts
+- **Stack**: ASP.NET Core 8 minimal API · vanilla JS SPA (no framework) · EF Core 8 + SQLite · AES-256-GCM secret store · PBKDF2-SHA256 auth · PowerShell subprocess for WinRM · custom Canvas donut charts
 
 ---
 
@@ -77,6 +76,7 @@ _**Phase-2 layout (2.0 slice 1):** the solution `VMentory.sln` has two projects 
 | `VMentory.sln` | Solution tying `VMentory.Web` + `VMentory.Core` together |
 | `build.ps1` | Release build: `dotnet publish` win-x64 single-file → `dist\VMentory.exe` |
 | `.github/workflows/release.yml` | CI: push `v*` tag → build → GitHub Release with `VMentory.exe` asset |
+| `.github/workflows/ci.yml` | CI build check: triggers on push/PR to `dev` and `main`; runs `dotnet restore` + `dotnet build VMentory.sln -c Release` |
 
 ---
 
@@ -100,12 +100,14 @@ docker run --rm -p 8443:8443 -v vmentory-data:/data \
 **Hosted runtime (ENG-0010) — env contract:** `VMENTORY_HTTP_ADDR` (default `0.0.0.0`),
 `VMENTORY_HTTP_PORT` (default 8443 HTTPS / 8080 HTTP), `VMENTORY_HTTP_ONLY=1` (plain HTTP behind a
 reverse proxy / for dev), `VMENTORY_TLS_PFX` (+`_PASSWORD`) or `VMENTORY_TLS_CERT_PEM`+`VMENTORY_TLS_KEY_PEM`
-(operator cert; nothing baked into the image), `VMENTORY_DB` (SQLite path → the `/data` volume),
-`VMENTORY_ADMIN_USER` (default `admin`) + `VMENTORY_ADMIN_PASSWORD` (first-admin seed; auto-generated + printed
-to stdout if not set, always `MustChangePassword=true`), `VMENTORY_KEK` (base64 32-byte key; if set,
-credentials are AES-256-GCM encrypted in SQLite and persist across restarts; if absent, ephemeral).
-`GET /health` is an unauthenticated liveness probe. Behind a reverse proxy (Coolify/Traefik), set
-`VMENTORY_HTTP_ONLY=1`.
+(operator cert; nothing baked into the image), `VMENTORY_DB` (SQLite path → the `/data` volume; default
+`%LocalAppData%\VMentory\vmentory.db` outside Docker), `VMENTORY_ADMIN_USER` (default `admin`) +
+`VMENTORY_ADMIN_PASSWORD` (first-admin seed; auto-generated + printed to stdout if not set, always
+`MustChangePassword=true`), `VMENTORY_KEK` (base64 32-byte key; if set, credentials are AES-256-GCM
+encrypted in SQLite and persist across restarts; if absent, ephemeral), `VMENTORY_LOG` (error log path;
+defaults to the `VMENTORY_DB` directory → `/data/errors.log` in the container; `ErrorLogger` is
+fail-safe — a bad path degrades to no-op). `GET /health` is an unauthenticated liveness probe. Behind a
+reverse proxy (Coolify/Traefik), set `VMENTORY_HTTP_ONLY=1`.
 
 ## Release workflow
 
@@ -114,6 +116,12 @@ git add -p && git commit -m "feat: ..."
 git tag v1.2.0
 git push && git push --tags         # Actions builds and publishes the release automatically
 ```
+
+**Auto-deploy (GitHub → Coolify):** A GitHub webhook on `AJ-dev-i60/VMentory` fires on every push; the
+request is signed via HMAC-SHA256 (`X-Hub-Signature-256`). Coolify filters on `git_branch = dev` and
+rebuilds the container automatically. `VMENTORY_ADMIN_PASSWORD` is set in the Coolify environment so the
+first-admin seed gets a stable password on volume resets. The CI build check (`.github/workflows/ci.yml`)
+runs `dotnet restore` + `dotnet build VMentory.sln -c Release` on every push/PR to `dev` and `main`.
 
 ---
 
@@ -161,3 +169,12 @@ All `/api/*` routes (except `/api/auth/*`) require the `vmentory_session` cookie
 9. **Hosted bootstrap (ENG-0010).** `Program.cs` binds `0.0.0.0:{VMENTORY_HTTP_PORT}` via `ConfigureKestrel` and terminates HTTPS itself (`TlsSetup.ResolveServerCertificate`). (a) The **console Q-to-quit loop only runs when `!Console.IsInputRedirected`** — in a container (no TTY) it's skipped and the operator stops via SIGTERM. (b) The **`app.manifest` (requireAdministrator) is `Condition="'$(OS)' == 'Windows_NT'"`** so the Linux container publish doesn't fail. (c) WinRM-service ensure is **Windows-only-guarded** (`OperatingSystem.IsWindows()`). (d) Self-signed cert is **cached in `DataDir`** in real mode; mock is ephemeral.
 
 10. **Build stamp:** `Dockerfile` build stage runs `git log -1 --format=%cI HEAD > /app/build-stamp.txt` (git is in the .NET SDK image; `.git` is no longer in `.dockerignore`). `ComputeBuildStamp()` in `Program.cs` reads the ISO timestamp and formats it as `v{YY}.{MM}.{DD}.{HHMM}` (Africa/Johannesburg / SAST). Shown in the SPA header next to "VMentory" and in `/health` + `/api/state` as `build`. Falls back to `"dev"` outside Docker.
+
+11. **`docker cp` changes file ownership.** `docker cp` runs as root — copying a file into a container path on a volume sets the owner to `root`. The VMentory container runs as uid 10001 (`vmentory`). SQLite in WAL mode requires write access to the main DB file and the `-shm`/`-wal` sidecar files, even for reads. After any manual `docker cp` into the data volume, always run:
+    ```bash
+    chown 10001:10001 /var/lib/docker/volumes/<app-vol>/_data/vmentory.db*
+    docker restart <container>
+    ```
+    Without the `chown`, the container will fail to open the DB on restart.
+
+12. **Admin password recovery.** If the admin password is unknown (e.g. auto-generated and the container was replaced before the startup log was captured): (1) Set `VMENTORY_ADMIN_PASSWORD` in the Coolify environment and restart — this re-seeds the admin account only if no admin exists yet; if the account already exists, the env var is ignored. (2) To force a reset, compute a new PBKDF2-SHA256 hash (`100000:{base64_salt}:{base64_hash}`) and write it directly to the `PasswordHash` column in the DB. The hash format is identical between Python `hashlib.pbkdf2_hmac('sha256', pw.encode(), salt, 100000, dklen=32)` and .NET `Rfc2898DeriveBytes.Pbkdf2(string, ...)` — both use UTF-8 password encoding. Copy the updated DB back to the volume, run `chown 10001:10001` on it (see gotcha #11), then restart the container.
