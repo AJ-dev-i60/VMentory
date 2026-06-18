@@ -22,10 +22,6 @@ using VMentory.Web;
 
 using var logWriter = new ErrorLogger(ResolveLogPath());
 
-// ── Apply any pending update before web infrastructure starts ─────────────────
-
-Updater.ApplyPendingUpdate(logWriter);
-
 // ── Configuration ────────────────────────────────────────────────────────────
 
 var mockMode = args.Contains("--mock");
@@ -33,7 +29,8 @@ var dataDir = mockMode ? "" : ResolveDataDir();   // mock writes nothing to disk
 var config = new AppConfig
 {
     MockMode    = mockMode,
-    NoUpdate    = args.Contains("--no-update"),
+    NoUpdate    = args.Contains("--no-update"),  // kept for CLI compat — Updater.cs removed
+    BuildStamp  = ComputeBuildStamp(),
     VerboseMode = args.Contains("--verbose"),
     // Hosted service (ENG-0010): bind 0.0.0.0:{configurable port}, env-driven.
     HttpAddr = EnvOr("VMENTORY_HTTP_ADDR", "0.0.0.0"),
@@ -208,7 +205,7 @@ app.MapGet("/", () => Results.Bytes(indexHtml, "text/html; charset=utf-8"));
 app.MapGet("/index.html", () => Results.Bytes(indexHtml, "text/html; charset=utf-8"));
 
 // Unauthenticated liveness probe.
-app.MapGet("/health", () => Results.Ok(new { status = "ok", version = Updater.CurrentVersion }));
+app.MapGet("/health", () => Results.Ok(new { status = "ok", version = AppVersion(), build = config.BuildStamp }));
 
 // ── Auth chokepoint middleware (ENG-0008) ─────────────────────────────────────
 // Single enforcement point: gates all /api/* routes. Authenticated users with MustChangePassword
@@ -364,6 +361,7 @@ app.MapGet("/api/state", (Store s, AppConfig cfg) => Results.Ok(new
     diff = s.GetDiff(),
     credentialsSet = s.HasGlobalCreds,
     mockMode = cfg.MockMode,
+    build = cfg.BuildStamp,
 }));
 
 app.MapPost("/api/quit", (Store s, IHostApplicationLifetime life) =>
@@ -733,7 +731,8 @@ Console.WriteLine(@"
   ║                  VMentory                    ║
   ╚══════════════════════════════════════════════╝");
 Console.ResetColor();
-Console.WriteLine($"  Version : v{Updater.CurrentVersion}");
+Console.WriteLine($"  Version : {AppVersion()}");
+Console.WriteLine($"  Build   : {config.BuildStamp}");
 if (config.MockMode)
 {
     Console.ForegroundColor = ConsoleColor.Yellow;
@@ -762,8 +761,6 @@ Console.WriteLine($"\n  URL   : {url}");
 
 await app.StartAsync();
 
-Updater.StartBackgroundCheck(config, logWriter);
-
 var appLifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
 if (!Console.IsInputRedirected)
 {
@@ -788,6 +785,37 @@ store.ClearAll();
 Console.WriteLine("  Goodbye.");
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+// Returns the assembly version string (e.g. "1.0.0").
+static string AppVersion()
+{
+    var v = typeof(AppConfig).Assembly
+        .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+        ?.InformationalVersion ?? "1.0.0";
+    var plus = v.IndexOf('+');
+    return plus >= 0 ? v[..plus] : v;
+}
+
+// Reads the build-stamp.txt written by the Dockerfile build stage and formats it as
+// v{YY}.{MM}.{DD}.{HHMM} in Africa/Johannesburg (SAST = UTC+2). Same convention as TableTopCafe.
+// Falls back to "dev" when running outside Docker (no build-stamp.txt present).
+static string ComputeBuildStamp()
+{
+    try
+    {
+        var stampFile = Path.Combine(AppContext.BaseDirectory, "build-stamp.txt");
+        if (!File.Exists(stampFile)) return "dev";
+        var raw = File.ReadAllText(stampFile).Trim();
+        if (raw == "dev" || string.IsNullOrEmpty(raw)) return "dev";
+        if (!DateTimeOffset.TryParse(raw, out var dt)) return raw;
+        var sast = TimeZoneInfo.GetSystemTimeZones()
+            .FirstOrDefault(z => z.Id is "Africa/Johannesburg" or "South Africa Standard Time")
+            ?? TimeZoneInfo.CreateCustomTimeZone("SAST", TimeSpan.FromHours(2), "SAST", "SAST");
+        var local = TimeZoneInfo.ConvertTime(dt, sast);
+        return $"v{local:yy}.{local:MM}.{local:dd}.{local:HHmm}";
+    }
+    catch { return "dev"; }
+}
 
 // Reload persisted credentials (ENG-0002). Runs after host registry load at startup.
 // Restores global WinRM creds + per-host creds that were saved via ISecretStore.
@@ -982,7 +1010,8 @@ record StoredCred(string? Username, string? Password);
 public class AppConfig
 {
     public bool MockMode    { get; init; }
-    public bool NoUpdate    { get; init; }
+    public bool NoUpdate    { get; init; }  // kept for CLI compat
+    public string BuildStamp { get; init; } = "dev";
     public bool VerboseMode { get; init; }
     public string HttpAddr  { get; init; } = "0.0.0.0";
     public int Port         { get; init; }

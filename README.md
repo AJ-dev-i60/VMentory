@@ -1,99 +1,67 @@
-# Hyper-V Inventory Dashboard
+# VMentory
 
-A portable, single-exe Windows tool that inventories Hyper-V hosts over WinRM and displays results in a modern local web dashboard. No installer, no persistent storage — all data lives in RAM and is wiped on exit.
+A container-based, single-operator, multi-platform (Hyper-V + Proxmox) infrastructure management platform. Ships as a single Linux container with no per-host agent required on Proxmox nodes.
 
-> **This README covers the shipping Phase-1 app.** VMentory Phase 2 is in planning: a
-> container-based, single-operator, **multi-platform (Hyper-V + Proxmox) platform** delivering four
-> pillars on a shared foundation — **Observe → Migrate → Deploy → Backup** (ENG-0006). See
-> [`docs/phase2/PROGRESS.md`](docs/phase2/PROGRESS.md), [`docs/phase2/ARCHITECTURE.md`](docs/phase2/ARCHITECTURE.md),
-> and the decision register at [`docs/engineering/REGISTER.md`](docs/engineering/REGISTER.md).
+- **Repo**: https://github.com/AJ-dev-i60/VMentory
+- **Dev instance**: https://vmentorydev.edgestudios.co.za
+- **Stack**: ASP.NET Core 8 minimal API · vanilla JS SPA · EF Core + SQLite · AES-256-GCM secret store
+- **Phase 2 docs**: [`docs/phase2/PROGRESS.md`](docs/phase2/PROGRESS.md) — current build state, slice order, all decisions
 
-## Building
+## Quick start (container)
 
-### Prerequisites
-- .NET 8 SDK (`winget install Microsoft.DotNet.SDK.8`)
+```bash
+docker run -d \
+  -p 8443:8443 \
+  -v vmentory-data:/data \
+  -e VMENTORY_HTTP_ONLY=1 \
+  -e VMENTORY_ADMIN_PASSWORD=changeme \
+  -e VMENTORY_KEK=$(openssl rand -base64 32) \
+  ghcr.io/aj-dev-i60/vmentory:latest
+```
 
-### Build (development run)
+Open https://localhost:8443, sign in as `admin` / `changeme`, change the password on first login.
+
+## Environment variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `VMENTORY_HTTP_ADDR` | `0.0.0.0` | Bind address |
+| `VMENTORY_HTTP_PORT` | `8443` | Listen port |
+| `VMENTORY_HTTP_ONLY` | — | Set to `1` for plain HTTP (behind a reverse proxy) |
+| `VMENTORY_DB` | `/data/vmentory.db` | SQLite path (mount `/data` as a volume) |
+| `VMENTORY_ADMIN_USER` | `admin` | First-admin username (seeded on first startup) |
+| `VMENTORY_ADMIN_PASSWORD` | *(auto-generated)* | First-admin password; auto-generated + printed to logs if not set |
+| `VMENTORY_KEK` | — | Base64 32-byte key; enables AES-256-GCM credential encryption (generate: `openssl rand -base64 32`) |
+| `VMENTORY_TLS_PFX` | — | Path to operator PFX cert (+ `VMENTORY_TLS_PFX_PASSWORD`) |
+| `VMENTORY_TLS_CERT_PEM` | — | Path to operator cert PEM (+ `VMENTORY_TLS_KEY_PEM`) |
+
+## Dev commands
+
 ```powershell
-cd hyper-inventory
-dotnet run
+dotnet build VMentory.sln
+dotnet bin\Debug\net8.0\VMentory.dll --mock    # 5 fake hosts, no real WinRM
+.\build.ps1                                    # → dist\VMentory.exe (Windows exe)
 ```
 
-### Build single-file exe (release)
-```powershell
-dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o ./dist
-```
-Output: `dist\hyper-inventory.exe` (~80 MB, no dependencies)
+## Hyper-V host requirements
 
-## Running
-
-```
-hyper-inventory.exe [--mock]
-```
-
-- Binds to `127.0.0.1` on a random free port
-- Opens the system default browser automatically
-- Shows the URL and session token in the console
-
-### Mock mode
-```
-hyper-inventory.exe --mock
-```
-Loads 5 simulated hosts (varied states, some unreachable, one with auth failure). No real WinRM calls.
-
-### Console keys
-| Key | Action |
-|-----|--------|
-| `Q` | Purge all data and quit |
-| `R` | Re-open browser to current session |
-
-## Target host requirements (Hyper-V servers)
-
-### Enable WinRM on each target host
-Run as Administrator on each Hyper-V host:
+Enable WinRM on each target Hyper-V host:
 ```powershell
 Enable-PSRemoting -Force
 ```
 
-### For non-domain-joined client machines
-The client running `hyper-inventory.exe` must trust the target host. Run once per target host (or use `*` for all):
+For non-domain clients, add the host to TrustedHosts:
 ```powershell
-# On the CLIENT machine running hyper-inventory.exe
-Set-Item WSMan:\localhost\Client\TrustedHosts -Value "hv-prod-01,hv-prod-02,192.168.1.10" -Force
-
-# Or to trust all hosts (less secure):
-Set-Item WSMan:\localhost\Client\TrustedHosts -Value "*" -Force
+Set-Item WSMan:\localhost\Client\TrustedHosts -Value "hv-host-01" -Force
 ```
 
-Check current TrustedHosts:
-```powershell
-Get-Item WSMan:\localhost\Client\TrustedHosts
-```
+WinRM uses TCP 5985 (HTTP) or 5986 (HTTPS). VMentory uses **Negotiate** auth (Kerberos / NTLM).
 
-### WinRM authentication
-Uses **Negotiate** (Kerberos on domain-joined machines, NTLM fallback for workgroup/non-domain). No Basic auth or CredSSP required.
+## Security
 
-### Firewall
-WinRM HTTP uses **TCP 5985** (default). Ensure this port is open between the client machine and all target Hyper-V hosts.
-
-## Troubleshooting
-
-| Error | Cause | Fix |
-|-------|-------|-----|
-| ICMP ✗, WinRM ✗ | Host unreachable | Check firewall, IP address |
-| ICMP ✓, WinRM ✗ | WinRM not enabled / wrong port | Run `Enable-PSRemoting -Force` on target |
-| WinRM ✓, Auth ✗ | Wrong credentials or not in TrustedHosts | Verify creds; add to TrustedHosts if non-domain |
-| Auth ✓, Scan error | Hyper-V module not found | Target host is not a Hyper-V server |
-| "Access denied" | Credentials not in local admins on target | Add account to Hyper-V Administrators group |
-
-### Test WinRM manually
-```powershell
-Test-WSMan -ComputerName hv-prod-01 -Authentication Negotiate -Credential (Get-Credential)
-```
-
-## Security notes
-- Binds to `127.0.0.1` only — never exposed to the network
-- All API requests require a per-session token (regenerated each launch)
-- Credentials held as byte arrays, zeroed on dispose / session end
-- No scan data ever written to disk; only `errors.log` (no PII/host data)
-- All HTTP responses set `Cache-Control: no-store, no-cache`
+- Cookie-based session auth (HttpOnly, Secure, SameSite=Strict, 12h sliding)
+- PBKDF2-SHA256 password hashing (BCL-only, 100k iterations, work-factor stored in hash)
+- AES-256-GCM envelope encryption for recoverable secrets (`VMENTORY_KEK` → per-DB DEK)
+- Fixed RBAC roles: Admin / VmOperator / BackupOperator / Viewer
+- Single audited authz chokepoint before any write verb
+- No secrets ever plaintext at rest; no secrets in the image or this repo

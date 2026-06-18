@@ -17,6 +17,16 @@ COPY . .
 ARG VERSION=1.0.0
 RUN dotnet publish VMentory.Web.csproj -c Release -o /app --no-restore -p:Version=${VERSION}
 
+# Compute the build stamp from the latest commit timestamp in SAST (UTC+2).
+# Format: v{YY}.{MM}.{DD}.{HHMM} — same convention as TableTopCafe.
+# Falls back to "dev" if .git is unavailable (local docker build without git history).
+RUN if [ -d .git ] && command -v git > /dev/null 2>&1; then \
+      ISO=$(git log -1 --format=%cI HEAD); \
+      echo "$ISO" > /app/build-stamp.txt; \
+    else \
+      echo "dev" > /app/build-stamp.txt; \
+    fi
+
 # ── Runtime ───────────────────────────────────────────────────────────────────
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
 RUN apt-get update \

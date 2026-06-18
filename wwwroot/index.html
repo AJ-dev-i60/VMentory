@@ -312,7 +312,7 @@ textarea.finp{resize:vertical;min-height:80px}
   <header class="hdr">
     <div class="hdr-logo">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/><path d="M7 8h.01M7 11h.01"/><rect x="11" y="7" width="6" height="5" rx="1"/></svg>
-      VMentory
+      VMentory<span id="build-stamp" style="font-size:0.7em;opacity:0.5;margin-left:6px;font-weight:400"></span>
     </div>
     <div class="hdr-sp"></div>
     <div class="hdr-acts">
@@ -630,6 +630,8 @@ async function loadState(){
     const d=await api('GET','/api/state');
     st.hosts=d.hosts||[];st.totals=d.totals||{};st.diff=d.diff||{};
     st.credSet=d.credentialsSet;st.mock=d.mockMode;
+    const bs=document.getElementById('build-stamp');
+    if(bs&&d.build&&d.build!=='dev')bs.textContent=d.build;
     updateStrip();
     renderView(st.view,false);
   }catch{}

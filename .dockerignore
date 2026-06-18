@@ -1,8 +1,9 @@
 # Keep the build context small + reproducible (ENG-0010 container build).
+# NOTE: .git is intentionally included so the build stage can compute the build stamp
+# from the commit timestamp (git log -1 --format=%cI HEAD).
 **/bin
 **/obj
 dist
-.git
 .github
 .vs
 .vscode
