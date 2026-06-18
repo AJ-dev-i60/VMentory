@@ -3,16 +3,17 @@
 > **Purpose:** pick up Phase 2 from a clean clone on any machine. Read this top-to-bottom and you
 > know where we are, what's decided, what's open, and what to do next.
 >
-> **Last updated:** 2026-06-18 (docs tidy-up: all re-baselined slices (1)–(3) marked complete; ROADMAP/ARCHITECTURE/REGISTER/CLAUDE.md aligned with built code) · **Phase:** 2.0 foundation — original build slices 1–3 + re-baselined slices (1), (2) & (3) all built & verified; deployed on Coolify; **next is re-baselined slice (4): Proxmox API read provider** · **Branch:** `dev`
+> **Last updated:** 2026-06-18 (slice (4) landed: `ProxmoxProvider` + `ProviderRegistry` + `AddProxmox` migration, commit `2907fd4`) · **Phase:** 2.0 foundation — original build slices 1–3 + re-baselined slices (1)–(4) all built & verified; deployed on Coolify; **next is re-baselined slice (5): Proxmox SSH executor + management/Deploy write verbs** · **Branch:** `dev`
 >
 > ✅ **Foundation RE-BASELINED and APPROVED (2026-06-16).** The development freeze is **lifted**. The
 > corrected foundation is locked in the decision records and propagated into ARCHITECTURE/ROADMAP:
 > **containerized Core (web-first, install-nothing — ENG-0010), login + RBAC early (ENG-0008),
 > Proxmox via native REST API + constrained SSH and NO node agent (ENG-0009), and the on-device
 > agent/private-CA foundation demoted + scoped to the Hyper-V migration source (ENG-0001/0003/0004/0005
-> amended).** Re-baselined foundation slices (1)–(3) are all built & deployed (2026-06-17/18):
+> amended).** Re-baselined foundation slices (1)–(4) are all built & deployed (2026-06-17/18):
 > hosted `0.0.0.0` bind, Core-terminated HTTPS, Linux container, login + RBAC (session token retired),
-> `ISecretStore` AES-256-GCM. **Next: re-baselined slice (4): Proxmox API read provider.**
+> `ISecretStore` AES-256-GCM, **Proxmox API read provider** (`ProxmoxProvider` + `ProviderRegistry`).
+> **Next: re-baselined slice (5): Proxmox SSH executor + management/Deploy write verbs.**
 
 ---
 
@@ -187,9 +188,12 @@ then `ISecretStore` (ENG-0002), then the Proxmox API provider — see §5. **The
   split (ENG-0001 / ENG-0009). It was the concrete trigger for **ENG-0011** (observability — see §4).
   **To exercise HV inventory today, run Core on Windows** (the dev DLL or the legacy single-file exe)
   with WinRM reach to the HV hosts — not from the container.
-- **Future real-platform test target:** once slice (4) (Proxmox read provider) lands, **vega14** (a PVE
-  host on the **same LAN** as the container, reachable from it) is the natural first live target. Unlike
-  Hyper-V, the container→Proxmox network path works (outbound REST 8006 + SSH 22, ENG-0009).
+- **Live Proxmox test target:** **vega14** (PVE 9.2, same LAN as the container) is the natural first
+  live target for slice (4). The container→Proxmox network path works (outbound REST 8006 + SSH 22,
+  ENG-0009). Register vega14 as a `Proxmox` host with a scoped API token; the `ProxmoxProvider` will
+  call `/api2/json/nodes`, enumerate QEMUs + LXCs, and surface them in the dashboard alongside any HV
+  hosts. **Note: one registered Host = one PVE node** — multi-node cluster support (one Host per
+  cluster) is deferred to slice (5)+.
 
 ### Planning docs (`docs/phase2/`)
 - `ARCHITECTURE.md` — target topology, `IVirtualizationProvider` model, persistence, migration engine, carry-over table.
@@ -296,13 +300,13 @@ VMentory's migration engine — its step graph, safety rules, and scripts feed t
 
 ## 5. Immediate next steps (suggested order)
 
-**All foundation slices (1)–(3) are built, verified, and deployed (2026-06-17/18).** The approved
-slice order is:
+**Foundation slices (1)–(4) are all built and verified; (1)–(3) are deployed on Coolify (2026-06-17/18); slice (4) landed on `dev` (2026-06-18, commit `2907fd4`).** The approved slice order is:
 
 > **(1) Containerized Core + hosted-service bootstrap (ENG-0010) ✅ → (2) Login + RBAC framework
-> (ENG-0008) ✅ → (3) `ISecretStore` (ENG-0002) ✅ → (4) Proxmox API provider (read / planted Observe) ← NEXT →
-> (5) Proxmox SSH executor + management/Deploy write verbs (capability-gated, RBAC-enforced, audited)
-> → (6) Hyper-V agent + private CA (scoped to HV, ENG-0001/0003/0004/0005) → (7) HV→PVE migration.**
+> (ENG-0008) ✅ → (3) `ISecretStore` (ENG-0002) ✅ → (4) Proxmox API provider (read / planted
+> Observe) ✅ → (5) Proxmox SSH executor + management/Deploy write verbs (capability-gated,
+> RBAC-enforced, audited) ← NEXT → (6) Hyper-V agent + private CA (scoped to HV,
+> ENG-0001/0003/0004/0005) → (7) HV→PVE migration.**
 
 **Done — slice (1):** the desktop bootstrap in [`Program.cs`](../../Program.cs) was replaced by a hosted
 service — `0.0.0.0:{configurable port}` (env), Core-terminated HTTPS via Kestrel (`TlsSetup.cs`, cert
@@ -313,11 +317,7 @@ volume). Image built and deployed as a Coolify dev instance (2026-06-18, https:/
 (+ its UI quit button) remains — desktop affordance still pending retirement via the `design/` workflow;
 **`Updater.cs` re-scope** (GitHub-exe auto-update → container image tags) not yet done.
 
-**Do next — slice (4): Proxmox API read provider (ENG-0009).** Slices (1)–(3) are done. Next is the
-Proxmox REST API read provider: `GET /nodes`, `GET /nodes/{node}/qemu` + `lxc`, `rrddata` for live
-stats. First live target: **vega14** (PVE 9.2, reachable from the container LAN). Scoped API token +
-SSH key go through `ISecretStore`. Carries planted-Observe end state: a multi-platform dashboard showing
-both HV (from agent) and Proxmox (from REST) hosts in one unified list.
+**Do next — slice (5): Proxmox SSH executor + management/Deploy write verbs.** Slice (4) is done (commit `2907fd4`, 2026-06-18). Next is Proxmox management: the constrained SSH executor for on-node residue (ENG-0009) and the first write verbs (`start`, `stop`, `shutdown`, `snapshot`) via `ProxmoxProvider`, capability-gated and RBAC-enforced (these are the first actions that require the ENG-0008 authz chokepoint to gate a real write). Per ENG-0007: Proxmox is the full management target; HV light management rides the agent and arrives with slice (6).
 
 **Slice (2) carry-overs:**
 - **Login UI (`wwwroot/index.html`):** a functional but unstyled interim login + change-password screen
@@ -421,8 +421,35 @@ both HV (from agent) and Proxmox (from REST) hosts in one unified list.
      **Verified:** build 0/0; mock-mode smoke test: `/health` 200, unauthenticated `/api/state` → 401,
      login → 200 + cookie, `/api/auth/me` → `{username,role}`, authenticated `/api/state` → 200.
      **Carry-overs:** login UI awaiting design; `/api/quit` + Updater re-scope still pending.
-   - **Next:** slice (4) **Proxmox API read provider** (target: **vega14**, PVE 9.2). Then Proxmox write
-     verbs (5) and the **HV-scoped agent + private CA** (6) follow; HV→PVE migration (7).
+   - ✅ **Re-baselined slice (4) (Proxmox API read provider, ENG-0009) done (2026-06-18, commit `2907fd4`):**
+     `ProxmoxProvider` (`IVirtualizationProvider` for Proxmox VE) drives the PVE REST API —
+     `/api2/json/version`, `/api2/json/nodes`, `/nodes/{n}/status`, `/nodes/{n}/qemu`,
+     `/nodes/{n}/lxc`. Advertises `Inventory | LiveStats`. Auth via `PVEAPIToken` HTTP header; token
+     stored as a per-host credential in `ISecretStore` (password field). TLS: accepts self-signed when
+     `host.SkipTlsVerification` is set. `ProviderRegistry` routes `IVirtualizationProvider` calls by
+     `PlatformKind`; both providers registered as singletons. `Host` model + `HostRegistrationEntity` +
+     `EfInventoryStore` all gained `SkipTlsVerification bool`; `AddProxmox` EF migration adds the
+     column. `Poller` rewritten: Proxmox branch checks port 8006 + calls `QuickConnectAsync` every 30 s;
+     HyperV branch unchanged. `Program.cs` registers both providers + `ProviderRegistry`; `AddHostsDto`
+     gains `Platform`, `Token`, `SkipTlsVerification`; `/api/hosts` routes by platform; `/api/scan`
+     calls `registry.For(host.Platform).ScanAsync(host)`. SPA add-host modal: platform selector
+     (HyperV/Proxmox radio), conditional HV-creds vs PVE token + skip-TLS fields; host rows: HV/PVE
+     badge, platform-aware port label (`TCP 5985` vs `API :8006`) and health tip.
+     **Operational gotchas for Proxmox:**
+     - **One registered Host = one PVE node.** `ProxmoxProvider` calls `/nodes/{n}/qemu` and `lxc`
+       scoped to the node name returned by `/api2/json/nodes`. A Proxmox cluster with multiple nodes
+       requires one Host registration per node today. Multi-node cluster support (one Host per cluster
+       via `/cluster/resources`) is a pending enhancement for slice (5)+.
+     - **`SkipTlsVerification` is required for self-signed PVE certs** (the default on most PVE
+       installs). Set it at registration time; Core will use `HttpClientHandler.ServerCertificateCustomValidationCallback`
+       to bypass chain validation only for that host's HTTP client.
+     - **Token format:** the `PVEAPIToken` header value must follow PVE's format:
+       `PVEAPIToken=<user>@<realm>!<tokenid>=<uuid>` (e.g. `PVEAPIToken=root@pam!vmentory=<uuid>`).
+       This is stored verbatim in `ISecretStore` as the per-host cred password field.
+     **Carry-overs (unchanged from slice (3)):** login UI awaiting design; `/api/quit` + Updater re-scope
+     still pending.
+   - **Next:** slice (5) **Proxmox SSH executor + management/Deploy write verbs** (capability-gated,
+     RBAC-enforced, audited). Then the **HV-scoped agent + private CA** (6) and HV→PVE migration (7).
      **The agent is still not next** (demoted + HV-scoped, ENG-0009).
 3. Owner reviews the five specs (`docs/phase2/specs/`) and the four design mockups (`design/`).
 4. Reconcile the migration docs (virt-v2v → qm-importdisk, fold in the skill).
