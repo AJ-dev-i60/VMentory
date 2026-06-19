@@ -3,6 +3,21 @@
 **From:** codebase · **Date:** 2026-06-19 · **Priority:** medium (future)
 **Related:** ENG-0012 (`docs/engineering/discussions/0012-credential-management-ux.md`)
 
+> **Unblocked 2026-06-19 — ENG-0012 engineering half is now Decided.** The storage/
+> data model this request assumed (named, reusable `CredentialEntity` + CRUD +
+> rotation/audit) is locked: a host references credentials via two typed slots
+> (`ManagementCredentialId` + `TransportCredentialId`), global creds are retired (a
+> host *always* picks a named credential), and the vault is **Admin-managed** with a
+> view-only metadata flag for VmOperators. **Design implications:** (a) the add-host
+> "pick a credential" dropdown is the *only* way to set creds now — there is no
+> "use global" toggle to design around; (b) a VmOperator adding a host can *pick*
+> but not *create/rotate/delete* credentials, so the "+ new credential" inline
+> escape hatch is Admin-only (VmOperators see pick-only); (c) structured PVE-token
+> fields (`user@realm` / `tokenid` / `secret`) map exactly onto the stored model —
+> `user@realm`+`tokenid` are non-secret metadata, only `secret` is vaulted — and
+> CRUD never reveals a stored secret (rotate is write-only, no "show secret").
+> Decision: `docs/engineering/discussions/0012-credential-management-ux.md`.
+
 ## Context / trigger
 
 First live Proxmox onboarding (vega14). Two UX problems surfaced:

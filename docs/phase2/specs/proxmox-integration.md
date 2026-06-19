@@ -35,6 +35,18 @@ this spec.
   not a root password.
   The Phase-1 zero-on-dispose `Credentials` discipline ([Models.cs:121](../../../VMentory.Core/Models.cs#L121))
   carries forward to whatever holds the token in memory.
+- **Structured token storage — decompose at rest, recompose bare at the seam (ENG-0012, planned).**
+  Under the named-credential model ([persistence-and-security.md §4a](persistence-and-security.md#4a-named-credentials--first-class-reusable-entities-decided-eng-0012-planned)),
+  a PVE token is a `ProxmoxToken` credential: the **non-secret** `user@realm` + `tokenid` live in the
+  `credential.Descriptor` JSON (columns/metadata, no decryption to read), and **only the secret UUID**
+  lives in `ISecretStore` under `cred:{Id}:token`. The provider **recomposes the bare**
+  `user@realm!tokenid=secret` string at `ProxmoxProvider.BuildClient` exactly as today — still sent via
+  `TryAddWithoutValidation` (CLAUDE.md gotcha #13). **Storage is structured; the wire format is
+  unchanged.** This is also what kills the connection-string-paste confusion that triggered ENG-0012:
+  the UI collects three discrete fields that map directly onto the descriptor + its vault slot, instead
+  of one opaque compound string. The Phase-1 "bare token in a single per-host `host_cred:{hostId}` blob"
+  is **superseded-by-ENG-0012**; the C1 promotion decomposes existing bare tokens on first startup
+  ([persistence-and-security.md §4a](persistence-and-security.md#c1--global-credentials-retired--the-promotion-migration)).
 - **TLS:** PVE default certs are self-signed. Provider must support pinning the node's cert /
   CA fingerprint rather than disabling verification. See *Open question 1*.
 - **SSH hardening posture (ENG-0009 + ENG-0002).** SSH is a broad-privilege channel and must be
@@ -47,7 +59,11 @@ this spec.
     command set (§3), never an interactive shell.
   - **Key, not a password** (tokens-over-passwords, ENG-0002). The private key is a secret in
     `ISecretStore`, same handling as the API token, and is **revocable** (drop it from the node's
-    `authorized_keys`).
+    `authorized_keys`). Under ENG-0012 (planned) it is a `ProxmoxSshKey` credential in the host's
+    **`TransportCredentialId`** slot (distinct from the API-token `ManagementCredentialId` slot — the D2
+    two-slot model exists precisely so Proxmox can hold both secrets at once); the private key + optional
+    passphrase are two vault slots (`cred:{Id}:sshkey` + `cred:{Id}:passphrase`) under one credential —
+    [persistence-and-security.md §4a](persistence-and-security.md#a-credential-owns-a-set-of-named-secret-keys--credidslot).
   - The SSH command set is exactly the validated `migrate-vm` skill's — **bounded and
     well-understood**, not an open-ended subsystem (ENG-0009).
 
@@ -146,6 +162,13 @@ equivalent of CLAUDE.md gotcha 9), capture exit code. Reuse that discipline.
 7. **API token ACL scope** — a too-narrow privilege-separated token silently 403s on a path you
    forgot to grant; document the minimum ACL set per milestone so operators can scope tokens
    correctly. Enumerating that set is *Open question 5*.
+8. **Split PVE 401 vs 403 server-side (ENG-0011a, planned).** Today both collapse into one "API token
+   rejected" string ([ProxmoxProvider.cs:45,92](../../../ProxmoxProvider.cs#L45)). ENG-0011a requires the
+   `catch … when (401 || 403)` filter be split into two arms: **401 → `AUTH_REJECTED`** (tier
+   `Unauthorized`, "wrong realm/token-id" — fix the credential) vs **403 → `AUTH_INSUFFICIENT_PRIV`**
+   (tier `Degraded`, valid-but-unprivileged — grant the role). This is exactly the gotcha-#13 distinction,
+   finally surfaced. A post-connect scan error emits `SCAN_FAILED` (Degraded). See
+   [provider-abstraction.md §8](provider-abstraction.md#8-health--failure-classification-decided-eng-0011a-planned).
 
 ---
 

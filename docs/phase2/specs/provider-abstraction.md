@@ -54,6 +54,12 @@ public interface IVirtualizationProvider
 resolves its own creds/port — credential-free contract). `HyperVProvider` wraps the existing static
 `Scanner`/`ReachabilityChecker`. The richer ref/DTO surface below is the **target**, not yet built.
 
+> **Return-shape change (decided, ENG-0011a — planned, not yet built).** The
+> `(bool Ok, string Error)` tuple is **superseded** by a typed result that carries a per-stage
+> **`HostFault` list** the provider is uniquely positioned to classify (e.g. PVE 401 vs 403). This is
+> **Option A full-depth** — providers return the full fault list, not a single primary fault. See
+> [§8 Health & failure classification](#8-health--failure-classification-decided-eng-0011a-planned).
+
 ### Target shape (illustrative — methods land in 2.2/2.3/2.5/2.6)
 
 The shape in [ARCHITECTURE.md §2](../ARCHITECTURE.md#2-provider-abstraction) is the target contract.
@@ -197,7 +203,7 @@ Phase-1 types are already close to platform-neutral. The migration into `VMentor
 | `Vm` ([Models.cs:34](../../../VMentory.Core/Models.cs#L34)) | → `VmInfo`. Keep `Name`, `State`, `VCpuCount`, `*RamMb`, `Vhds`, `NicCount`, `GuestOs`, `Uptime`. **`Generation` and `IntegrationServices` become Hyper-V-specific extension data**, not core fields (per [ARCHITECTURE.md §2](../ARCHITECTURE.md#2-provider-abstraction)). Add stable `nativeId`. |
 | `Vhd` ([Models.cs:27](../../../VMentory.Core/Models.cs#L27)) | → `DiskInfo`. Keep `Path`, `ThickGb`/`ActualGb` (= provisioned/allocated, platform-neutral). Add `Format` (vhdx/qcow2/raw) and `BusKind`. |
 | `Volume` ([Models.cs:20](../../../VMentory.Core/Models.cs#L20)) | → `StorageInfo`. Generalizes to PVE storage pools, not just Windows drive letters. |
-| `Reachability` ([Models.cs:11](../../../VMentory.Core/Models.cs#L11)) | Hyper-V-specific concept (ICMP/WinRm/Auth). Becomes agent connection health, not a core domain type. |
+| `Reachability` ([Models.cs:11](../../../VMentory.Core/Models.cs#L11)) | **Superseded by `HostHealth`/`HostFault` (ENG-0011a, §8).** The loose `Icmp`/`WinRm`/`Auth`/`ErrorDetail` booleans + strings stop being the UI source of truth; only the ICMP bit survives as the informational `HostHealth.IcmpReplied`. The three free-text channels (`AddError`/`ScanError`/`ErrorDetail`) collapse into one classified `Faults[]`. |
 | `Credentials` ([Models.cs:121](../../../VMentory.Core/Models.cs#L121)) | The zero-on-dispose discipline **carries forward** but secrets no longer live in the domain object at all — they come from the secret store ([persistence-and-security.md](persistence-and-security.md#4-secret-handling)). |
 
 **Extension data, not subclasses.** Resist a `HyperVVm : VmInfo` hierarchy — it leaks platform
@@ -234,3 +240,140 @@ that only the owning provider and its UI fragment read.
    `HostInfo` (inventory snapshot) + mutable `HostRegistration` (address, creds reference,
    connection health). Confirm this split before the domain is generalized, since it shapes the
    persistence schema ([persistence-and-security.md §1](persistence-and-security.md#1-schema-sketch)).
+
+---
+
+## 8. Health & failure classification (decided, ENG-0011a; planned)
+
+> **Decided (ENG-0011a, 2026-06-19) — planned, not yet built.** This is the UI-facing failure-surfacing
+> slice of the broader (still-open) ENG-0011 observability contract: how a host's reachability/scan
+> signals are **classified into a health tier and surfaced to the dashboard**, plus the provider-contract
+> change that makes the classification authoritative server-side. It deliberately does **not** decide the
+> rest of ENG-0011 (logging substrate, persisted sinks/retention, audit-vs-ops separation, the uniform
+> per-transport diagnostic envelope). `VMentory.Core` is the **single source of truth** for this taxonomy
+> — it is not restated anywhere else.
+
+### The typed model (lives in `VMentory.Core`, alongside `ProviderCapability`/`PlatformKind`)
+
+```csharp
+enum HealthTier   { Unknown, Healthy, Unconfigured, Degraded, Unauthorized, Unreachable }
+enum FailureStage { Dns, Icmp, TcpPort, Transport, Auth, Credentials, Scan }
+
+// One classified fault at one stage. Code is the stable contract; Human is display text;
+// Hint is a nullable high-confidence remediation; At is when it was observed.
+record HostFault(string Code, HealthTier Tier, FailureStage Stage,
+                 string Human, string? Hint, DateTimeOffset At);
+
+class HostHealth {
+    HealthTier Tier;            // worst-wins fold of Faults (Unknown while connecting)
+    List<HostFault> Faults;     // full per-stage fault list — the drill-down, from day one
+    bool IcmpReplied;           // informational only; NEVER folded into Tier
+    DateTimeOffset CheckedAt;
+}
+```
+
+This **replaces** the loose `Reachability` booleans + the three parallel free-text channels (§5,
+`AddError`/`ScanError`/`Reachability.ErrorDetail`) as the source of truth for UI severity. `ErrorDetail`
+is never actually rendered today, so nothing visible is lost.
+
+### Six tiers + worst-wins fold
+
+A host shows **one** tier — the highest-severity among its faults (`Unknown` is the transient
+"checking…"/never-evaluated state, not a severity peak). Severity ordering (highest first):
+
+`Unreachable > Unauthorized > Degraded > Unconfigured > Healthy` (`Unknown` while connecting).
+
+| Tier | Meaning |
+|---|---|
+| `Healthy` | Mgmt plane reachable, auth OK, last scan succeeded (or reachable, not yet scanned). |
+| `Degraded` | Reachable + authenticated but limited — **PVE 403** (valid token, missing privilege), a scan that failed *after* a good connect, or partial inventory. |
+| `Unauthorized` | Credentials present but **rejected** — **PVE 401**, HV WinRM Access-Denied. Remediation = fix the credential. |
+| `Unreachable` | Cannot reach the mgmt plane at all — DNS unresolved, mgmt TCP port closed, or transport error before auth. Remediation = fix DNS/network/firewall. |
+| `Unconfigured` | Reachable but **no credentials set** — a *setup* state, not a failure. |
+| `Unknown` | Mid-check / never polled / connecting. |
+
+Two deliberate splits vs the Phase-1 `ok/warn/bad/unk` UI: **Unauthorized split from Degraded**
+(remediation differs — fix creds vs grant a role) and **Unconfigured split out as a non-failure**
+(reachable-but-credential-less is setup-in-progress, not red).
+
+### Per-stage signal → code mapping (the CODE string is the contract)
+
+The reachability/scan chain is evaluated stage by stage; each stage may emit a `HostFault` with a
+**stable code** (UI/design and any future log query key off the code, never the human text). **ICMP is
+the one stage that emits no fault and never affects the tier.**
+
+| Stage (`FailureStage`) | Signal | Code | Tier |
+|---|---|---|---|
+| `Dns` | name does not resolve | `DNS_UNRESOLVED` | `Unreachable` |
+| `Icmp` | ping reply / none | *(none — informational)* | **never** — surfaced as `icmpReplied` badge only |
+| `TcpPort` | mgmt port closed/refused (HV 5985, PVE 8006) | `MGMT_PORT_CLOSED` | `Unreachable` (hint) |
+| `Transport` | TLS/socket/timeout before an auth verdict | `MGMT_TRANSPORT_ERROR` | `Unreachable` |
+| `Auth` | credentials rejected — **PVE 401**, HV WinRM Access-Denied | `AUTH_REJECTED` | `Unauthorized` |
+| `Auth` | authenticated but **under-privileged** — **PVE 403** | `AUTH_INSUFFICIENT_PRIV` | `Degraded` (hint) |
+| `Credentials` | reachable, **no credential configured** | `NO_CREDENTIALS` | `Unconfigured` (hint) |
+| `Scan` | scan failed *after* a good connect | `SCAN_FAILED` | `Degraded` |
+
+### Provider contract change (Option A — full depth) + the single evaluator
+
+- **Provider methods return a typed health/fault result carrying a full per-stage fault list** (not the
+  Phase-1 `(bool Ok, string Error)`). Providers emit the **platform-specific** faults the generic
+  evaluator cannot know:
+  - **`ProxmoxProvider`** must **split server-side** the PVE **401 → `AUTH_REJECTED` (Unauthorized)** vs
+    **403 → `AUTH_INSUFFICIENT_PRIV` (Degraded)** — today both collapse into one "API token rejected"
+    string at [ProxmoxProvider.cs:45,92](../../../ProxmoxProvider.cs#L45). This matches CLAUDE.md
+    gotcha #13 (401 = wrong realm/token-id, 403 = valid-but-unprivileged); the knowledge exists, it just
+    isn't surfaced. Plus `SCAN_FAILED` on a post-connect scan error.
+  - **`HyperVProvider`** (via `Reachability`) distinguishes **Access-Denied → `AUTH_REJECTED`** from
+    **transport timeout/connect-failure → `MGMT_TRANSPORT_ERROR`** by matching the well-known WinRM error
+    substrings in the raw `AUTH_FAIL` message ([Reachability.cs:136-145](../../../Reachability.cs#L136)).
+- **Generic stages stay in ONE evaluator, not the providers.** DNS, ICMP (informational), and the TCP
+  mgmt-port probe are platform-independent. A single evaluator runs the generic stages, invokes the
+  provider for the auth/scan stages, merges all faults, folds to a `Tier`, and produces one `HostHealth`.
+- **Unify the two divergent classifiers.** Today the add-host path
+  ([Program.cs:292](../../../Program.cs#L292): `"Host unreachable (ICMP failed)"` / `"WinRM port not
+  responding"`) and the `Poller` re-check classify reachability **independently with divergent strings**.
+  Both must call the **same** evaluator so a host shows the same tier whether just-added or just-polled.
+
+### Wire contract (`/api/state` + existing SSE channel — no new channel)
+
+Each host carries a `health` object over `/api/state` and every `EventHub` SSE broadcast (reusing the
+existing typed-event channel, [EventHub.cs](../../../EventHub.cs)):
+
+```json
+"health": {
+  "tier": "Degraded",
+  "icmpReplied": false,
+  "checkedAt": "2026-06-19T10:22:31Z",
+  "faults": [
+    { "code": "AUTH_INSUFFICIENT_PRIV", "stage": "Auth",
+      "human": "Token authenticated but lacks the required privilege",
+      "hint": "Grant the token the PVEAuditor role (or the verb-specific role) on / in Proxmox" }
+  ]
+}
+```
+
+- `tier` is the **server-composed** worst-wins tier — the dashboard renders it **verbatim** and must not
+  re-derive it (the three Phase-1 JS re-derivers `hostHealth`/`healthTip`/`subLine` are replaced by a
+  tier→badge map + `faults[]` render).
+- `icmpReplied` drives a greyed informational badge only.
+- `faults[]` is the full per-stage drill-down; each `{ code, stage, human, hint }` with `hint` nullable.
+- `hint` is populated **only high-confidence** (`AUTH_REJECTED` PVE 401, `AUTH_INSUFFICIENT_PRIV` PVE
+  403, `NO_CREDENTIALS`, `MGMT_PORT_CLOSED`), **null** elsewhere — we do not guess remediations.
+
+This `health` JSON is the contract that **unblocks the dashboard UI rebuild**.
+
+### Back-compat / transition
+
+The old `Reachability` booleans + `AddError`/`ScanError` strings stay on the wire **only until** the
+dashboard renders `health.*`, then are removed in the same UI-rebuild slice. During the transition the
+evaluator is the **single writer** of both the new `HostHealth` and the derived legacy fields, so
+nothing reads a stale parallel value. Exact cross-path removal sequencing is a flagged build-time
+sub-question in ENG-0011a (not a design decision).
+
+### Open build-time sub-question (does not reopen ENG-0011a)
+
+- **Slice-5 Proxmox SSH transport faults.** When the constrained SSH transport (ENG-0009, slice 5)
+  lands, an SSH connect/auth failure is a *second* transport stage distinct from the REST mgmt auth.
+  Whether SSH gets its own `FailureStage`/codes (e.g. `SSH_TRANSPORT_ERROR`, `SSH_AUTH_REJECTED`) — and
+  how it interacts with the single-root-vs-per-node SSH-user choice (open in ENG-0012, §4a) — is deferred
+  to the slice-5 build. The `FailureStage` enum is designed to grow.

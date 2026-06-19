@@ -147,6 +147,17 @@ runs `dotnet restore` + `dotnet build VMentory.sln -c Release` on every push/PR 
 
 All `/api/*` routes (except `/api/auth/*`) require the `vmentory_session` cookie set by `/api/auth/login`.
 
+> **Forthcoming (ENG-0012, planned — slice-5 era, NOT yet built).** Credentials become first-class
+> named entities. When that slice lands, this table changes: `POST /api/credentials` is **repurposed**
+> from the global-WinRM setter to a credential **create** endpoint; new `GET /api/credentials`,
+> `GET/POST /api/credentials/{id}/rotate`, `DELETE /api/credentials/{id}` (metadata-only responses,
+> write-only rotation, 409 + `usedByHosts` on a referenced delete); and `POST /api/hosts` /
+> `PATCH /api/hosts/{id}` reference `managementCredentialId` (+ optional `transportCredentialId`)
+> instead of raw `username`/`password`/`token`/`useGlobalCreds`. Global creds + `Host.UseGlobalCreds`
+> are retired. See [`docs/phase2/specs/persistence-and-security.md` §4a](docs/phase2/specs/persistence-and-security.md).
+> Separately, ENG-0011a (planned) adds a per-host `health` object (tier + faults[]) to `/api/state` +
+> SSE, superseding the loose `Reachability` booleans — see [`docs/phase2/specs/provider-abstraction.md` §8](docs/phase2/specs/provider-abstraction.md).
+
 ---
 
 ## Non-obvious gotchas
@@ -187,5 +198,10 @@ All `/api/*` routes (except `/api/auth/*`) require the `vmentory_session` cookie
     verbatim (verified live against vega14, 2026-06-18). Also: the stored token is the **bare**
     `user@realm!tokenid=uuid` (no `PVEAPIToken=` prefix — the provider adds it); a wrong realm/token-id
     gives HTTP **401 "Authentication failed!"** (vs **403** for a valid-but-unprivileged token).
+    **Forthcoming (ENG-0012, planned):** the token will be **stored decomposed** (`user@realm` + `tokenid`
+    as non-secret descriptor columns, the secret UUID in the vault) and **recomposed bare** at
+    `BuildClient` — this gotcha is explicitly **preserved**, the wire format is unchanged. **Forthcoming
+    (ENG-0011a, planned):** the merged `catch … when (401 || 403)` is split — **401 → `AUTH_REJECTED`
+    (Unauthorized)**, **403 → `AUTH_INSUFFICIENT_PRIV` (Degraded)**.
 
 12. **Admin password recovery.** If the admin password is unknown (e.g. auto-generated and the container was replaced before the startup log was captured): (1) Set `VMENTORY_ADMIN_PASSWORD` in the Coolify environment and restart — this re-seeds the admin account only if no admin exists yet; if the account already exists, the env var is ignored. (2) To force a reset, compute a new PBKDF2-SHA256 hash (`100000:{base64_salt}:{base64_hash}`) and write it directly to the `PasswordHash` column in the DB. The hash format is identical between Python `hashlib.pbkdf2_hmac('sha256', pw.encode(), salt, 100000, dklen=32)` and .NET `Rfc2898DeriveBytes.Pbkdf2(string, ...)` — both use UTF-8 password encoding. Copy the updated DB back to the volume, run `chown 10001:10001` on it (see gotcha #11), then restart the container.

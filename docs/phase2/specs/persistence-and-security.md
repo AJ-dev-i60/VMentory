@@ -38,6 +38,15 @@ provider_registration
 host                      -- inventory identity (was Models.cs Host, generalized)
   id, provider_id -> provider_registration,
   native_id, fqdn, os_caption, cpu_model, total_cores, total_ram_gb, ...
+  management_credential_id -> credential   -- D2 slot (ENG-0012): control plane (HV WinRM / PVE token)
+  transport_credential_id  -> credential   -- D2 slot (ENG-0012): null for HV; PVE SSH key (slice 5)
+  -- NOTE (ENG-0012): the Phase-1 `use_global_creds` bool is REMOVED — see §4a.
+
+credential                -- named, reusable credential (ENG-0012, flat TPH; planned, not yet built)
+  id, name, kind (HyperVPassword|ProxmoxToken|ProxmoxSshKey), platform (HyperV|Proxmox),
+  descriptor_json    -- NON-SECRET structured fields only (e.g. PVE user@realm + tokenid, SSH username)
+  created_at, rotated_at
+  -- Secret MATERIAL is NOT here: it lives in ISecretStore under cred:{id}:{slot} keys (§4a).
 
 inventory_snapshot        -- the historical record Phase 1 never kept
   id, host_id -> host, taken_at,
@@ -106,7 +115,10 @@ before relying on cross-session diffs.
 >   `DekEntity` (wrapped DEK). `AesGcmSecretStore` encrypts credentials in SQLite; `VMENTORY_KEK` gates
 >   persistence; restored hosts load creds from `ISecretStore` at startup.
 > **Not yet built:** `provider_registration`, `vm_record`, `operation_*`, `agent_identity` — they arrive
-> with their owning slices (Proxmox provider, operations engine, HV agent/PKI).
+> with their owning slices (Proxmox provider, operations engine, HV agent/PKI). The **`credential`
+> table + `host.management_credential_id`/`transport_credential_id` slots + the C1 promotion
+> startup task** (ENG-0012, §4a) are **planned for the credential-management slice** (slice-5 era,
+> ahead of the Proxmox SSH key) — not yet built.
 
 ## 2. What is persisted
 
@@ -140,7 +152,10 @@ before relying on cross-session diffs.
 > fallback), `DekProvider` (KEK/DEK manager). `SecretEntity`/`DekEntity` + `AddSecrets` migration.
 > `VMENTORY_KEK` env var (base64, 32 bytes) gates persistence. Global WinRM creds + per-host creds
 > persist and are restored at startup. The `rotate` operation is **not yet implemented** — set+delete
-> is the current API.
+> is the current API. **ENG-0012 (planned)** layers named, reusable credentials on top of this same
+> `ISecretStore` substrate (the slot keys `cred:{Id}:{slot}` replace the ad-hoc `global_winrm` /
+> `host_cred:{hostId}` keys) and adds the write-only `rotate` endpoint at the credential layer — see
+> [§4a](#4a-named-credentials--first-class-reusable-entities-decided-eng-0012-planned).
 
 **`ISecretStore` is a provider abstraction (ENG-0002), mirroring `IVirtualizationProvider`.** Call
 sites depend on the interface, never on the mechanism, so the store evolves without code churn.
@@ -317,6 +332,138 @@ UI's HTTPS.
 
 ---
 
+## 4a. Named credentials — first-class reusable entities (decided, ENG-0012; planned)
+
+> **Decided (ENG-0012, 2026-06-19) — planned for the credential-management slice (slice-5 era), not
+> yet built.** Credentials become **first-class, named, reusable** entities a host *references* via
+> typed slots, instead of the Phase-1 ad-hoc per-host blobs + the magic global-WinRM credential. This
+> section supersedes the Phase-1 credential storage model described inline elsewhere; where another
+> section still describes "global WinRM creds + per-host creds," treat it as **superseded-by-ENG-0012**.
+
+### Storage model — flat `CredentialEntity` (TPH) + closed C# descriptor union (Option C, A2)
+
+A credential is **split** between the DB and `ISecretStore` (Fork A2):
+
+- **Non-secret metadata** is a real `credential` row (§1): `Id`, `Name`, `Kind`, `Platform` as
+  columns + a JSON `Descriptor` of **non-secret structured fields**. One flat TPH-style table —
+  matches the rest of the persistence layer; **no inheritance hierarchy**.
+- **Secret material** stays in `ISecretStore` — **never** in the `credential` row or its `Descriptor`.
+- A **closed `CredentialDescriptor` C# record union** in `VMentory.Core` is the typed parse/consume
+  boundary over the JSON column. Members: `HyperVPassword`, `ProxmoxToken`, `ProxmoxSshKey`. A `switch`
+  over the closed union is **exhaustive** — adding the slice-5 SSH kind is a compile error everywhere
+  it must be handled (the reason Option C beat the loose discriminator Option A).
+
+Why A2: list / GET / "used by N hosts" all **project straight from columns** — no decryption to render
+metadata. The secret-never-leaves-server rule (below) becomes *structural*: the metadata path has no
+vault call. The cost accepted is **two stores to keep consistent** (row + vault key[s]); create writes
+vault-then-row, delete writes row-then-vault, and the C1 promotion + delete paths must tolerate a
+half-written state. (Exact cross-store ordering is a flagged build-time detail in ENG-0012.)
+
+### A credential owns a SET of named secret keys — `cred:{Id}:{slot}`
+
+A credential addresses its secret material as a **set** of slot keys, not a 1:1 vault key
+(sub-decision 1):
+
+| Kind | Vault slots | Descriptor (non-secret) |
+|---|---|---|
+| `HyperVPassword` | `cred:{Id}:password` | username |
+| `ProxmoxToken` | `cred:{Id}:token` (the secret UUID) | `user@realm`, `tokenid` |
+| `ProxmoxSshKey` (slice 5) | `cred:{Id}:sshkey` (+ optional `cred:{Id}:passphrase`) | SSH username |
+
+A multi-component kind (SSH private key **plus** a passphrase) is then just two slots under one
+credential — **no schema change** when a kind needs a second secret component. The descriptor records
+which slots a kind populates; consume-time reads the slots the kind declares.
+
+### How a host references credentials — typed slots (D2)
+
+`Host` carries **two nullable credential-slot FKs** (§1), not a raw secret and not the Phase-1
+`UseGlobalCreds` bool:
+
+- `ManagementCredentialId` — the control-plane credential: **HV WinRM**, or the **PVE API token**.
+- `TransportCredentialId` — the data/disk-op credential: **null for Hyper-V**; the **Proxmox SSH key**
+  for the slice-5 disk-import / guest-edit residue ([proxmox-integration.md §3](proxmox-integration.md#3-rest-vs-ssh--the-boundary), ENG-0009).
+
+The provider seam reads exactly the slot it needs. HV simply leaves `TransportCredentialId` null. A
+host needing a third role in some future platform is a third named slot, not an M:N join table.
+
+### Deleting a referenced credential — restrict (B1)
+
+`DELETE /api/credentials/{id}` returns **409 Conflict** with a `usedByHosts` list when any `Host` slot
+references it; delete succeeds only at zero references. No host is ever silently left with a dangling
+slot (rejected B2 cascade/orphan, which reintroduces the silent-unreachable failure ENG-0012 exists to
+kill). Mirrors the Phase-1 host-delete-clears-its-secret referential safety.
+
+### RBAC — Admin-only vault (split flag)
+
+The single Phase-1 `ConsolePermission.ManageCredentials` (granted to Admin **and** VmOperator) is
+**split** so the vault — now holding the keys to every host — is Admin-managed:
+
+- `ConsolePermission.ManageCredentials` → **Admin only** (create / rotate / delete).
+- **new** `ConsolePermission.ViewCredentials` → **Admin + VmOperator** (list **metadata only** —
+  name / kind / platform / used-by — to pick a credential when adding a host; cannot create, rotate,
+  reveal, or delete).
+
+Resulting `RbacCatalog` console mapping (see [§5c](#5c-console-authz--fixed-role-rbac-decided--built-eng-0008)):
+Admin = `ViewAudit | ManageCredentials | ViewCredentials | ManageEnrollment | ManageUsers`;
+VmOperator = `ViewCredentials` only; BackupOperator / Viewer = `None`.
+
+### Secret-never-leaves-server rule (invariant)
+
+- **List / GET project from columns only** — metadata endpoints **must not** call
+  `ISecretStore.GetAsync`. A2 makes this structural.
+- **Rotation is write-only** — secret material is accepted on create / rotate and written to the vault;
+  it is **never** returned in any response.
+- **Decrypt only at the consume seam** — the only read-back is server-side, building a client /
+  transport (HV WinRM invoke, `ProxmoxProvider.BuildClient`, the slice-5 SSH executor); never serialized
+  to the client.
+
+### C1 — global credentials retired + the promotion migration
+
+The Phase-1 model is **fully retired** (C1): `POST /api/credentials` (the old global-WinRM setter),
+`Host.UseGlobalCreds`, and the `global_winrm` vault key are **removed**. The "define once, reuse" goal
+is met by named credentials directly — global was just an un-named, un-rotatable special case.
+
+The promotion runs as a **startup task, AFTER the KEK/`DekProvider` is live** — *not* a pure EF schema
+migration, because it must **decrypt to recompose** (the schema migration has no DEK). Sequence:
+
+1. **EF schema migration:** create `credential` + `host.management_credential_id` /
+   `transport_credential_id`; drop `use_global_creds`.
+2. **Startup task** (ordered after secret-store init — the analogue of the existing
+   `LoadPersistedCredsAsync` post-vault step): read legacy `global_winrm` + `host_cred:{hostId}` blobs,
+   **decrypt** them, create named `credential` rows, write secret material under the new
+   `cred:{Id}:{slot}` keys, point each host's `ManagementCredentialId` at the right row, remove the
+   legacy keys. **Idempotent** (no legacy keys → no-op) and tolerant of the A2 half-state.
+
+**Proxmox token decomposition (preserves CLAUDE.md gotcha #13):** the legacy per-host Proxmox secret
+holds the **bare** `user@realm!tokenid=secret`. The promotion **decomposes** it into non-secret
+`Descriptor` fields (`user@realm`, `tokenid`) + the **secret** UUID in the vault slot — and the
+provider seam **recomposes** the bare token at `ProxmoxProvider.BuildClient` exactly as today (still
+sent via `TryAddWithoutValidation`). Storage is structured; the wire format is unchanged. See
+[proxmox-integration.md §1](proxmox-integration.md#1-authentication).
+
+### Credential CRUD API surface (metadata-only responses)
+
+| Method | Path | Notes | Permission |
+|---|---|---|---|
+| GET | `/api/credentials` | List — **metadata only** (id, name, kind, platform, usedByHosts count). Projects from columns; **never** `ISecretStore.GetAsync`. | `ViewCredentials` |
+| GET | `/api/credentials/{id}` | Single — metadata only (incl. `usedByHosts` list). No secret. | `ViewCredentials` |
+| POST | `/api/credentials` | Create — secret in body → vault slot(s); response metadata only. (Repurposes the retired global-WinRM route name.) | `ManageCredentials` |
+| POST | `/api/credentials/{id}/rotate` | **Write-only** rotation — new secret → vault slot(s); never returns the secret. | `ManageCredentials` |
+| DELETE | `/api/credentials/{id}` | **409 + `usedByHosts`** if referenced (B1); else delete row + vault slot(s). | `ManageCredentials` |
+
+`POST /api/hosts` / `PATCH /api/hosts/{id}` reference credentials by **id slot**
+(`managementCredentialId` (+ optional `transportCredentialId`)) instead of raw
+`username`/`password`/`token`/`useGlobalCreds`; those raw-secret add-host/PATCH fields are **removed**.
+
+### Open build-time sub-question (does not reopen the decision)
+
+- **Slice-5 SSH identity** — single cluster `root` key vs per-node user. The slot model holds either
+  way (one `ProxmoxSshKey` credential referenced by one-or-many hosts' `TransportCredentialId`), so this
+  does not block. Confirm against the `migrate-vm` skill when slice-5 lands. Tracks alongside
+  [proxmox-integration.md §5 OQ4](proxmox-integration.md#5-open-questions-need-a-human-decision).
+
+---
+
 ## 6. Audit log
 
 Every **write / management / migration / deploy / backup** action is recorded
@@ -346,6 +493,13 @@ rows are **append-only** and must **never** contain secret values.
 - ~~Console RBAC / scoped roles~~ → **fixed roles (Admin / VM-operator / Backup-operator / Viewer)
   over a pillar×verb catalog reusing `ProviderCapability` + a small console-permission set; single
   audited authz chokepoint before any write verb; firm + early** (ENG-0008, §5c).
+- ~~Credential storage model (global creds vs per-host vs named entities)~~ → **first-class named
+  `CredentialEntity` (flat TPH + JSON `Descriptor` + closed C# union; secrets stay in `ISecretStore`
+  under `cred:{Id}:{slot}` slots); typed `Host` slots (`ManagementCredentialId`/`TransportCredentialId`);
+  global creds retired (C1, promoted to a named cred); split storage (A2); delete restricted while
+  referenced (B1, 409 + usedByHosts); Admin-only vault (split `ManageCredentials` + new
+  `ViewCredentials`); metadata-only CRUD, write-only rotation** (ENG-0012, §4a). *Slice-5 SSH identity
+  (single root vs per-node) stays an open build-time sub-question; the slot model is agnostic.*
 
 **Still open (need a human decision):**
 1. **Snapshot retention / cadence.** How often to snapshot inventory and how long to retain
