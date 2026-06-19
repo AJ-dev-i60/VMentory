@@ -18,6 +18,7 @@ Live state of design proposals. Newest at the top of each section.
 ## Awaiting design
 | Date | Title | Request | Notes |
 |---|---|---|---|
+| 2026-06-19 | Credential management surface + structured token entry | `requests/from-codebase/2026-06-19-credential-management.md` | ENG-0012. Trigger: vega14 onboarding — compound PVE token (`user@realm!tokenid=secret`) mis-entered as bare UUID; per-host creds bulky. Interim hint+validation already shipped in the live app. Design a dedicated credential-management screen (named/reusable creds), add-host "pick a credential", and structured PVE-token fields. Sequence before/with slice (5) (adds SSH key as a 2nd per-host secret). |
 | 2026-06-18 | Login screen + change-password wall + logout button | `requests/from-codebase/2026-06-18-login-screen.md` | Slice (2) login+RBAC backend is live. Interim unstyled screens exist and are wired up — design needs to produce styled versions. High priority: enables retiring the token banner on the deployed dev instance. |
 
 ## Shipped
