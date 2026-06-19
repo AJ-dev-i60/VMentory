@@ -3,7 +3,45 @@
 > **Purpose:** pick up Phase 2 from a clean clone on any machine. Read this top-to-bottom and you
 > know where we are, what's decided, what's open, and what to do next.
 >
-> **Last updated:** 2026-06-18 (slice (4) landed: `ProxmoxProvider` + `ProviderRegistry` + `AddProxmox` migration, commit `2907fd4`) · **Phase:** 2.0 foundation — original build slices 1–3 + re-baselined slices (1)–(4) all built & verified; deployed on Coolify; **next is re-baselined slice (5): Proxmox SSH executor + management/Deploy write verbs** · **Branch:** `dev`
+> **Last updated:** 2026-06-19 (slice (4) hardening + first live Proxmox onboarding — see the handoff
+> note below) · **Phase:** 2.0 foundation — original build slices 1–3 + re-baselined slices (1)–(4) all
+> built & verified; deployed on Coolify; **next is re-baselined slice (5): Proxmox SSH executor +
+> management/Deploy write verbs** · **Branch:** `dev`
+>
+> ---
+>
+> ### 🔻 Handoff note — 2026-06-19 session (for the doc / engineering / design agents to integrate)
+>
+> First **live Proxmox onboarding** of vega14 (PVE 9.2.2 at `172.0.0.14`) succeeded end-to-end —
+> `ProxmoxProvider` now pulls real inventory (72 cores / 251 GB / 2 VMs). Five things shipped to `dev`
+> this session (all verified, build clean):
+> 1. **`fix(proxmox)` `6d3732e`** — the real blocker: `ProxmoxProvider.BuildClient` now sends the PVE
+>    token via **`TryAddWithoutValidation`**. `.NET`'s validating `Headers.Add` threw `FormatException`
+>    on PVE's `PVEAPIToken=user@realm!tokenid=uuid` scheme *before the request was sent*, surfacing as a
+>    generic "Unexpected error during connect" → every Proxmox host looked unreachable. **(CLAUDE.md
+>    gotcha #13.)** Stored token is the **bare** form (no `PVEAPIToken=` prefix — provider adds it).
+> 2. **`fix(ui)` `79e5a91`** — host reachability is now driven by the **management plane (port + auth),
+>    not ICMP**. PVE blocks ping, so a fully-working host showed red "Unreachable"; ICMP is now
+>    informational (neutral grey **P** badge). *(The deployed Coolify instance reaches vega14 fine — it's
+>    a VM on that same `172.0.0.0/24` host; the "unreachable" was purely this ICMP bug.)*
+> 3. **`fix(ui)` `6a304c7`** — the forced **global WinRM-creds wall on every login is removed** (intrusive
+>    for the token-based Proxmox flow; superseded by ENG-0012). Overlay markup left dormant.
+> 4. **`feat(hosts)` `6a25701`** — **edit registered hosts**: rename (`Host.DisplayName`, new
+>    `AddHostDisplayName` migration) + re-enter credentials, via **`PATCH /api/hosts/{id}`** and a pencil
+>    icon (overview row) + Edit button (host page). Interim until ENG-0012.
+> 5. Token-entry **hint + client-side validation** in add-host/edit modals (catches the bare-UUID paste).
+>
+> **→ documentation agent:** fold items 1–5 into §3/§5 + the slice-(4) record; the API surface now has
+> `PATCH /api/hosts/{id}`; `Host` has `DisplayName`.
+> **→ engineering agent:** **ENG-0012 (credential-management revamp) is newly Open** in `REGISTER.md` —
+> resolve the named/reusable-credential model **before slice (5)** adds the SSH key as a 2nd per-host
+> secret. Live Proxmox now proven, de-risking slice (5). Consider whether the ICMP→informational change
+> + "honest failure" surfacing belongs under ENG-0011.
+> **→ design agent:** new from-codebase request `2026-06-19-credential-management.md` (credential surface
+> + structured PVE-token entry) is on the board; the interim edit-host modal + token hint are live and
+> want a designed version.
+>
+> ---
 >
 > ✅ **Foundation RE-BASELINED and APPROVED (2026-06-16).** The development freeze is **lifted**. The
 > corrected foundation is locked in the decision records and propagated into ARCHITECTURE/ROADMAP:
