@@ -460,6 +460,31 @@ textarea.finp{resize:vertical;min-height:80px}
   </div>
 </div>
 
+<!-- Edit host modal -->
+<div class="moverlay" id="m-edit">
+  <div class="modal" style="width:440px">
+    <div class="modal-ttl">Edit Host</div>
+    <div class="fgrp"><label class="flbl">Display name</label><input type="text" id="eh-name" class="finp" placeholder="(optional) friendly name — overrides the host name" onkeydown="if(event.key==='Enter')submitEditHost()"></div>
+    <div id="eh-pve" style="display:none">
+      <div class="fgrp"><label class="flbl">API Token ID</label><input type="text" id="eh-token" class="finp" placeholder="leave blank to keep current token" onkeydown="if(event.key==='Enter')submitEditHost()">
+        <div style="font-size:11px;color:var(--text3);margin-top:5px;line-height:1.55">Format <span style="font-family:monospace;color:var(--text2)">user@realm!tokenid=secret</span> (not just the secret UUID). Leave blank to keep the existing token.</div>
+      </div>
+      <label class="fcheck" style="margin-top:8px"><input type="checkbox" id="eh-skip-tls"><span style="font-size:13px">Skip TLS verification <span style="color:var(--text3)">(self-signed cert)</span></span></label>
+    </div>
+    <div id="eh-hv" style="display:none">
+      <label class="fcheck"><input type="checkbox" id="eh-global" onchange="toggleEditCreds()"><span style="font-size:13px">Use global credentials</span></label>
+      <div id="eh-creds" style="margin-top:4px">
+        <div class="fgrp"><label class="flbl">Username</label><input type="text" id="eh-user" class="finp" placeholder="CORP\admin"></div>
+        <div class="fgrp"><label class="flbl">Password</label><input type="password" id="eh-pass" class="finp" placeholder="leave blank to keep current" onkeydown="if(event.key==='Enter')submitEditHost()"></div>
+      </div>
+    </div>
+    <div class="macts">
+      <button class="btn btn-ghost" onclick="closeModal('m-edit')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitEditHost()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
 <!-- End session modal -->
 <div class="moverlay" id="m-end">
   <div class="modal" style="width:440px">
@@ -826,6 +851,7 @@ function vOverview(){
         <div class="col-scan">${rowScanBadge(h)}</div>
         <div class="actions">
           <button class="act-btn" title="Re-scan" onclick="event.stopPropagation();reScan('${h.id}')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg></button>
+          <button class="act-btn" title="Edit host" onclick="event.stopPropagation();openEditHost('${h.id}')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
           <button class="act-btn danger" title="Remove" onclick="event.stopPropagation();promptRemove('${h.id}','${x(hostLabel(h))}')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
         </div>
       </div>`;
@@ -1013,6 +1039,7 @@ function vHost(hostId){
     <div class="reach-icons">${ri('P',r.icmp,'Ping',true)}${ri('T',r.winRm,h.platform==='Proxmox'?'API :8006':'TCP 5985')}${ai(r.auth)}</div>
     <div style="display:flex;gap:6px">
       <button class="btn btn-secondary btn-sm" onclick="reScan('${h.id}')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>Re-scan</button>
+      <button class="btn btn-secondary btn-sm" onclick="openEditHost('${h.id}')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Edit</button>
       <button class="btn btn-ghost btn-icon btn-sm" title="Remove host" onclick="promptRemove('${h.id}','${x(hostLabel(h))}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
     </div>
   </div>`;
@@ -1268,6 +1295,55 @@ async function submitAddHosts(){
   }catch(e){toast('Failed: '+e.message,'error');}
 }
 
+function openEditHost(id){
+  const h=st.hosts.find(x=>x.id===id);if(!h)return;
+  st.editId=id;
+  document.getElementById('eh-name').value=h.displayName||'';
+  const isPve=h.platform==='Proxmox';
+  document.getElementById('eh-pve').style.display=isPve?'block':'none';
+  document.getElementById('eh-hv').style.display=isPve?'none':'block';
+  if(isPve){
+    document.getElementById('eh-token').value='';
+    document.getElementById('eh-skip-tls').checked=!!h.skipTlsVerification;
+  }else{
+    document.getElementById('eh-global').checked=h.useGlobalCreds!==false;
+    document.getElementById('eh-user').value='';
+    document.getElementById('eh-pass').value='';
+    toggleEditCreds();
+  }
+  openModal('m-edit');
+}
+function toggleEditCreds(){document.getElementById('eh-creds').style.display=document.getElementById('eh-global').checked?'none':'block';}
+async function submitEditHost(){
+  const id=st.editId;if(!id)return;
+  const h=st.hosts.find(x=>x.id===id);if(!h)return;
+  const isPve=h.platform==='Proxmox';
+  const body={displayName:document.getElementById('eh-name').value.trim()};
+  if(isPve){
+    const tok=document.getElementById('eh-token').value.trim();
+    if(tok){
+      if(!/^[^@\s]+@[^!\s]+![^=\s]+=\S+$/.test(tok)){
+        const looksLikeSecret=/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(tok);
+        toast(looksLikeSecret?'That looks like only the secret UUID — enter the full token ID: user@realm!tokenid=secret':'API token must look like user@realm!tokenid=secret','error');
+        return;
+      }
+      body.token=tok;
+    }
+    body.skipTlsVerification=document.getElementById('eh-skip-tls').checked;
+  }else{
+    const useG=document.getElementById('eh-global').checked;
+    body.useGlobalCreds=useG;
+    if(!useG){
+      const u=document.getElementById('eh-user').value.trim();
+      const p=document.getElementById('eh-pass').value;
+      if(u)body.username=u;
+      if(p!=='')body.password=p;
+    }
+  }
+  closeModal('m-edit');st.editId=null;
+  try{await api('PATCH',`/api/hosts/${id}`,body);toast('Host updated','success');}
+  catch(e){toast('Update failed: '+e.message,'error');}
+}
 function promptRemove(id,name){st.rmId=id;document.getElementById('rm-name').textContent=name;openModal('m-remove');}
 async function confirmRemove(){
   if(!st.rmId)return;
@@ -1454,7 +1530,7 @@ function scanLabel(h){
   }
 }
 function noData(t,m){return`<div class="sec-ttl">${t}</div><div class="empty"><div class="empty-ico">📊</div><div class="empty-ttl">No data yet</div><div class="empty-txt">${m}</div><button class="btn btn-primary" onclick="triggerScan()">Scan Now</button></div>`;}
-function hostLabel(h){const n=h.fqdn||h.address||'';return n.includes('.')?n.split('.')[0]:n;}
+function hostLabel(h){if(h.displayName)return h.displayName;const n=h.fqdn||h.address||'';return n.includes('.')?n.split('.')[0]:n;}
 function fmtGb(g){if(g>=1024)return`${(g/1024).toFixed(1)} TB`;return`${g.toFixed(1)} GB`;}
 function fmtMb(m){if(!m)return'—';if(m>=1024)return`${(m/1024).toFixed(1)} GB`;return`${m} MB`;}
 function fmtGB(gb){

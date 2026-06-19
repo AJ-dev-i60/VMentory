@@ -9,6 +9,7 @@ public class HostRegistrationEntity
     public string Id { get; set; } = "";
     public PlatformKind Platform { get; set; } = PlatformKind.HyperV;
     public string Address { get; set; } = "";
+    public string? DisplayName { get; set; }
     public bool UseGlobalCreds { get; set; } = true;
     public bool SkipTlsVerification { get; set; }
     public DateTimeOffset AddedAt { get; set; }

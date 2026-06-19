@@ -20,6 +20,7 @@ public class EfInventoryStore(VMentoryDbContext db) : IInventoryStore
                 Id = reg.Id,
                 Platform = reg.Platform,
                 Address = reg.Address,
+                DisplayName = reg.DisplayName,
                 UseGlobalCreds = reg.UseGlobalCreds,
                 SkipTlsVerification = reg.SkipTlsVerification,
             };
@@ -46,6 +47,7 @@ public class EfInventoryStore(VMentoryDbContext db) : IInventoryStore
                 Id = host.Id,
                 Platform = host.Platform,
                 Address = host.Address,
+                DisplayName = host.DisplayName,
                 UseGlobalCreds = host.UseGlobalCreds,
                 SkipTlsVerification = host.SkipTlsVerification,
                 AddedAt = DateTimeOffset.UtcNow,
@@ -55,6 +57,7 @@ public class EfInventoryStore(VMentoryDbContext db) : IInventoryStore
         {
             existing.Platform = host.Platform;
             existing.Address = host.Address;
+            existing.DisplayName = host.DisplayName;
             existing.UseGlobalCreds = host.UseGlobalCreds;
             existing.SkipTlsVerification = host.SkipTlsVerification;
         }

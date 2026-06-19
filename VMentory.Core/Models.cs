@@ -58,6 +58,8 @@ public class Host
     public string Id { get; set; } = Guid.NewGuid().ToString("N")[..8];
     public PlatformKind Platform { get; set; } = PlatformKind.HyperV;
     public string Address { get; set; } = "";
+    // Optional operator-chosen friendly name; when set it overrides the FQDN/address in the UI.
+    public string? DisplayName { get; set; }
     public string Fqdn { get; set; } = "";
     public string OsCaption { get; set; } = "";
     public string OsVersion { get; set; } = "";

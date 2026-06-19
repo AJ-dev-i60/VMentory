@@ -137,6 +137,7 @@ runs `dotnet restore` + `dotnet build VMentory.sln -c Release` on every push/PR 
 | GET | `/api/state` | Full snapshot: `hosts, totals, diff, credentialsSet, mockMode, build` |
 | POST | `/api/credentials` | Set global WinRM credentials (persisted via `ISecretStore`) |
 | POST | `/api/hosts` | Add hosts (DNS + reachability + quick connect) |
+| PATCH | `/api/hosts/{id}` | Edit a host: rename (`displayName`) and/or re-enter credentials (`token` / `username`+`password`, `skipTlsVerification`, `useGlobalCreds`). All fields optional; blank secrets keep current. Cred/TLS change triggers a reachability re-check |
 | DELETE | `/api/hosts/{id}` | Remove host |
 | POST | `/api/scan` | Trigger full inventory (max 3 concurrent, fire-and-forget) |
 | GET | `/api/events` | SSE stream (cookie auth — EventSource sends cookies on same-origin GET) |

@@ -616,6 +616,96 @@ app.MapDelete("/api/hosts/{id}", async (string id, Store s, EventHub h, AppConfi
     return Results.Ok(new { ok = true });
 });
 
+// Edit an already-registered host: rename (DisplayName) and/or re-enter credentials. All fields
+// optional — only what's provided is changed. Secrets are write-only (a blank token/password keeps
+// the current one). Credential/TLS changes trigger an immediate reachability re-check.
+app.MapMethods("/api/hosts/{id}", ["PATCH"], async (string id, HttpContext ctx, Store s, EventHub h, AppConfig cfg, ProviderRegistry registry, IServiceScopeFactory scopeFactory) =>
+{
+    var host = s.GetHost(id);
+    if (host == null) return Results.NotFound();
+
+    EditHostDto? body;
+    try { body = await ctx.Request.ReadFromJsonAsync<EditHostDto>(); }
+    catch { return Results.BadRequest(new { error = "invalid body" }); }
+    if (body == null) return Results.BadRequest(new { error = "body required" });
+
+    var newToken = host.Platform == PlatformKind.Proxmox && !string.IsNullOrWhiteSpace(body.Token) ? body.Token!.Trim() : null;
+    var hvCredsProvided = host.Platform == PlatformKind.HyperV && !string.IsNullOrWhiteSpace(body.Username);
+
+    if (newToken != null && !System.Text.RegularExpressions.Regex.IsMatch(newToken, @"^[^@\s]+@[^!\s]+![^=\s]+=\S+$"))
+        return Results.BadRequest(new { error = "API token must look like user@realm!tokenid=secret" });
+
+    s.UpdateHost(id, hh =>
+    {
+        if (body.DisplayName != null)
+            hh.DisplayName = string.IsNullOrWhiteSpace(body.DisplayName) ? null : body.DisplayName.Trim();
+        if (body.SkipTlsVerification.HasValue)
+            hh.SkipTlsVerification = body.SkipTlsVerification.Value;
+        if (body.UseGlobalCreds.HasValue && host.Platform == PlatformKind.HyperV)
+            hh.UseGlobalCreds = body.UseGlobalCreds.Value;
+        if (newToken != null)
+        {
+            hh.PerHostCreds?.Dispose();
+            hh.PerHostCreds = new Credentials("", newToken);
+            hh.UseGlobalCreds = false;
+        }
+        else if (hvCredsProvided)
+        {
+            hh.PerHostCreds?.Dispose();
+            hh.PerHostCreds = new Credentials(body.Username!.Trim(), body.Password ?? "");
+            hh.UseGlobalCreds = false;
+        }
+    });
+
+    var credsChanged = newToken != null || hvCredsProvided;
+    var updated = s.GetHost(id)!;
+
+    if (cfg.Persist)
+    {
+        using var scope  = scopeFactory.CreateScope();
+        var invStore    = scope.ServiceProvider.GetRequiredService<IInventoryStore>();
+        var secretStore = scope.ServiceProvider.GetRequiredService<ISecretStore>();
+        await invStore.UpsertRegistrationAsync(updated);
+        if (credsChanged && updated.PerHostCreds != null)
+            await secretStore.SetAsync($"host_cred:{id}",
+                JsonSerializer.Serialize(new { username = updated.PerHostCreds.Username, password = updated.PerHostCreds.GetPassword() }));
+    }
+
+    h.Broadcast("hostUpdated", updated);
+
+    // Re-verify connectivity when creds or TLS handling changed, so the new status shows immediately.
+    if (credsChanged || body.SkipTlsVerification.HasValue)
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                s.UpdateHost(id, hh => hh.Connecting = true);
+                var conn = s.GetHost(id);
+                if (conn != null) h.Broadcast("hostUpdated", conn);
+
+                var target = s.GetHost(id);
+                if (target != null)
+                {
+                    var (ok, err) = await registry.For(target.Platform).QuickConnectAsync(target);
+                    s.UpdateHost(id, hh => { hh.AddError = ok ? "" : err; hh.Connecting = false; });
+                }
+                var done = s.GetHost(id);
+                if (done != null) h.Broadcast("hostUpdated", done);
+            }
+            catch (Exception ex)
+            {
+                logWriter.LogError($"Edit re-check failed for host {id}", ex);
+                s.UpdateHost(id, hh => { hh.Connecting = false; hh.AddError = "Unexpected error during connect"; });
+                var failed = s.GetHost(id);
+                if (failed != null) h.Broadcast("hostUpdated", failed);
+            }
+        });
+    }
+
+    return Results.Ok(new { ok = true });
+});
+
 app.MapPost("/api/scan", async (HttpContext ctx, Store s, EventHub h, AppConfig cfg, ProviderRegistry registry, IServiceScopeFactory scopeFactory) =>
 {
     if (cfg.MockMode)
@@ -1050,6 +1140,9 @@ record ChangePasswordDto(string NewPassword, string? OldPassword = null);
 record CredentialsDto(string Username, string Password);
 record AddHostsDto(string Addresses, bool UseGlobalCreds = true, string? Username = null, string? Password = null,
     string Platform = "HyperV", string? Token = null, bool SkipTlsVerification = false);
+// Edit an existing host. All nullable → only provided fields change; blank secrets keep the current ones.
+record EditHostDto(string? DisplayName = null, string? Username = null, string? Password = null,
+    string? Token = null, bool? SkipTlsVerification = null, bool? UseGlobalCreds = null);
 record ScanBody(string? HostId);
 record StoredCred(string? Username, string? Password);
 
