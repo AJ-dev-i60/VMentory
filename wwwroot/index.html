@@ -433,7 +433,9 @@ textarea.finp{resize:vertical;min-height:80px}
       </div>
     </div>
     <div id="ah-pve" style="display:none">
-      <div class="fgrp"><label class="flbl">API Token</label><input type="text" id="ah-token" class="finp" placeholder="user@pam!tokenid=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" onkeydown="if(event.key==='Enter')submitAddHosts()"></div>
+      <div class="fgrp"><label class="flbl">API Token ID</label><input type="text" id="ah-token" class="finp" placeholder="root@pam!mytoken=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" onkeydown="if(event.key==='Enter')submitAddHosts()">
+        <div style="font-size:11px;color:var(--text3);margin-top:5px;line-height:1.55">Enter the <strong style="color:var(--text2)">full token ID</strong> — <span style="font-family:monospace;color:var(--text2)">user@realm!tokenid=secret</span> — <strong style="color:var(--text2)">not</strong> just the secret UUID. In Proxmox: <span style="color:var(--text2)">Datacenter → Permissions → API Tokens</span>; combine the Token ID shown there with the secret value from when it was created.</div>
+      </div>
       <label class="fcheck" style="margin-top:8px">
         <input type="checkbox" id="ah-skip-tls">
         <span style="font-size:13px">Skip TLS verification <span style="color:var(--text3)">(self-signed cert)</span></span>
@@ -811,7 +813,7 @@ function vOverview(){
             <div class="hname" title="${x(h.fqdn||h.address)}" ${dim?'style="color:var(--text2)"':''}>${x(hostLabel(h))}<span class="plat-badge ${h.platform==='Proxmox'?'pve':'hv'}">${h.platform==='Proxmox'?'PVE':'HV'}</span></div>
             <div class="hsub">${subLine(h)}</div>
           </div>
-          <div class="reach-icons">${ri('P',r.icmp,'Ping')}${ri('T',r.winRm,h.platform==='Proxmox'?'API :8006':'TCP 5985')}${ai(r.auth)}</div>
+          <div class="reach-icons">${ri('P',r.icmp,'Ping',true)}${ri('T',r.winRm,h.platform==='Proxmox'?'API :8006':'TCP 5985')}${ai(r.auth)}</div>
         </div>
         <div class="metric" ${dim?'style="color:var(--text3)"':''}>${scanned?h.totalCores:'—'}</div>
         <div class="metric" ${dim?'style="color:var(--text3)"':''}>${scanned?fmtGB(h.totalRamGb):'—'}</div>
@@ -1007,7 +1009,7 @@ function vHost(hostId){
       <div class="page-sub">${x([osShort(h.osCaption),h.address].filter(Boolean).join(' · '))}</div>
     </div>
     <div style="flex:1"></div>
-    <div class="reach-icons">${ri('P',r.icmp,'Ping')}${ri('T',r.winRm,'TCP 5985')}${ai(r.auth)}</div>
+    <div class="reach-icons">${ri('P',r.icmp,'Ping',true)}${ri('T',r.winRm,h.platform==='Proxmox'?'API :8006':'TCP 5985')}${ai(r.auth)}</div>
     <div style="display:flex;gap:6px">
       <button class="btn btn-secondary btn-sm" onclick="reScan('${h.id}')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>Re-scan</button>
       <button class="btn btn-ghost btn-icon btn-sm" title="Remove host" onclick="promptRemove('${h.id}','${x(hostLabel(h))}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
@@ -1239,6 +1241,16 @@ async function submitAddHosts(){
   if(!addr){toast('Enter at least one address','error');return;}
   const platform=document.querySelector('input[name="ah-platform"]:checked').value;
   const isPve=platform==='Proxmox';
+  let pveToken='';
+  if(isPve){
+    pveToken=document.getElementById('ah-token').value.trim();
+    // PVE token IDs look like user@realm!tokenid=secret. The common mistake is pasting only the secret UUID.
+    if(!/^[^@\s]+@[^!\s]+![^=\s]+=\S+$/.test(pveToken)){
+      const looksLikeSecret=/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(pveToken);
+      toast(looksLikeSecret?'That looks like only the secret UUID — enter the full token ID: user@realm!tokenid=secret':'API token must look like user@realm!tokenid=secret','error');
+      return;
+    }
+  }
   const useG=!isPve&&document.getElementById('ah-global').checked;
   const existing=new Set(st.hosts.map(h=>(h.address||'').toLowerCase().trim()));
   const all=addr.split(/[\n,;]+/).map(a=>a.trim()).filter(Boolean);
@@ -1248,7 +1260,7 @@ async function submitAddHosts(){
   closeModal('m-add');toast('Adding host(s)…','info');
   try{
     const body={addresses:newOnes.join('\n'),platform,useGlobalCreds:useG};
-    if(isPve){body.token=document.getElementById('ah-token').value.trim();body.skipTlsVerification=document.getElementById('ah-skip-tls').checked;}
+    if(isPve){body.token=pveToken;body.skipTlsVerification=document.getElementById('ah-skip-tls').checked;}
     else if(!useG){body.username=document.getElementById('ah-user').value;body.password=document.getElementById('ah-pass').value;}
     const r=await api('POST','/api/hosts',body);
     toast(skipped?`Added ${r.added} host(s) — ${skipped} already existed`:`Added ${r.added} host(s)`,'success');
@@ -1313,7 +1325,9 @@ function closeDrop(){document.getElementById('drop-menu').style.display='none';}
 document.addEventListener('click',e=>{if(!e.target.closest('#btn-export')&&!e.target.closest('#drop-menu'))closeDrop();});
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-function ri(l,ok,label){const c=ok?'ok':'fail';return`<div class="ricon ${c}" title="${label}: ${ok?'OK':'Fail'}"><span>${l}</span><div class="tip">${label}: ${ok?'Reachable':'Not reachable'}</div></div>`;}
+// soft=true → a failed check is informational (grey), not an error (red). Used for ICMP ping,
+// which is commonly firewall-blocked even when the management plane is fully reachable.
+function ri(l,ok,label,soft){const c=ok?'ok':(soft?'unk':'fail');const tip=ok?'Reachable':(soft?'No reply (commonly blocked — informational)':'Not reachable');return`<div class="ricon ${c}" title="${label}: ${ok?'OK':(soft?'no reply':'Fail')}"><span>${l}</span><div class="tip">${label}: ${tip}</div></div>`;}
 function ai(auth){const map={Ok:['ok','Auth OK'],Failed:['fail','Auth Failed'],Unknown:['unk','Auth Unknown']};const[c,l]=map[auth]||map.Unknown;return`<div class="ricon ${c}" title="${l}"><span>W</span><div class="tip">${l}</div></div>`;}
 function osDisplay(caption){
   if(!caption)return'<span style="color:var(--text3)">Unknown OS</span>';
@@ -1322,7 +1336,9 @@ function osDisplay(caption){
 function hostHealth(h){
   const r=h.reachability||{};
   if(h.connecting)return'unk';
-  if(r.icmp===false||r.winRm===false||r.auth==='Failed'||h.scanState==='Error')return'bad';
+  // Reachability = management port + auth, NOT ICMP. Many hosts (incl. most PVE nodes) block ping
+  // at the firewall while the management plane works fine, so ICMP is informational only (P badge).
+  if(r.winRm===false||r.auth==='Failed'||h.scanState==='Error')return'bad';
   if(h.scanState==='Done'){
     const vCpu=(h.vms||[]).reduce((s,v)=>s+v.vCpuCount,0);
     const upMs=h.lastBoot?Date.now()-new Date(h.lastBoot).getTime():0;
@@ -1333,8 +1349,7 @@ function hostHealth(h){
 function healthTip(h){
   const r=h.reachability||{};
   if(h.connecting)return'Connecting…';
-  if(r.icmp===false)return'Host unreachable (ping failed)';
-  if(r.winRm===false)return h.platform==='Proxmox'?'PVE API port (8006) closed':'TCP 5985 closed';
+  if(r.winRm===false)return r.icmp===false?'Host unreachable':(h.platform==='Proxmox'?'PVE API port (8006) closed':'TCP 5985 closed');
   if(r.auth==='Failed')return h.platform==='Proxmox'?'API token rejected':'WinRM auth failed';
   if(h.scanState==='Error')return'Last scan failed';
   const hlt=hostHealth(h);
@@ -1392,8 +1407,7 @@ function hwShort(h){
 function subLine(h){
   const r=h.reachability||{};
   if(h.connecting)return`<span style="color:var(--text3)">Connecting…</span>`;
-  if(r.icmp===false)return`<span style="color:var(--red)">Unreachable</span>`;
-  if(r.icmp&&r.winRm===false)return`<span style="color:var(--red)">TCP 5985 closed</span> · ping ok`;
+  if(r.winRm===false)return r.icmp===false?`<span style="color:var(--red)">Unreachable</span>`:`<span style="color:var(--red)">${h.platform==='Proxmox'?'API :8006 closed':'TCP 5985 closed'}</span> · ping ok`;
   if(r.auth==='Failed')return`<span style="color:var(--red)">Auth failed</span>`;
   return[osShort(h.osCaption),h.address].filter(Boolean).map(p=>x(p)).join(' · ');
 }
