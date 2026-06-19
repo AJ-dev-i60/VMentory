@@ -620,7 +620,8 @@ async function afterLogin(me){
   setupSSE();
   readHash();
   if(st.view==='overview')renderView(st.view);
-  if(!st.credSet&&!st.mock) document.getElementById('creds-ov').style.display='flex';
+  // Global WinRM-creds wall intentionally NOT auto-shown on login (pending ENG-0012 credential
+  // rework). HV hosts can still use per-host creds via the add-host modal; Proxmox uses API tokens.
   setInterval(loadState,5000);
 }
 async function logout(){
