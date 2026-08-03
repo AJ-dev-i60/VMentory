@@ -1,0 +1,8 @@
+# Normalize line endings on commit. The 2026-07-30 home-restore rewrote the whole
+# working tree LF -> CRLF, producing a 10k-line no-op diff across 72 files; this
+# stops that class of churn from ever reaching a commit again.
+* text=auto
+
+# Keep the Linux-side shell/container files LF regardless of checkout platform.
+*.sh    text eol=lf
+Dockerfile text eol=lf
