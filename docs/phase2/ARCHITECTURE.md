@@ -1,14 +1,23 @@
 # VMentory Phase 2 — Target Architecture
 
-> Status: **draft** · Owner: codebase side · Last decisions locked: 2026-06-16 (ENG-0001..0010;
+> Status: **draft** · Owner: codebase side · Last decisions locked: 2026-08-03 (ENG-0013 +
+> ENG-0007 amendment — monitoring-first, both platforms). Prior: 2026-06-16 (ENG-0001..0010;
 > foundation re-baselined and approved — ENG-0009/0010, amendments to 0001/0003/0004/0005)
 >
 > Phase 1 = single-exe, Windows-only, read-only, ephemeral Hyper-V inventory.
 > Phase 2 = a **hosted, web-first, container-based, single-operator, multi-platform (Hyper-V +
 > Proxmox) platform** (ENG-0010), delivering **four product pillars on one shared foundation**
-> (ENG-0006), **weighted and sequenced toward a Proxmox-first North Star** (ENG-0007). **Proxmox is
-> driven by its native REST API + a constrained SSH key, with no node agent (ENG-0009);** an on-device
-> agent runs only on the retiring **Hyper-V** hosts as the migration source.
+> (ENG-0006), **weighted and sequenced toward a Proxmox-first North Star** (ENG-0007).
+>
+> **Primary focus as of 2026-08-03: a monitoring tool for Hyper-V *and* Proxmox hosts** (ENG-0007
+> amendment). Observe is **the product**, not the foundation beneath the other pillars, and it is taken
+> to depth on **both** platforms before management, Deploy or Migrate get further effort. Scope is
+> bounded to **health + inventory — no time-series, trend charts or alerting.**
+>
+> **Neither platform runs an agent for monitoring.** Proxmox is driven by its **native REST API + a
+> constrained SSH key** (ENG-0009); Hyper-V is driven by **SSH + PowerShell executed on the host**
+> (ENG-0013), through **one shared `ISshExecutor` seam**. The on-device agent survives **only** as the
+> HV **migration** source — and migration is the last-weighted pillar.
 
 This document is the spine. The documentation agent expands the per-component specs
 under `docs/phase2/specs/`; the UI design agent works the visual side under `design/`. The
@@ -161,7 +170,7 @@ item — supersede it through the engineering protocol first.
 
 | # | Decision | Choice | Source |
 |---|---|---|---|
-| 1 | How the hosted tool reaches **Hyper-V** | **Agent installed on the Windows host**, reimplemented **natively in .NET** (no winrun.py / Python in the product). Transport = **gRPC over HTTP/2 + mTLS**. The agent drives the HV migration source from day one — there is **no winrun.py fallback**. **Scope (amended 2026-06-16, ENG-0009):** this agent is for **Hyper-V only**, and is **demoted off the 2.0 critical path** — sequenced with the migration slice, not built first. | ENG-0001, ENG-0004, ENG-0009 |
+| 1 | How the hosted tool reaches **Hyper-V** | **Split by purpose (amended 2026-08-03, ENG-0013).** **Monitoring** (inventory + health) goes over **SSH with PowerShell executed on the host** — in-box OpenSSH Server capability + an authorized VMentory key, through the **shared `ISshExecutor`** (decision #13); **no agent**. **Migration** still uses the **agent installed on the Windows host**, natively in .NET (no winrun.py / Python in the product), transport **gRPC over HTTP/2 + mTLS** — there is **no winrun.py fallback**. The agent is **Hyper-V-only** and **deferred to the migration slice** (2026-06-16, ENG-0009); as of ENG-0013 it is **off the monitoring path entirely** and justified solely by guest control + the migration step graph. | ENG-0001, ENG-0004, ENG-0009, **ENG-0013** |
 | 2 | Secret model | **`ISecretStore` provider abstraction** + v1 **app-native envelope encryption** (AES-256-GCM in SQLite, DEK wrapped by a **runtime-injected KEK**); secrets **never plaintext at rest**. Binding principle: **prefer scoped keys/tokens over passwords**. Vault/OpenBao + Azure KV are optional providers later. | ENG-0002 |
 | 3 | Migration tool orchestration | **Orchestrate proven tools.** The validated path is **`qm importdisk` on the PVE node** (reads VHDX off a CIFS mount, converts VHDX→raw) + targeted guest fixes. **virt-v2v is OPTIONAL** (Windows virtio injection), **not the baseline**. | ENG-0001, ENG-0006 |
 | 4 | State model | **Hybrid** — registry/jobs/history persisted (SQLite/EF Core); secrets via `ISecretStore` (decision #2). | ENG-0002 |
@@ -169,10 +178,11 @@ item — supersede it through the engineering protocol first.
 | 6 | Agent runtime | **NativeAOT single binary**, Windows Service / systemd unit; **constrained verb executor** (fixed versioned verb set, never arbitrary PowerShell/RCE); **gMSA-preferred** identity (local-account fallback); **self-update over its own mTLS channel** with watchdog rollback. | ENG-0004 |
 | 7 | mTLS PKI | **Private CA inside Core** (external-CA seam later); **root + intermediate**; **short-lived agent certs + auto-renew** over the mTLS channel; revocation = stop-renew + a registry allow/deny list (**no CRL/OCSP**). CA key in `ISecretStore`. | ENG-0005 |
 | 8 | Product scope | **Four pillars on one shared foundation**; conceptually **Observe → Migrate → Deploy → Backup**; **bidirectional migration end-state, HV→PVE first**; **backup buy-vs-build deferred**. | ENG-0006 |
-| 9 | Product strategy & release scope | **Proxmox-first North Star** (retire Hyper-V → Proxmox). **Incremental release cadence** — each milestone (2.0→2.4) is its own usable release; **v2.0 = planted Observe**. Pillars **weighted/sequenced by effort**: **Observe (plant) → Proxmox management/Deploy → HV→PVE migration**. **Hyper-V = light management** (start/stop/reconfigure), not source-only, not full parity → **the `IVirtualizationProvider` capability model must allow management verbs on the HV provider**. **PVE→HV reverse migration and Backup/Restore are out of release 1.** Refines/sequences ENG-0006, does not supersede it. | ENG-0007 |
+| 9 | Product strategy & release scope | **Proxmox-first North Star** (retire Hyper-V → Proxmox). **Incremental release cadence** — each milestone (2.0→2.4) is its own usable release; **v2.0 = planted Observe**. Pillars **weighted/sequenced by effort**: **Observe (plant) → Proxmox management/Deploy → HV→PVE migration**. **Hyper-V = light management** (start/stop/reconfigure), not source-only, not full parity → **the `IVirtualizationProvider` capability model must allow management verbs on the HV provider**. **PVE→HV reverse migration and Backup/Restore are out of release 1.** Refines/sequences ENG-0006, does not supersede it. **Amended 2026-08-03 — monitoring-first:** **Observe is the product, not the plant.** Weighting becomes **Observe (both platforms, to depth) → Proxmox management/Deploy → HV→PVE migration**; Proxmox write verbs are **demoted** behind the monitoring slices. **Hyper-V reaches *monitoring* parity** — "light, not parity" still governs management verbs only — while HV still declines. Monitoring is bounded to **health + inventory: no time-series, no trend charts, no alerting** (unraised, unbudgeted, would need its own ENG topic). | ENG-0007, **ENG-0013** |
 | 10 | How the hosted tool reaches **Proxmox** | **Native PVE REST API as the primary control plane** (orchestration, lifecycle, provisioning, stats/`rrddata`, native PVE↔PVE migration, UPID task progress) + a **constrained, forced-command SSH key** for the disk-import / conversion / on-node guest-edit residue (`qm importdisk`, `qemu-img`, optional `virt-v2v`, mount-and-edit guest fixes). **No agent on Proxmox nodes** — onboard = scoped API token + SSH key, both in `ISecretStore`, both revocable. This **demotes/scopes the agent foundation (ENG-0001/0003/0004/0005) to Hyper-V** and off the 2.0 critical path. | ENG-0009 |
 | 11 | Console authn/authz | **Fixed built-in roles** (Admin / VM-operator / Backup-operator / Viewer) over an **internal pillar×verb permission catalog** reusing `ProviderCapability` + a small console-permission set; **local accounts now** (hashed, KEK-wrapped), **OIDC seam later**; a **single audited authorization chokepoint** in Web/API **and** the operations engine that **must exist before any write verb**. Firm + early: login in the deployment slice, roles before the first write verbs. | ENG-0008 |
 | 12 | Core deployment & runtime | **Containerized Core** (single Linux image: app + SSH client, no `qemu`/`qm`). Bind **`0.0.0.0:{configurable port}`**; **Core-terminated HTTPS** (Kestrel, self-signed/provided cert) as the release-1 default, reverse-proxy a documented future seam. **KEK + TLS material injected at runtime**, nothing baked in. SQLite on a mounted volume. **Session-token/loopback bootstrap replaced by login + RBAC.** | ENG-0010 |
+| 13 | Remote command execution (**both platforms**) | **One `ISshExecutor` seam in `VMentory.Core`**, consumed by both providers: **Hyper-V** monitoring (PowerShell run on the host, JSON on stdout) and the **Proxmox** on-node residue (decision #10). Key-based auth only — **no Windows domain password at rest**, honouring decision #2's "prefer scoped keys/tokens over passwords." Built **once, for monitoring**, rather than arriving with the Proxmox write verbs. Consequence: `Scanner.BuildRemoteWrapper`/`Invoke-Command`, `Reachability.RunPowerShellAsync`, the local WinRM-service ensure and the `TrustedHosts` mutation are **deleted, not ported** — they exist only to make a *Windows* Core act as a WinRM client, a role the containerized Core no longer plays. ICMP (`ping.exe`) is dropped as genuinely optional: the non-root container has no raw sockets, and ENG-0011a already made ICMP informational-only. | **ENG-0013**, ENG-0009, ENG-0011a |
 
 These pin the rest of the design. If one changes, supersede it in `docs/engineering/` and revisit
 this file first.
@@ -197,28 +207,34 @@ this file first.
                          │   persistence       │ └──────────────┘│           │
                          │   (SQLite/Postgres) │                 │           │
                          └───────────┬─────────┴────────┬────────┼──────────┘
-              PRIMARY: REST(8006) + SSH(22) outbound    │        │
+        all outbound — one ISshExecutor seam (ENG-0013)  │        │
               ┌──────────────────────────┘              │        │
-              │  (Proxmox — no agent, ENG-0009)         │        │
-              ▼                                          ▼        ▼
-   ┌────────────────────────┐         gRPC/HTTP2 + mTLS  │  (HV migration slice only)
-   │ Proxmox VE node(s)     │         ┌─────────────────┘
-   │ API token (scoped)     │         ▼
-   │ + constrained SSH key  │   ┌──────────────────────────────┐
-   │ qm importdisk/qemu-img │   │ VMentory Agent (HV ONLY)      │
-   │ / (virt-v2v optional)  │   │ NativeAOT service on the      │
-   │ NATIVE PVE↔PVE migrate │   │ retiring Hyper-V host;gMSA/   │
-   └────────────────────────┘   │ local; constrained verb exec; │
-   (⌁ storage/repo placement     │ inventory→light-mgmt→         │
-    undecided — Open questions)  │ migration-source verbs        │
-                                 │ (demoted off 2.0 — ENG-0009)  │
-                                 └──────────────────────────────┘
+    REST(8006)+SSH(22)              SSH(22)+PowerShell  │        │  gRPC/HTTP2+mTLS
+    (Proxmox — no agent,            (Hyper-V — no agent,│        │
+     ENG-0009)                       ENG-0013)          │        │
+              ▼                          ▼               ▼
+   ┌────────────────────────┐  ┌────────────────────────┐  (deferred: migration only)
+   │ Proxmox VE node(s)     │  │ Hyper-V host(s)        │   ┌──────────────────────────┐
+   │ API token (scoped)     │  │ in-box OpenSSH Server  │   │ VMentory Agent           │
+   │ + constrained SSH key  │  │ + authorized VMentory  │   │ (HV, MIGRATION ONLY)     │
+   │ qm importdisk/qemu-img │  │   key — no agent       │   │ NativeAOT; gRPC/HTTP2 +  │
+   │ / (virt-v2v optional)  │  │ in-box PowerShell 5.1: │   │ mTLS; gMSA/local;        │
+   │ NATIVE PVE↔PVE migrate │  │   Get-VM / WMI → JSON  │   │ constrained verb exec;   │
+   └────────────────────────┘  │ MONITORING: inventory  │   │ guest control + the      │
+   (⌁ storage/repo placement   │   + health (ENG-0013)  │   │ migration step graph     │
+    undecided — Open questions)└────────────────────────┘   │ (ENG-0001/0003/0004)     │
+                                                            └──────────────────────────┘
 ```
+
+> **Both platforms are reached outbound over the same `ISshExecutor` seam (ENG-0013)** — PVE gets
+> REST(8006) as its primary control plane with SSH(22) for residue; Hyper-V gets SSH(22) with
+> PowerShell executed on the host. **Neither platform runs a VMentory agent for monitoring.**
 
 - **Core** is the only thing the user talks to (a hosted web console over HTTPS — ENG-0010), and the only thing that initiates connections out. It holds no platform-specific transport logic itself — it talks to *providers*.
 - **Proxmox is the primary, agent-less path (ENG-0009).** Core drives it **outbound** over the **native PVE REST API** (scoped token — orchestration, lifecycle, provisioning, stats/`rrddata`, **native PVE↔PVE migration**, UPID task progress) plus a **constrained, forced-command SSH key** for the residue the API can't reach (`qm importdisk`, `qemu-img`, optional `virt-v2v`, on-node mount-and-edit guest fixes). **Nothing is installed on the node** — onboarding is a token + a key, both in `ISecretStore` and both revocable. (An optional conversion-host can come later if we want conversion off the PVE node — still open.)
-- **Hyper-V is reached through a NativeAOT agent that runs *on* the host (ENG-0001/0003/0004), scoped to the migration source.** It relocates today's `Scanner.cs` / `Reachability.cs` logic — reimplemented **natively in .NET** — to where the Hyper-V module already works, eliminating Linux→WinRM auth pain, and replacing a stored Windows domain password with a scoped, revocable **mTLS client cert** (ENG-0001). The agent is a **constrained verb executor**, never a remote shell (ENG-0004). Its verb catalog spans **inventory, light management (start/stop/reconfigure), and migration-source** verbs (ENG-0007); it deliberately does **not** gain Deploy or Backup/Restore verbs — those are Proxmox-side, per "light, not parity."
-- **The agent + its private-CA mTLS PKI are demoted and Hyper-V-scoped (ENG-0009).** They are **not** the front-loaded 2.0 foundation — Proxmox needs neither. They are sequenced **with the HV→PVE migration slice** (ROADMAP foundation slice 6). Because there is still no winrun.py fallback, "the agent can drive guest control + the migration step graph" remains the **gate for 2.3**, but it is built then, not first. The dashboard TLS (ENG-0010) is a **separate trust domain** from this agent PKI (ENG-0005).
+- **Hyper-V *monitoring* is agent-less, over SSH (ENG-0013).** Core executes the inventory and health scripts **on the host** through the shared `ISshExecutor`, authenticating with a key and reading JSON off stdout. The Windows prerequisite is the **in-box OpenSSH Server capability** (`Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0`) plus the VMentory public key in `administrators_authorized_keys` — a capability toggle, not a third-party install, and the same class of prerequisite as enabling WinRM was. This resolves the Linux→WinRM auth pain that previously only the agent was expected to solve, and it delivers the same "**no stored Windows domain password**" property (decision #2) with a key instead of an mTLS client cert. **Note this replaces a load-bearing assumption:** the containerized Core (ENG-0010) *cannot* reach Hyper-V at all — `Reachability.cs` shells `powershell.exe`/`ping.exe` and `Scanner.cs` runs `Invoke-Command -ComputerName`, i.e. it assumes Core *is* the domain WinRM client. That is the root cause of the ENG-0011 trigger.
+- **The agent + its private-CA mTLS PKI are deferred and now justified by migration alone (ENG-0009, ENG-0013).** They were never the front-loaded 2.0 foundation — Proxmox needs neither (ENG-0009), and as of ENG-0013 Hyper-V *monitoring* doesn't either. What remains is guest control and the migration step graph: the agent is a **constrained verb executor**, never a remote shell (ENG-0004), and it deliberately does **not** gain Deploy or Backup/Restore verbs — those are Proxmox-side, per "light, not parity." Because there is still no winrun.py fallback, "the agent can drive guest control + the migration step graph" remains the **gate for 2.3**, built then, not first. Since migration is the last-weighted pillar under the 2026-08-03 amendment, **the private CA is off every near-term path**. The dashboard TLS (ENG-0010) is a **separate trust domain** from this agent PKI (ENG-0005).
+- **Hyper-V *management* verbs (start/stop/reconfigure) still ride the agent (ENG-0007).** ENG-0013 moved only inventory and health onto SSH; whether light management follows it there is deliberately left open until the write verbs are specced.
 - **The only inbound listeners** are the web UI port (always) and — *if/when* Hyper-V agents exist — the agent gRPC/mTLS endpoint (HV migration slice only). Proxmox nodes never connect in.
 
 ---

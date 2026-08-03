@@ -3,10 +3,53 @@
 > **Purpose:** pick up Phase 2 from a clean clone on any machine. Read this top-to-bottom and you
 > know where we are, what's decided, what's open, and what to do next.
 >
-> **Last updated:** 2026-06-19 (slice (4) hardening + first live Proxmox onboarding — see the handoff
-> note below) · **Phase:** 2.0 foundation — original build slices 1–3 + re-baselined slices (1)–(4) all
-> built & verified; deployed on Coolify; **next is re-baselined slice (5): Proxmox SSH executor +
-> management/Deploy write verbs** · **Branch:** `dev`
+> **Last updated:** 2026-08-03 (**monitoring-first re-focus** — see the handoff note below)
+> · **Phase:** 2.0 foundation — original build slices 1–3 + re-baselined slices (1)–(4) all built &
+> verified; deployed on Coolify; **next is the re-sequenced slice (5): named credentials (ENG-0012)**,
+> ahead of the health model and the Hyper-V SSH transport · **Branch:** `dev`
+>
+> ---
+>
+> ### 🔻 Handoff note — 2026-08-03 session · PRIMARY FOCUS CHANGED
+>
+> **VMentory's primary focus is now a monitoring tool for Hyper-V *and* Proxmox hosts.** Observe stops
+> being the *plant beneath the pillars* and becomes **the product**. Recorded as an **amendment to
+> ENG-0007** (not a supersession) plus a new **ENG-0013**. Nothing was built this session — this is a
+> re-baseline of direction, plus a repo hygiene fix.
+>
+> **The blocker this exposed — ENG-0013.** Hyper-V is **wholly unreachable from the containerized
+> Core**, and always has been since slice (1) containerized it: `Reachability.cs:169` shells
+> `powershell.exe`, `:20` shells `ping.exe`, `:52,80-82` ensure the *local* WinRM service and mutate
+> `TrustedHosts`, and `Scanner.cs:216` runs `Invoke-Command -ComputerName` — i.e. the Core is assumed
+> to *be* the domain WinRM client. On Linux only `Program.cs:517`'s bare TCP probe survives, so a
+> healthy HV host presents as "port open, every scan failed." **This is the root cause of the ENG-0011
+> trigger** ("every HV host unreachable with no *why*"), which until now had been read as a logging gap.
+>
+> **Decided (2026-08-03, owner):**
+> 1. **ENG-0013 — Hyper-V monitors over SSH + PowerShell executed on the host** (in-box OpenSSH Server
+>    capability + key auth; no Windows password at rest). A single **`ISshExecutor`** seam in
+>    `VMentory.Core` serves **both** platforms — HV commands *and* the ENG-0009 Proxmox residue — so the
+>    executor is built **once, for monitoring**, instead of arriving with the Proxmox write verbs.
+> 2. **ENG-0007 amended** — weighting becomes **Observe (both platforms, to depth) → Proxmox
+>    management/Deploy → HV→PVE migration**. HV reaches **monitoring parity only**; management stays
+>    light and HV still declines ("monitor it well *while* it declines").
+> 3. **Scope bound — health + inventory, no metrics.** No time-series store, trend charts, thresholds
+>    or alerting. Those are unraised and unbudgeted and would need their own ENG topic.
+> 4. **Slice (5) (Proxmox SSH executor + write verbs) is demoted**; see the re-sequenced order in §5.
+>
+> **→ documentation agent:** ARCHITECTURE.md still describes the Hyper-V transport as WinRM-via-Core
+> and the agent as HV's eventual transport — both now wrong; reconcile against ENG-0013. The
+> `specs/agent-protocol.md` scope shrinks to migration only.
+> **→ engineering agent:** ENG-0013's build-time sub-Qs are open — plain `ssh` exec vs pwsh-7 PSRP
+> (recommend plain; 5.1 is in-box), and the SSH user model, which should be resolved *together with*
+> ENG-0012's still-open root-vs-per-node question. **Nothing is proven against a live HV host yet** —
+> that is the slice acceptance gate.
+> **→ design agent:** the multi-platform dashboard pick (unified list vs platform-grouped) is now on
+> the critical path, not a 2.1 nicety — it is where "monitoring, both platforms" becomes visible.
+>
+> **Repo hygiene (same session):** the 2026-07-30 home-restore had rewritten all 72 tracked files
+> LF→CRLF, showing as a 10,450-line no-op diff. Working tree reset and a **`.gitattributes`**
+> (`* text=auto`) added so it cannot recur.
 >
 > ---
 >
@@ -342,9 +385,43 @@ VMentory's migration engine — its step graph, safety rules, and scripts feed t
 
 > **(1) Containerized Core + hosted-service bootstrap (ENG-0010) ✅ → (2) Login + RBAC framework
 > (ENG-0008) ✅ → (3) `ISecretStore` (ENG-0002) ✅ → (4) Proxmox API provider (read / planted
-> Observe) ✅ → (5) Proxmox SSH executor + management/Deploy write verbs (capability-gated,
-> RBAC-enforced, audited) ← NEXT → (6) Hyper-V agent + private CA (scoped to HV,
-> ENG-0001/0003/0004/0005) → (7) HV→PVE migration.**
+> Observe) ✅ → (5) Named credentials (ENG-0012) ← NEXT → (6) Health model (ENG-0011a) →
+> (7) Hyper-V over SSH + shared `ISshExecutor` (ENG-0013) → (8) Multi-platform monitoring dashboard
+> → (9) Proxmox management/Deploy write verbs → (10) Hyper-V agent + private CA
+> (ENG-0001/0003/0004/0005) → HV→PVE migration.**
+
+**⚠ Re-sequenced 2026-08-03 (monitoring-first — ENG-0007 amendment + ENG-0013).** The old slice (5)
+"Proxmox SSH executor + management/Deploy write verbs" was split: its **SSH-executor half is pulled
+forward** into (7) and generalised to serve *both* platforms, and its **write verbs are demoted** to
+(9). Slices (5)–(8) are now what make VMentory a monitoring tool for Hyper-V *and* Proxmox.
+
+**Do next — slice (5): named credentials (ENG-0012).** Already **Decided** (2026-06-19) and unbuilt:
+flat `CredentialEntity` (TPH + JSON `Descriptor`) + typed `Host` slots
+(`ManagementCredentialId`/`TransportCredentialId`), global creds retired via a startup promotion task
+after KEK/`DekProvider`, Admin-only vault, CRUD returning metadata only. It was already sequenced ahead
+of the old slice (5) because that added an SSH key as a second per-host secret — **ENG-0013 doubles the
+argument**, since Hyper-V now grows one too. Both platforms are about to hold two secrets each; the
+untyped model must not be what carries them.
+
+**Then (6): the health model (ENG-0011a).** Decided 2026-06-19, unbuilt. Typed
+`HealthTier`/`FailureStage`/`HostFault`/`HostHealth` in `VMentory.Core`; `IVirtualizationProvider`
+returns a per-stage fault **list**; one evaluator unifies the add-host and poller paths; `health` JSON
+over `/api/state`+SSE replaces the `Reachability` booleans and `AddError`/`ScanError`/`ErrorDetail`.
+This is the backbone of monitoring on both platforms and it unblocks the dashboard.
+
+**Then (7): Hyper-V over SSH (ENG-0013).** The transport that makes "both platforms" true at all —
+Hyper-V is currently **wholly unreachable from the container** (see the handoff note). One
+`ISshExecutor` seam in Core, consumed by both providers. `BuildRemoteWrapper`/`Invoke-Command`
+(`Scanner.cs:216`), `RunPowerShellAsync` (`Reachability.cs:158-200`), the local WinRM ensure (`:52`)
+and the `TrustedHosts` mutation (`:80-82`) are **deleted, not ported**. ICMP (`ping.exe`, `:20`) is
+dropped as genuinely optional — the non-root container has no raw sockets, and ENG-0011a already made
+it informational-only. **Acceptance gate: an end-to-end read from a real Hyper-V host**, the way vega14
+proved the Proxmox path — nothing here is verified against live hardware yet.
+
+**Then (8): the multi-platform monitoring dashboard.** The design pick that has been sitting in
+`design/STATUS.md` since 2026-06-15 (unified list **A** vs platform-grouped **B**) is now on the
+critical path — it is where "monitoring, both platforms" becomes visible — rendered against
+ENG-0011a's six-tier language and fault drill-down.
 
 **Done — slice (1):** the desktop bootstrap in [`Program.cs`](../../Program.cs) was replaced by a hosted
 service — `0.0.0.0:{configurable port}` (env), Core-terminated HTTPS via Kestrel (`TlsSetup.cs`, cert
@@ -355,7 +432,7 @@ volume). Image built and deployed as a Coolify dev instance (2026-06-18, https:/
 (+ its UI quit button) remains — desktop affordance still pending retirement via the `design/` workflow;
 **`Updater.cs` re-scope** (GitHub-exe auto-update → container image tags) not yet done.
 
-**Do next — slice (5): Proxmox SSH executor + management/Deploy write verbs.** Slice (4) is done (commit `2907fd4`, 2026-06-18). Next is Proxmox management: the constrained SSH executor for on-node residue (ENG-0009) and the first write verbs (`start`, `stop`, `shutdown`, `snapshot`) via `ProxmoxProvider`, capability-gated and RBAC-enforced (these are the first actions that require the ENG-0008 authz chokepoint to gate a real write). Per ENG-0007: Proxmox is the full management target; HV light management rides the agent and arrives with slice (6).
+**~~Do next — slice (5): Proxmox SSH executor + management/Deploy write verbs.~~ Superseded 2026-08-03 — this slice was split; see the re-sequenced order above.** Slice (4) is done (commit `2907fd4`, 2026-06-18). The original plan was Proxmox management: the constrained SSH executor for on-node residue (ENG-0009) plus the first write verbs (`start`, `stop`, `shutdown`, `snapshot`) via `ProxmoxProvider`, capability-gated and RBAC-enforced (the first actions requiring the ENG-0008 authz chokepoint to gate a real write). Under the monitoring-first re-focus the **executor half moved forward to slice (7)** and was generalised to serve Hyper-V as well (ENG-0013); the **write verbs are now slice (9)**. The claim in the original text that "HV light management rides the agent" also no longer holds for *monitoring* — ENG-0013 removed the agent from that path entirely.
 
 **Slice (2) carry-overs:**
 - **Login UI (`wwwroot/index.html`):** a functional but unstyled interim login + change-password screen

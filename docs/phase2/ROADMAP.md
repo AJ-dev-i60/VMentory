@@ -16,6 +16,27 @@ waiting for the whole platform to land.
 transitional platform — kept operable by **light management** (start/stop/reconfigure), never brought
 to parity.
 
+> ### ⚠ Re-focused 2026-08-03 — monitoring-first, both platforms (ENG-0007 amendment + ENG-0013)
+>
+> **VMentory's primary focus is now a monitoring tool for Hyper-V *and* Proxmox hosts.** Observe stops
+> being *the plant beneath the pillars* and becomes **the product**, taken to depth on both platforms
+> before management, Deploy or Migrate get further effort. The practical ordering above becomes
+> **Observe (both platforms, to depth) → Proxmox management/Deploy → HV→PVE migration.**
+>
+> - **Hyper-V reaches monitoring parity — and only monitoring parity.** "Light management, not parity"
+>   still governs *management verbs*; it does not govern Observe, because a monitoring tool blind on one
+>   of its two platforms is not the product. Hyper-V still **declines** — the North Star is unchanged.
+> - **The blocker this exposes (ENG-0013):** Hyper-V is **wholly unreachable from the containerized
+>   Core** — `Reachability.cs:169` shells `powershell.exe`, `:20` shells `ping.exe`, and `Scanner.cs:216`
+>   assumes Core is the domain WinRM *client*. Only the bare TCP probe at `Program.cs:517` survives on
+>   Linux. This is the root cause of the ENG-0011 trigger. **Resolved by SSH + PowerShell on the host**,
+>   through **one shared `ISshExecutor`** that also serves the ENG-0009 Proxmox residue.
+> - **Slice 5 below (Proxmox SSH executor + write verbs) is demoted** behind the monitoring slices; its
+>   SSH-executor half is pulled *forward* and generalised to both platforms. See the re-sequenced order
+>   under **Approved foundation slice order**.
+> - **Scope bound:** health + inventory, **no metrics**. No time-series store, no trend charts, no
+>   thresholds or alerting — those remain unraised and unbudgeted, and would need their own ENG topic.
+
 **Foundation sequencing was re-baselined and approved 2026-06-16 (ENG-0009/0010, amended
 0001/0003/0004/0005).** The product pillars and their ENG-0006/0007 weighting are **unchanged**; what
 changed is the **order of the foundation work beneath them**. Two corrections drive it:
@@ -36,9 +57,32 @@ changed is the **order of the foundation work beneath them**. Two corrections dr
 3. **`ISecretStore`** (ENG-0002) — app-native envelope encryption, runtime-injected KEK; lets creds/
    tokens persist.
 4. **Proxmox API provider** (read / planted Observe) — PVE REST client, Proxmox hosts/VMs in the dashboard.
-5. **Proxmox SSH executor + management/Deploy write verbs** — capability-gated, RBAC-enforced, audited.
+5. ~~**Proxmox SSH executor + management/Deploy write verbs**~~ — **demoted 2026-08-03** behind the
+   monitoring slices (ENG-0007 amendment). Its SSH-executor half is pulled forward into slice 7 below
+   and generalised to both platforms; the write verbs re-enter as slice 9.
 6. **Hyper-V agent + private CA** (ENG-0001/0003/0004/0005, scoped to HV) — the demoted agent foundation.
 7. **HV→PVE migration** (ENG-0001/0006).
+
+**Re-sequenced from here (2026-08-03, monitoring-first — ENG-0007 amendment + ENG-0013):**
+
+5. **Named credentials** (ENG-0012) — `CredentialEntity` + typed `Host` slots, global creds retired.
+   **Strictly first:** slice 7 gives Hyper-V an SSH key, so both platforms are about to grow a second
+   per-host secret; the untyped model must not be the thing carrying them.
+6. **Health model** (ENG-0011a) — typed `HealthTier`/`FailureStage`/`HostFault`/`HostHealth` in
+   `VMentory.Core`, `IVirtualizationProvider` returning a per-stage fault **list**, one evaluator
+   unifying add-host + poller, `health` JSON over `/api/state`+SSE replacing the `Reachability`
+   booleans. This is the backbone of monitoring on both platforms.
+7. **Hyper-V over SSH + shared `ISshExecutor`** (ENG-0013) — one executor seam in Core serving HV
+   inventory/health *and* the Proxmox on-node residue. `BuildRemoteWrapper`/`Invoke-Command`,
+   `RunPowerShellAsync`, the local WinRM ensure and `TrustedHosts` are deleted, not ported.
+   **Acceptance gate: an end-to-end read from a real Hyper-V host**, as vega14 proved the PVE path.
+8. **Multi-platform monitoring dashboard** — the pending design pick (unified list vs platform-grouped,
+   `design/STATUS.md`) rendered against the six-tier health language + fault drill-down.
+9. **Proxmox management/Deploy write verbs** — the demoted half of the old slice 5; capability-gated,
+   RBAC-enforced, audited. First real writes through the ENG-0008 chokepoint.
+10. **Hyper-V agent + private CA**, then **HV→PVE migration** — unchanged in content, but now justified
+    **solely** by migration (ENG-0013 removed the agent from the monitoring path, as ENG-0009 did for
+    Proxmox).
 
 Slices 1–3 of the *original* build already landed (project split, provider abstraction, persistence —
 see §2.0 below); the re-baseline re-orders **what comes next**, starting at containerized Core.

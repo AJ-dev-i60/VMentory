@@ -148,3 +148,46 @@ ENG-0007 states which work is weighted first under contended effort and what is 
 > rename HyperInventory→VMentory.*, split projects, SQLite/EF persistence, define `IVirtualizationProvider`
 > + capability model. Refines and sequences ENG-0006; does not supersede it. The honest tension —
 > investing any effort into a platform being retired — is accepted and bounded by "light, not parity."
+
+## Amendment — 2026-08-03: monitoring-first, both platforms (via ENG-0013)
+
+> Amended 2026-08-03 (owner). VMentory's **primary focus is now a monitoring tool for Hyper-V *and*
+> Proxmox hosts.** This **amends, and does not supersede**, the decision above.
+
+**What changes:**
+
+1. **Observe stops being "the plant" and becomes the product.** ENG-0006/0007 both framed Observe as
+   the *foundation beneath* the other pillars — persistent, multi-platform, and then moved past. It is
+   now the deliverable in its own right, taken to depth on **both** platforms before management,
+   Deploy or Migrate get further effort.
+2. **Effort weighting is re-ordered** from *Observe (plant) → Proxmox management/Deploy → HV→PVE
+   migration* to:
+   **Observe (both platforms, to depth) → Proxmox management/Deploy → HV→PVE migration.**
+   Concretely: **re-baselined slice (5) (Proxmox SSH executor + management/Deploy write verbs) is
+   demoted** behind the monitoring work. The first real write verbs are no longer next.
+3. **Hyper-V reaches *monitoring* parity — and only monitoring parity.** Decision item (2) above set HV
+   scope at "light management, not parity." That still holds **for management verbs**. It does **not**
+   hold for Observe: a monitoring tool that is blind on one of the two platforms it claims to cover is
+   not the product. HV monitoring is therefore brought to full parity with Proxmox, while HV
+   management stays light.
+4. **Hyper-V still declines.** The North Star (move the estate off HV onto Proxmox) is unchanged, and
+   the transition-end signal in *Open sub-questions* still applies. The operator's framing is "monitor
+   it well **while** it declines" — which is why ENG-0013 chose the cheapest adequate transport (SSH,
+   reusing the Proxmox seam) over the most capable one (pulling the agent + private CA forward).
+5. **Scope of "monitoring" is bounded — health and inventory, not metrics.** Explicitly **out**: any
+   time-series store, historical trend charts, thresholds and alerting. Today's model of point-in-time
+   inventory snapshots plus per-host health stands; the work is making it **correct, complete and
+   honest on both platforms**, per ENG-0011a's six tiers and fault taxonomy. A metrics/alerting
+   subsystem remains unraised and unbudgeted — if it is ever wanted it needs its own ENG topic, because
+   nothing in ARCHITECTURE or ROADMAP provides for retention today.
+
+**The honest tension, restated.** The original decision accepted spending *bounded* effort on a
+retiring platform. This amendment spends slightly more of it — HV monitoring parity — and the bound
+moves accordingly: **parity in Observe, light in management, nothing in Deploy or Backup.** ENG-0013
+keeps the cost low by making the Hyper-V transport a *second consumer* of a seam Proxmox needed anyway
+rather than a platform-specific build.
+
+**Consequence for the agent foundation.** ENG-0009 removed the agent from Proxmox; ENG-0013 removes it
+from Hyper-V *monitoring*. ENG-0001/0003/0004/0005 now justify themselves **solely** by the migration
+step-graph and guest control. Since migration is the last-weighted pillar, the private CA is off every
+near-term path.

@@ -18,7 +18,17 @@
 > releases (Core + login/RBAC + planted Observe + Proxmox management/Deploy) **do not touch this
 > agent.** The runtime/security *design* below is unchanged and still correct — only its scope and
 > sequencing are corrected (ENG-0001/0003/0004/0005 amendments, all Decided via ENG-0009).
-
+>
+> **⚠⚠ Scope narrowed again (ENG-0013, 2026-08-03 — read this too):** the agent is **no longer the
+> Hyper-V *monitoring* transport either.** Under the monitoring-first re-focus (ENG-0007 amendment),
+> Hyper-V inventory + health are read over **SSH with PowerShell executed on the host**, through the
+> shared **`ISshExecutor`** seam that also serves the Proxmox residue — **no agent, no PKI**. What
+> remains here is **guest control and the migration step graph**, i.e. the 2.3 gate. Since migration is
+> now the **last-weighted** pillar, this spec and its private CA are **off every near-term path**; the
+> next four build slices (named credentials → health model → HV-over-SSH → monitoring dashboard) do not
+> touch any of it. The verb catalog's **inventory** verbs are effectively **superseded by ENG-0013**;
+> whether *light management* (start/stop/reconfigure) also moves to SSH is deliberately left open until
+> the write verbs are specced. The runtime/security design below remains correct for what's left.
 The Core runs in a Linux container; Hyper-V management is a Windows/PowerShell/WMI world. Rather
 than bridge that gap with Linux→WinRM (TrustedHosts, Negotiate/Kerberos from non-domain Linux,
 CredSSP for the second hop — all the pain Phase 1 already wrestles with locally:

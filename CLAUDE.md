@@ -1,20 +1,34 @@
 # VMentory
 
-> **Phase 2 foundation complete (re-baselined slices 1–3 all built and deployed). Foundation
-> re-baselined and approved 2026-06-16.** This document still describes the shipping Phase-1 app
-> (below); Phase 2 turns VMentory into a **container-based, single-operator, multi-platform (Hyper-V +
-> Proxmox) platform**, delivering **four pillars on one shared foundation** —
-> **Observe → Migrate → Deploy → Backup** (ENG-0006, Proxmox-first per ENG-0007). The foundation is a
-> **hosted, web-first container** (ENG-0010): Core binds `0.0.0.0`, terminates HTTPS itself, ships
-> **login + RBAC** (ENG-0008), `ISecretStore` (ENG-0002), persistence, and a general operations engine.
-> **The end user installs nothing locally beyond the container** — the only two installs are the **Core
-> container** and a **Hyper-V agent on the retiring HV hosts**. **Proxmox is driven by its native REST
-> API + a constrained SSH key, with NO node agent (ENG-0009);** the on-device agent + private-CA mTLS
-> (ENG-0001/0004/0005) is **scoped to the Hyper-V migration source and demoted off the 2.0 critical
-> path** to the migration slice. **Already built:** containerized Core + hosted bootstrap (re-baselined slice (1)), login + RBAC with
-> cookie auth + `RbacCatalog` (slice (2)), `ISecretStore` AES-256-GCM (slice (3)), and EF Core/SQLite
-> persistence (original slice 3) — all deployed at https://vmentorydev.edgestudios.co.za.
-> **Next: Proxmox API read provider (slice (4)).** Start at
+> **🎯 PRIMARY FOCUS (re-focused 2026-08-03): VMentory is a monitoring tool for Hyper-V *and* Proxmox
+> hosts.** Observe is **the product**, not the foundation beneath the other pillars — taken to depth on
+> **both** platforms before management, Deploy or Migrate get further effort (ENG-0007 amendment).
+> Scope is bounded: **health + inventory, no time-series, no trend charts, no alerting.**
+>
+> **⚠ The blocker this rests on (ENG-0013): Hyper-V is *wholly unreachable* from the containerized
+> Core** — `Reachability.cs:169` shells `powershell.exe`, `:20` shells `ping.exe`, `:52,80-82` ensure
+> the *local* WinRM service + `TrustedHosts`, and `Scanner.cs:216` runs `Invoke-Command -ComputerName`
+> (Core is assumed to *be* the domain WinRM client). On Linux only `Program.cs:517`'s TCP probe
+> survives. **Resolved by SSH + PowerShell on the host**, via **one shared `ISshExecutor`** that also
+> serves the Proxmox residue. **Not yet proven against a live HV host — that is the slice gate.**
+>
+> **Next four slices:** (5) named credentials `ENG-0012` → (6) health model `ENG-0011a` →
+> (7) Hyper-V over SSH `ENG-0013` → (8) multi-platform monitoring dashboard. Proxmox **write verbs are
+> demoted** to (9); the **HV agent + private CA are off every near-term path**, justified now only by
+> migration (the last-weighted pillar).
+>
+> **Phase 2 foundation complete (re-baselined slices (1)–(4) all built; (1)–(3) deployed).** This
+> document still describes the shipping Phase-1 app (below); Phase 2 turns VMentory into a
+> **container-based, single-operator, multi-platform (Hyper-V + Proxmox) platform** — **four pillars on
+> one shared foundation** (ENG-0006, Proxmox-first per ENG-0007, **amended to monitoring-first**). The
+> foundation is a **hosted, web-first container** (ENG-0010): Core binds `0.0.0.0`, terminates HTTPS
+> itself, ships **login + RBAC** (ENG-0008), `ISecretStore` (ENG-0002), persistence, and a general
+> operations engine. **The end user installs nothing** — **neither platform runs an agent for
+> monitoring**: Proxmox via native REST API + constrained SSH key (ENG-0009), Hyper-V via SSH +
+> PowerShell (ENG-0013). **Already built:** containerized Core + hosted bootstrap (slice (1)), login +
+> RBAC with cookie auth + `RbacCatalog` (slice (2)), `ISecretStore` AES-256-GCM (slice (3)), Proxmox
+> API read provider (slice (4), live against vega14), and EF Core/SQLite persistence (original slice 3)
+> — deployed at https://vmentorydev.edgestudios.co.za. Start at
 > [`docs/phase2/PROGRESS.md`](docs/phase2/PROGRESS.md) → `ARCHITECTURE.md` / `ROADMAP.md`, and
 > `docs/engineering/REGISTER.md` for the decision register. Agents live in `.claude/agents/`.
 
@@ -205,3 +219,5 @@ All `/api/*` routes (except `/api/auth/*`) require the `vmentory_session` cookie
     (Unauthorized)**, **403 → `AUTH_INSUFFICIENT_PRIV` (Degraded)**.
 
 12. **Admin password recovery.** If the admin password is unknown (e.g. auto-generated and the container was replaced before the startup log was captured): (1) Set `VMENTORY_ADMIN_PASSWORD` in the Coolify environment and restart — this re-seeds the admin account only if no admin exists yet; if the account already exists, the env var is ignored. (2) To force a reset, compute a new PBKDF2-SHA256 hash (`100000:{base64_salt}:{base64_hash}`) and write it directly to the `PasswordHash` column in the DB. The hash format is identical between Python `hashlib.pbkdf2_hmac('sha256', pw.encode(), salt, 100000, dklen=32)` and .NET `Rfc2898DeriveBytes.Pbkdf2(string, ...)` — both use UTF-8 password encoding. Copy the updated DB back to the volume, run `chown 10001:10001` on it (see gotcha #11), then restart the container.
+
+14. **The Hyper-V provider does not work in the container — at all, and never has.** Not a config problem, not a credential problem, not a firewall problem. `Reachability.RunPowerShellAsync` (`Reachability.cs:169`) launches **`powershell.exe`**, the ICMP check (`:20`) launches **`ping.exe`**, `:52` ensures the **local** WinRM service and `:80-82` mutates **`WSMan:\localhost\Client\TrustedHosts`**, and both `Reachability.cs:113` and `Scanner.cs:216` run `Invoke-Command -ComputerName … -Authentication Negotiate` — the whole path assumes **the Core process is itself a domain-joined Windows WinRM client**, which was true of the Phase-1 single-exe and became false the moment slice (1) containerized it (ENG-0010). On Linux the only surviving check is the bare TCP probe at `Program.cs:517`, so **a perfectly healthy HV host presents as "port open, every scan failed."** This is the root cause of the ENG-0011 trigger, which was misread as a *logging* gap for six weeks. **Do not try to fix this by porting the PowerShell path** — `powershell.exe` is not coming to the image. **ENG-0013 replaces it** with SSH + PowerShell executed *on the host* via the shared `ISshExecutor`; `BuildRemoteWrapper`, `RunPowerShellAsync`, the WinRM ensure and the `TrustedHosts` mutation are all **deleted, not ported**. Until slice (7) lands, treat any HV host in the deployed dev instance as **expected-broken**, not as a bug to chase.
