@@ -17,6 +17,12 @@
 > demoted** to (9); the **HV agent + private CA are off every near-term path**, justified now only by
 > migration (the last-weighted pillar).
 >
+> **Slice (8) landed early and wider as ENG-0015 (2026-08-25): the Estate dashboard + remediation
+> tracker.** Physical machines joined to Dell OpenManage hardware health, hypervisor inventory and an
+> interactive action list (tick-off, dependencies, maintenance windows, VM blast radius). **VMentory is
+> now the source of truth for the iSixty action list** — the Outline tracker was imported once as a
+> seed. Hyper-V guests are still static lists until (7) lands.
+>
 > **Phase 2 foundation complete (re-baselined slices (1)–(4) all built; (1)–(3) deployed).** This
 > document still describes the shipping Phase-1 app (below); Phase 2 turns VMentory into a
 > **container-based, single-operator, multi-platform (Hyper-V + Proxmox) platform** — **four pillars on
@@ -84,7 +90,13 @@ _**Phase-2 layout (2.0 slice 1):** the solution `VMentory.sln` has two projects 
 | `EventHub.cs` | SSE broadcast via `System.Threading.Channels` |
 | `MockData.cs` | 5 fake hosts for `--mock` mode |
 | `Exporter.cs` | CSV zip + JSON export |
-| `wwwroot/index.html` | Entire SPA (CSS + JS inline; login + change-password walls, RBAC-aware UI) |
+| `wwwroot/index.html` | Entire SPA (CSS + JS inline; login + change-password walls, RBAC-aware UI). **ENG-0015:** default view is now the Estate dashboard; `vEstate`/`vMachine`/`vActions` + the action modal live under the `// ── Estate dashboard + action tracker` marker |
+| `VMentory.Core/Estate/EstateModels.cs` | ENG-0015 domain: `HardwareSnapshot`/`HardwareDevice`/`HardwareFault`, `StaticVm`, `ActionPriority`/`ActionClass`/`ActionStatus`, computed `ActionImpact` |
+| `VMentory.Core/Persistence/EstateEntities.cs` | ENG-0015 tables: `MachineEntity`, `ActionItemEntity` (+`Notes`, `BlockedBy`/`Blocks`), `ActionDependencyEntity`, `ActionNoteEntity`, `HardwareSnapshotEntity` (`AddEstate` migration) |
+| `OmeClient.cs` | Dell OpenManage Enterprise REST reader → `HardwareSnapshot` (devices, subsystem roll-ups, disks, PSUs, RAID controllers) |
+| `EstateCollector.cs` | `BackgroundService`: polls OME every `VMENTORY_OME_INTERVAL` s (default 300), persists snapshots, `ActionSuggester` raises/adopts/reopens actions per fault; `EstateState` = latest reading in memory |
+| `EstateSeed.cs` / `wwwroot/estate-seed.json` | First-run import of machines + the owner's action tracker into **empty tables only** (`VMENTORY_ESTATE_SEED=0` disables). The seed is a snapshot of the Outline tracker as of 2026-08-25 — after first run the DB is the truth, not this file |
+| `EstateEndpoints.cs` | `/api/estate`, `/api/estate/refresh`, `/api/actions` CRUD + `/status` `/notes` `/deps`; blast-radius computation; `ManageActions` gate |
 | `VMentory.Web.csproj` | SDK Web project (the exe); `AssemblyName=VMentory`; `Version` defaults to `1.0.0`; references `VMentory.Core` |
 | `VMentory.Core/VMentory.Core.csproj` | Classlib SDK project; domain model |
 | `VMentory.sln` | Solution tying `VMentory.Web` + `VMentory.Core` together |
@@ -123,6 +135,16 @@ defaults to the `VMENTORY_DB` directory → `/data/errors.log` in the container;
 fail-safe — a bad path degrades to no-op). `GET /health` is an unauthenticated liveness probe. Behind a
 reverse proxy (Coolify/Traefik), set `VMENTORY_HTTP_ONLY=1`.
 
+**SSO env contract (ENG-0014).** `VMENTORY_OIDC_ISSUER` + `VMENTORY_OIDC_CLIENT_ID` +
+`VMENTORY_OIDC_CLIENT_SECRET` — all three required, and OIDC stays completely unregistered unless all
+three are set. `VMENTORY_OIDC_NAME` (button label, default `SSO`), `VMENTORY_OIDC_ALLOWED_EMAILS`
+(comma-separated; **empty means allow any account the IdP authenticates** — set it),
+`VMENTORY_OIDC_ROLE` (role granted on *first* sign-in only, default `Admin`),
+`VMENTORY_PASSWORD_LOGIN=0` (closes local password sign-in; `1` or unset leaves it open).
+Callback path is `/api/auth/oidc/callback` — register that exact URL with the provider.
+⚠️ Enabling OIDC drops the session cookie from `SameSite=Strict` to `Lax`; see ENG-0014 for why the
+CSRF posture survives.
+
 ## Release workflow
 
 ```powershell
@@ -144,8 +166,11 @@ runs `dotnet restore` + `dotnet build VMentory.sln -c Release` on every push/PR 
 | Method | Path | Description |
 |---|---|---|
 | GET | `/health` | Unauthenticated liveness probe — `{status, version, build}` |
-| POST | `/api/auth/login` | Cookie-based login — `{username, password}` → sets `vmentory_session` cookie |
-| GET | `/api/auth/me` | Current user — `{username, role, mustChangePassword}` |
+| GET | `/api/auth/config` | Unauthenticated — which sign-in doors exist: `{oidcEnabled, oidcName, passwordLogin}` |
+| POST | `/api/auth/login` | Cookie-based login — `{username, password}` → sets `vmentory_session` cookie. **403 when `VMENTORY_PASSWORD_LOGIN=0`** |
+| GET | `/api/auth/oidc/start` | Begins the OIDC authorization-code flow (404 when SSO is unconfigured) |
+| GET | `/api/auth/oidc/callback` | Owned by the OIDC handler; not a hand-written route |
+| GET | `/api/auth/me` | Current user — `{username, role, mustChangePassword, authMode}` (`authMode` = `password` \| `oidc`) |
 | POST | `/api/auth/logout` | Clears the session cookie |
 | POST | `/api/auth/change-password` | Change password (forced on first login) |
 | GET | `/api/state` | Full snapshot: `hosts, totals, diff, credentialsSet, mockMode, build` |
@@ -158,8 +183,28 @@ runs `dotnet restore` + `dotnet build VMentory.sln -c Release` on every push/PR 
 | GET | `/api/export/json` | Download JSON export |
 | GET | `/api/export/csv` | Download CSV zip |
 | POST | `/api/quit` | Graceful shutdown (zeroes in-memory secrets; persisted data is kept) |
+| GET | `/api/estate` | **ENG-0015.** `{facts, hardware:{configured,takenAt,ok,error,devices}, summary, machines[]}` — each machine joins hardware (by service tag), a registered host (by address), guests (`vms` + `vmSource` = `live` \| `static` \| `none`) and open-action counts |
+| POST | `/api/estate/refresh` | Re-read the hardware monitor now (`ManageActions`). Coalesces with a running poll |
+| GET | `/api/actions` | Every action with `dependsOn`/`blocks`/`openBlockers`, `notes[]` and computed `impact` (blast radius) |
+| POST | `/api/actions` | Create (`ManageActions`). Optional `dependsOn[]` / `blocks[]` wire the new item on creation |
+| PATCH | `/api/actions/{id}` | Edit any field; `clearSchedule:true` removes the window (a `null` date means "unchanged") |
+| POST | `/api/actions/{id}/status` | `{status: Open\|InProgress\|Blocked\|Done\|Dismissed, note?}` — always appends a dated note; Done with open blockers is allowed and recorded |
+| POST | `/api/actions/{id}/notes` | Append a dated note |
+| POST / DELETE | `/api/actions/{id}/deps[/{blockerId}]` | Link / unlink a prerequisite. **400 on a cycle** |
+| DELETE | `/api/actions/{id}` | Admin only; prefer `Dismissed` — deletion loses the note trail |
 
 All `/api/*` routes (except `/api/auth/*`) require the `vmentory_session` cookie set by `/api/auth/login`.
+In `--mock` mode the two estate GETs answer empty and the estate write routes are not mapped (no DbContext).
+
+**Estate env contract (ENG-0015).** `VMENTORY_OME_URL` + `VMENTORY_OME_USER` + `VMENTORY_OME_PASSWORD`
+(all three, else the collector idles and the estate shows inventory + actions only), `VMENTORY_OME_SKIP_TLS=1`
+(OME's self-signed cert), `VMENTORY_OME_INTERVAL` (seconds, default 300, min 30), `VMENTORY_ESTATE_SEED=0`
+(skip the first-run import). **Proxmox host from config:** `VMENTORY_SEED_PVE_HOST` (address) +
+`VMENTORY_SEED_PVE_TOKEN` (bare `user@realm!tokenid=secret`), optional `VMENTORY_SEED_PVE_NAME`,
+`VMENTORY_SEED_PVE_SKIP_TLS` (default on). Runs on **every** start: registers the host if its address is
+unknown and re-arms the token if the secret store lost it — the way an SSO-only deployment (no scripted
+login) gets its first host. The collector also re-scans every Proxmox host each cycle (snapshot persisted
+at most hourly), so the guest lists behind the blast radius stay live without pressing Scan.
 
 > **Forthcoming (ENG-0012, planned — slice-5 era, NOT yet built).** Credentials become first-class
 > named entities. When that slice lands, this table changes: `POST /api/credentials` is **repurposed**
@@ -219,5 +264,18 @@ All `/api/*` routes (except `/api/auth/*`) require the `vmentory_session` cookie
     (Unauthorized)**, **403 → `AUTH_INSUFFICIENT_PRIV` (Degraded)**.
 
 12. **Admin password recovery.** If the admin password is unknown (e.g. auto-generated and the container was replaced before the startup log was captured): (1) Set `VMENTORY_ADMIN_PASSWORD` in the Coolify environment and restart — this re-seeds the admin account only if no admin exists yet; if the account already exists, the env var is ignored. (2) To force a reset, compute a new PBKDF2-SHA256 hash (`100000:{base64_salt}:{base64_hash}`) and write it directly to the `PasswordHash` column in the DB. The hash format is identical between Python `hashlib.pbkdf2_hmac('sha256', pw.encode(), salt, 100000, dklen=32)` and .NET `Rfc2898DeriveBytes.Pbkdf2(string, ...)` — both use UTF-8 password encoding. Copy the updated DB back to the volume, run `chown 10001:10001` on it (see gotcha #11), then restart the container.
+
+15. **OpenManage 3.10 quirks (ENG-0015), all verified live.** (a) A RAID controller's write-cache
+    battery warning shows on the controller's **`RollupStatus`** while its own `Status` stays 1000 —
+    read the roll-up or you will never see it. (b) `IDSDM`/`SDCard` subsystems read 2000 (Unknown)
+    on every box — an absent SD module, not a fault; `OmeClient` drops Unknown subsystems. (c) `$select`
+    returns 400 and `$filter` with a comparison on `SeverityType` returns 501 — filter client-side.
+    (d) Status codes arrive as numbers in some payloads and strings in others (`MapStatus` takes a
+    `JsonElement`). (e) Sessions expire silently → 401; the client re-authenticates once. Accounts lock
+    on repeated failures, so it never retries auth in a loop.
+
+16. **`dotnet ef` with a user-local SDK needs `DOTNET_ROOT`.** With the SDK installed via
+    `dotnet-install.sh` into `~/.dotnet`, the `dotnet-ef` global tool fails with *"Failed to resolve
+    libhostfxr.so"* until `DOTNET_ROOT=~/.dotnet` is exported. `dotnet build` works without it.
 
 14. **The Hyper-V provider does not work in the container — at all, and never has.** Not a config problem, not a credential problem, not a firewall problem. `Reachability.RunPowerShellAsync` (`Reachability.cs:169`) launches **`powershell.exe`**, the ICMP check (`:20`) launches **`ping.exe`**, `:52` ensures the **local** WinRM service and `:80-82` mutates **`WSMan:\localhost\Client\TrustedHosts`**, and both `Reachability.cs:113` and `Scanner.cs:216` run `Invoke-Command -ComputerName … -Authentication Negotiate` — the whole path assumes **the Core process is itself a domain-joined Windows WinRM client**, which was true of the Phase-1 single-exe and became false the moment slice (1) containerized it (ENG-0010). On Linux the only surviving check is the bare TCP probe at `Program.cs:517`, so **a perfectly healthy HV host presents as "port open, every scan failed."** This is the root cause of the ENG-0011 trigger, which was misread as a *logging* gap for six weeks. **Do not try to fix this by porting the PowerShell path** — `powershell.exe` is not coming to the image. **ENG-0013 replaces it** with SSH + PowerShell executed *on the host* via the shared `ISshExecutor`; `BuildRemoteWrapper`, `RunPowerShellAsync`, the WinRM ensure and the `TrustedHosts` mutation are all **deleted, not ported**. Until slice (7) lands, treat any HV host in the deployed dev instance as **expected-broken**, not as a bug to chase.

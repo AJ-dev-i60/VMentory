@@ -12,8 +12,9 @@ public static class RbacCatalog
     private static readonly Dictionary<AppRole, ConsolePermission> _console = new()
     {
         [AppRole.Admin]          = ConsolePermission.ViewAudit | ConsolePermission.ManageCredentials
-                                   | ConsolePermission.ManageEnrollment | ConsolePermission.ManageUsers,
-        [AppRole.VmOperator]     = ConsolePermission.ManageCredentials,
+                                   | ConsolePermission.ManageEnrollment | ConsolePermission.ManageUsers
+                                   | ConsolePermission.ManageActions,
+        [AppRole.VmOperator]     = ConsolePermission.ManageCredentials | ConsolePermission.ManageActions,
         [AppRole.BackupOperator] = ConsolePermission.None,
         [AppRole.Viewer]         = ConsolePermission.None,
     };

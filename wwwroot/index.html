@@ -308,6 +308,89 @@ textarea.finp{resize:vertical;min-height:80px}
 .auth-sub{font-size:12px;color:var(--text2);margin-bottom:20px;line-height:1.5}
 .auth-err{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.25);color:var(--red);border-radius:6px;padding:8px 12px;font-size:12px;margin-bottom:14px;display:none}
 .auth-foot{font-size:11px;color:var(--text3);margin-top:16px;text-align:center}
+/* ── Estate dashboard + action tracker (ENG-0015) ── */
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:20px}
+.tile{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:14px 16px;cursor:default}
+.tile.link{cursor:pointer}.tile.link:hover{border-color:var(--border-lt)}
+.tile-lbl{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:6px}
+.tile-val{font-size:24px;font-weight:700;line-height:1.1}
+.tile-sub{font-size:12px;color:var(--text2);margin-top:6px;line-height:1.45}
+.tile-row{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.sev{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600}
+.sev::before{content:'';width:8px;height:8px;border-radius:50%;background:currentColor}
+.sev.ok{color:var(--green)}.sev.warn{color:var(--yellow)}.sev.crit{color:var(--red)}.sev.unk{color:var(--text3)}
+.mgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;margin-bottom:24px}
+.mcard{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:14px 16px;cursor:pointer;display:flex;flex-direction:column;gap:8px;transition:border-color .12s}
+.mcard:hover{border-color:var(--border-lt)}
+.mcard.crit{border-left:3px solid var(--red)}.mcard.warn{border-left:3px solid var(--yellow)}.mcard.ok{border-left:3px solid var(--green)}.mcard.unk{border-left:3px solid var(--border-lt)}
+.mhead{display:flex;align-items:center;gap:8px}
+.mname{font-weight:700;font-size:15px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kind{font-size:10px;font-weight:700;letter-spacing:.05em;padding:2px 6px;border-radius:4px;background:var(--bg-hover);color:var(--text2);text-transform:uppercase}
+.kind.pve{background:rgba(230,120,23,.15);color:#e67817}.kind.hv{background:rgba(14,165,233,.15);color:#0ea5e9}
+.mrole{font-size:12px;color:var(--text2);line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.mfaults{display:flex;flex-direction:column;gap:3px}
+.fault{font-size:12px;line-height:1.4;padding-left:12px;position:relative;color:var(--text)}
+.fault::before{content:'';position:absolute;left:0;top:6px;width:6px;height:6px;border-radius:50%}
+.fault.crit::before{background:var(--red)}.fault.warn::before{background:var(--yellow)}.fault.info::before{background:var(--text3)}
+.mfoot{display:flex;gap:14px;font-size:12px;color:var(--text2);margin-top:auto;padding-top:6px;border-top:1px solid var(--border);align-items:center}
+.mfoot b{color:var(--text)}
+.src{font-size:10px;padding:1px 5px;border-radius:3px;background:var(--bg-hover);color:var(--text3);font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.src.live{color:var(--green)}
+.subs{display:flex;flex-wrap:wrap;gap:4px}
+.sub{font-size:11px;padding:2px 7px;border-radius:10px;border:1px solid var(--border);color:var(--text2)}
+.sub.warn{border-color:var(--yellow);color:var(--yellow)}.sub.crit{border-color:var(--red);color:var(--red)}.sub.ok{border-color:var(--border);color:var(--text3)}
+.pri{font-size:10px;font-weight:700;letter-spacing:.05em;padding:2px 7px;border-radius:4px;text-transform:uppercase}
+.pri.Critical{background:rgba(239,68,68,.15);color:var(--red)}.pri.High{background:rgba(245,158,11,.15);color:var(--yellow)}
+.pri.Medium{background:rgba(59,130,246,.15);color:var(--blue)}.pri.Low{background:var(--bg-hover);color:var(--text3)}
+.tag{font-size:11px;padding:2px 7px;border-radius:10px;border:1px solid var(--border);color:var(--text2);white-space:nowrap}
+.tag.warn{border-color:var(--yellow);color:var(--yellow)}.tag.blue{border-color:var(--blue);color:var(--blue)}.tag.red{border-color:var(--red);color:var(--red)}.tag.green{border-color:var(--green);color:var(--green)}
+.agroup{margin-bottom:22px}
+.agroup-ttl{display:flex;align-items:center;gap:10px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text2);margin:0 0 8px 2px}
+.agroup-ttl .n{font-weight:500;color:var(--text3);text-transform:none;letter-spacing:0}
+.arow{background:var(--bg-card);border:1px solid var(--border);border-radius:8px;margin-bottom:6px;overflow:hidden}
+.arow.done{opacity:.55}.arow.open{border-color:var(--border-lt)}
+.ahead{display:grid;grid-template-columns:28px 44px 1fr auto;gap:10px;align-items:center;padding:10px 12px;cursor:pointer}
+.ahead:hover{background:var(--bg-hover)}
+.ahead input[type=checkbox]{width:16px;height:16px;cursor:pointer;accent-color:var(--green)}
+.aref{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--text3)}
+.atitle{font-size:14px;font-weight:600;line-height:1.35}
+.atitle.done{text-decoration:line-through;font-weight:500}
+.abadges{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end;align-items:center}
+.abody{padding:4px 14px 14px 94px;border-top:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr;gap:14px 24px}
+@media(max-width:900px){.abody{grid-template-columns:1fr;padding-left:14px}}
+.ablk{font-size:13px;line-height:1.55;color:var(--text2)}
+.ablk h5{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin:10px 0 4px;font-weight:700}
+.ablk h5:first-child{margin-top:8px}
+.ablk p{margin:0}.ablk b{color:var(--text)}
+.ablk ul{margin:0;padding-left:16px}.ablk li{margin:2px 0}
+.ablk .full{grid-column:1/-1}
+.vmlist{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.vmchip{font-size:11px;padding:2px 7px;border-radius:4px;background:var(--bg-hover);color:var(--text2);border:1px solid transparent}
+.vmchip.running{border-color:rgba(34,197,94,.35)}.vmchip.off{opacity:.55}
+.note{font-size:12px;padding:6px 0;border-bottom:1px dashed var(--border)}
+.note:last-child{border-bottom:none}
+.note .nm{color:var(--text3);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;margin-right:6px}
+.inline-form{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;align-items:center}
+.inline-form .finp{flex:1;min-width:160px;padding:6px 9px;font-size:12px}
+.inline-form select.finp{flex:initial}
+.abtns{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;grid-column:1/-1}
+.dep{display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:3px 8px;border-radius:6px;background:var(--bg-hover);margin:2px 4px 2px 0}
+.dep .rm{cursor:pointer;color:var(--text3)}.dep .rm:hover{color:var(--red)}
+.dep.open{border:1px solid var(--yellow)}.dep.done{opacity:.6;text-decoration:line-through}
+.mchips{display:flex;flex-wrap:wrap;gap:6px}
+.mchip{font-size:12px;padding:4px 10px;border-radius:14px;border:1px solid var(--border);cursor:pointer;color:var(--text2);user-select:none}
+.mchip.on{border-color:var(--blue);color:var(--blue);background:rgba(59,130,246,.12)}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px 24px;font-size:13px;margin-bottom:18px}
+.facts .k{color:var(--text3);font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+.facts .v{color:var(--text)}
+.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);padding:8px 10px;border-bottom:1px solid var(--border);font-weight:600}
+.tbl td{padding:7px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+.tbl tr:last-child td{border-bottom:none}
+.crumb{font-size:12px;color:var(--text3);margin-bottom:6px}.crumb a{color:var(--blue);cursor:pointer;text-decoration:none}
+.warnbox{background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.4);border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:16px;line-height:1.5}
+.bring{background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:13px}
+.bring h5{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin:0 0 6px;font-weight:700}
 </style>
 </head>
 <body>
@@ -360,7 +443,15 @@ textarea.finp{resize:vertical;min-height:80px}
   <div class="body">
     <nav class="sidebar">
       <div class="sb-nav">
-        <div class="nav-item active" data-view="overview" onclick="switchView('overview')">
+        <div class="nav-item active" data-view="estate" onclick="switchView('estate')">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M5 21V7l7-4 7 4v14"/><path d="M9 21v-6h6v6"/><path d="M9 10h.01M15 10h.01M9 14h.01M15 14h.01"/></svg>
+          <span>Estate</span>
+        </div>
+        <div class="nav-item" data-view="actions" onclick="switchView('actions')">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          <span>Actions</span><span class="chip-count" id="nav-actions-count" style="margin-left:auto;display:none"></span>
+        </div>
+        <div class="nav-item" data-view="overview" onclick="switchView('overview')">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
           <span>Overview</span>
         </div>
@@ -507,6 +598,40 @@ textarea.finp{resize:vertical;min-height:80px}
   </div>
 </div>
 
+<!-- New / edit action modal (ENG-0015) -->
+<div class="moverlay" id="m-action">
+  <div class="modal" style="width:620px;max-height:90vh;overflow:auto">
+    <div class="modal-ttl" id="am-ttl">New action</div>
+    <div class="fgrp"><label class="flbl">Title</label><input type="text" id="am-title" class="finp" style="width:100%" placeholder="What needs doing, in one line"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+      <div class="fgrp"><label class="flbl">Priority</label><select id="am-priority" class="finp" style="width:100%"><option>Critical</option><option>High</option><option selected>Medium</option><option>Low</option></select></div>
+      <div class="fgrp"><label class="flbl">Class</label><select id="am-class" class="finp" style="width:100%"><option value="Remote">Remote fix</option><option value="OnSite">Site visit</option><option value="Purchase">Purchase, then on site</option></select></div>
+      <div class="fgrp"><label class="flbl">Group</label><input type="text" id="am-group" class="finp" style="width:100%" placeholder="e.g. Rhea evacuation" list="am-groups"><datalist id="am-groups"></datalist></div>
+    </div>
+    <div class="fgrp"><label class="flbl">Why</label><textarea id="am-why" class="finp" style="width:100%" rows="2" placeholder="The consequence of not doing it"></textarea></div>
+    <div class="fgrp"><label class="flbl">How</label><textarea id="am-how" class="finp" style="width:100%" rows="2" placeholder="The steps, and the traps"></textarea></div>
+    <div class="fgrp"><label class="flbl">Done when</label><input type="text" id="am-done" class="finp" style="width:100%" placeholder="The observable end state"></div>
+    <div class="fgrp"><label class="flbl">Machines affected</label><div class="mchips" id="am-machines"></div></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div class="fgrp"><label class="flbl">Other VMs affected <span style="color:var(--text3);font-weight:400">(comma-separated)</span></label><input type="text" id="am-vms" class="finp" style="width:100%" placeholder="Latte [121], DEV [139]"></div>
+      <div class="fgrp"><label class="flbl">Purchases needed <span style="color:var(--text3);font-weight:400">(one per line)</span></label><textarea id="am-purch" class="finp" style="width:100%" rows="2"></textarea></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end">
+      <div class="fgrp"><label class="flbl">Window start</label><input type="datetime-local" id="am-start" class="finp" style="width:100%"></div>
+      <div class="fgrp"><label class="flbl">Window end</label><input type="datetime-local" id="am-end" class="finp" style="width:100%"></div>
+      <label class="fcheck" style="margin-bottom:14px"><input type="checkbox" id="am-down"><span style="font-size:13px">Needs downtime</span></label>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px" id="am-links">
+      <div class="fgrp"><label class="flbl">Waits on</label><select id="am-dependson" class="finp" style="width:100%" multiple size="4"></select></div>
+      <div class="fgrp"><label class="flbl">Must be done before</label><select id="am-blocks" class="finp" style="width:100%" multiple size="4"></select></div>
+    </div>
+    <div class="macts">
+      <button class="btn btn-ghost" onclick="closeModal('m-action')">Cancel</button>
+      <button class="btn btn-primary" id="am-save" onclick="submitAction()">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- Login screen (shown when not authenticated) -->
 <div class="auth-wall" id="auth-login" style="display:none">
   <div class="auth-box">
@@ -517,15 +642,23 @@ textarea.finp{resize:vertical;min-height:80px}
     <div class="auth-title">Sign in</div>
     <div class="auth-sub">Enter your console credentials to continue.</div>
     <div class="auth-err" id="login-err"></div>
-    <div class="fgrp">
-      <label class="flbl">Username</label>
-      <input type="text" id="login-user" class="finp" style="width:100%" autocomplete="username" onkeydown="if(event.key==='Enter')document.getElementById('login-pass').focus()">
+    <div id="login-password-form">
+      <div class="fgrp">
+        <label class="flbl">Username</label>
+        <input type="text" id="login-user" class="finp" style="width:100%" autocomplete="username" onkeydown="if(event.key==='Enter')document.getElementById('login-pass').focus()">
+      </div>
+      <div class="fgrp">
+        <label class="flbl">Password</label>
+        <input type="password" id="login-pass" class="finp" style="width:100%" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitLogin()">
+      </div>
+      <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:8px" onclick="submitLogin()" id="login-btn">Sign in</button>
     </div>
-    <div class="fgrp">
-      <label class="flbl">Password</label>
-      <input type="password" id="login-pass" class="finp" style="width:100%" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitLogin()">
+    <!-- SSO (ENG-0014). Both blocks are hidden until /api/auth/config says otherwise, so a
+         deployment with no OIDC configured renders exactly the previous screen. -->
+    <div id="login-sso-divider" style="display:none;align-items:center;gap:10px;margin:14px 0 10px;color:var(--muted);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase">
+      <span style="flex:1;height:1px;background:var(--border)"></span>or<span style="flex:1;height:1px;background:var(--border)"></span>
     </div>
-    <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:8px" onclick="submitLogin()" id="login-btn">Sign in</button>
+    <button class="btn" id="login-sso-btn" style="display:none;width:100%;justify-content:center" onclick="location.href='/api/auth/oidc/start'">Continue with SSO</button>
     <div class="auth-foot" id="login-role-hint"></div>
   </div>
 </div>
@@ -558,7 +691,7 @@ textarea.finp{resize:vertical;min-height:80px}
 const COLORS=['#3b82f6','#22c55e','#f59e0b','#8b5cf6','#ef4444','#06b6d4','#ec4899','#14b8a6','#f97316','#84cc16'];
 const st={
   hosts:[],totals:{},diff:{},
-  view:'overview',viewArg:null,
+  view:'estate',viewArg:null,
   credSet:false,mock:false,
   rmId:null,
   vmSort:{col:'name',dir:1},
@@ -566,7 +699,10 @@ const st={
   hlF:{filter:'all',search:''},
   hostVmSearch:'',
   user:null,  // {username, role} from /api/auth/me
+  // ENG-0015
+  estate:null,actions:[],actF:'open',actSearch:'',actOpen:new Set(),actModal:null,
 };
+function canAct(){return st.user&&(st.user.role==='Admin'||st.user.role==='VmOperator');}
 
 // ── API ───────────────────────────────────────────────────────────────────────
 async function api(m,path,body){
@@ -582,6 +718,21 @@ async function api(m,path,body){
 }
 
 // ── Auth screens ──────────────────────────────────────────────────────────────
+// Which sign-in doors this deployment exposes. Failing open to password-only keeps the screen
+// usable if the probe itself fails.
+async function applyAuthConfig(){
+  let c={oidcEnabled:false,passwordLogin:true,oidcName:'SSO'};
+  try{c=await fetch('/api/auth/config',{credentials:'include'}).then(r=>r.json());}catch(e){}
+  document.getElementById('login-password-form').style.display=c.passwordLogin?'':'none';
+  document.getElementById('login-sso-divider').style.display=(c.oidcEnabled&&c.passwordLogin)?'flex':'none';
+  const sb=document.getElementById('login-sso-btn');
+  sb.style.display=c.oidcEnabled?'':'none';
+  if(c.oidcEnabled)sb.textContent='Continue with '+(c.oidcName||'SSO');
+  const sub=document.querySelector('#auth-login .auth-sub');
+  if(sub)sub.textContent=c.passwordLogin?'Enter your console credentials to continue.'
+                                        :'Sign in with '+(c.oidcName||'SSO')+' to continue.';
+  return c;
+}
 function showLogin(){
   document.getElementById('auth-login').style.display='flex';
   document.getElementById('auth-chpw').style.display='none';
@@ -589,7 +740,13 @@ function showLogin(){
   document.getElementById('login-user').value='';
   document.getElementById('login-pass').value='';
   document.getElementById('login-err').style.display='none';
-  setTimeout(()=>document.getElementById('login-user').focus(),50);
+  applyAuthConfig().then(c=>{
+    // A failed SSO round-trip comes back as ?sso_error=... rather than an exception page.
+    const e=new URLSearchParams(location.search).get('sso_error');
+    if(e){showErr(document.getElementById('login-err'),decodeURIComponent(e));
+          history.replaceState({},'',location.pathname+location.hash);}
+    if(c.passwordLogin)setTimeout(()=>document.getElementById('login-user').focus(),50);
+  });
 }
 function showChangePassword(){
   document.getElementById('auth-chpw').style.display='flex';
@@ -641,13 +798,21 @@ async function submitChangePassword(){
 async function afterLogin(me){
   st.user={username:me.username||'',role:me.role||''};
   hideAuthWalls();
-  await loadState();
+  await Promise.all([loadState(),loadEstate(),loadActions()]);
   setupSSE();
   readHash();
-  if(st.view==='overview')renderView(st.view);
+  renderView(st.view);
   // Global WinRM-creds wall intentionally NOT auto-shown on login (pending ENG-0012 credential
   // rework). HV hosts can still use per-host creds via the add-host modal; Proxmox uses API tokens.
   setInterval(loadState,5000);
+  setInterval(loadEstate,60000);
+}
+async function loadEstate(){try{st.estate=await api('GET','/api/estate');if(st.view==='estate'||st.view==='machine')renderView(st.view,false);}catch{}}
+async function loadActions(){
+  try{st.actions=await api('GET','/api/actions');}catch{return;}
+  const open=st.actions.filter(a=>a.status!=='Done'&&a.status!=='Dismissed').length;
+  const c=document.getElementById('nav-actions-count');if(c){c.textContent=open;c.style.display=open?'':'none';}
+  if(st.view==='actions'||st.view==='machine'||st.view==='estate')renderView(st.view,false);
 }
 async function logout(){
   await fetch('/api/auth/logout',{method:'POST',credentials:'include'}).catch(()=>{});
@@ -712,6 +877,8 @@ function setupSSE(){
   on('hostUpdated',d=>{const idx=st.hosts.findIndex(h=>h.id===d.id);if(idx>=0)st.hosts[idx]=d;else st.hosts.push(d);updateStrip();renderView(st.view,false);});
   on('hostRemoved',d=>{st.hosts=st.hosts.filter(h=>h.id!==d.hostId);updateStrip();renderView(st.view,false);});
   on('credentialsSet',()=>{st.credSet=true;document.getElementById('creds-ov').style.display='none';toast('Credentials saved (memory only)','success');});
+  on('estateUpdated',d=>{loadEstate();if(d.ok===false)toast('Hardware monitor read failed: '+(d.error||'unknown'),'error');else if(d.raised)toast(`Monitor raised ${d.raised} new action${d.raised!==1?'s':''}`,'info');});
+  on('actionsChanged',()=>{loadActions();});
 }
 
 // ── Strip ─────────────────────────────────────────────────────────────────────
@@ -728,18 +895,25 @@ function updateStrip(){
 // ── Views ─────────────────────────────────────────────────────────────────────
 function switchView(v,arg=null){
   st.view=v;st.viewArg=arg;
-  document.querySelectorAll('.nav-item[data-view]').forEach(el=>el.classList.toggle('active',el.dataset.view===v));
+  const navFor=v==='machine'?'estate':v;
+  document.querySelectorAll('.nav-item[data-view]').forEach(el=>el.classList.toggle('active',el.dataset.view===navFor));
   if(v==='host'&&arg)location.hash='#host/'+arg;
+  else if(v==='machine'&&arg)location.hash='#machine/'+arg;
+  else if(v==='actions'||v==='estate')location.hash='#'+v;
   else history.replaceState(null,'',location.pathname+location.search);
   renderView(v,true);
 }
 function readHash(){
-  const m=location.hash.match(/^#host\/(.+)$/);
+  const h=location.hash;
+  if(h==='#actions'||h==='#estate'){const v=h.slice(1);if(st.view!==v){st.view=v;st.viewArg=null;document.querySelectorAll('.nav-item[data-view]').forEach(el=>el.classList.toggle('active',el.dataset.view===v));renderView(v,true);}return;}
+  const mm=h.match(/^#machine\/(.+)$/);
+  if(mm){const key=decodeURIComponent(mm[1]);if(st.view==='machine'&&st.viewArg===key)return;st.view='machine';st.viewArg=key;document.querySelectorAll('.nav-item[data-view]').forEach(el=>el.classList.toggle('active',el.dataset.view==='estate'));renderView('machine',true);return;}
+  const m=h.match(/^#host\/(.+)$/);
   if(!m)return;
   const id=decodeURIComponent(m[1]);
   if(st.view==='host'&&st.viewArg===id)return;
-  const h=st.hosts.find(hh=>hh.id===id);
-  if(!h){toast('Host not found — returned to overview','info');history.replaceState(null,'',location.pathname+location.search);switchView('overview');return;}
+  const hh=st.hosts.find(x=>x.id===id);
+  if(!hh){toast('Host not found — returned to overview','info');history.replaceState(null,'',location.pathname+location.search);switchView('overview');return;}
   st.view='host';st.viewArg=id;
   document.querySelectorAll('.nav-item[data-view]').forEach(el=>el.classList.remove('active'));
   renderView('host',true);
@@ -748,6 +922,9 @@ function readHash(){
 function renderView(v,scroll=false){
   const el=document.getElementById('main');
   switch(v){
+    case'estate':el.innerHTML=vEstate();break;
+    case'machine':el.innerHTML=vMachine(st.viewArg);break;
+    case'actions':el.innerHTML=vActions();break;
     case'overview':el.innerHTML=vOverview();break;
     case'host':el.innerHTML=vHost(st.viewArg);break;
     case'ram':el.innerHTML=vRam();break;
@@ -762,6 +939,254 @@ function renderView(v,scroll=false){
   if(v==='cluster')drawClusterCharts();
 }
 
+
+// ── Estate dashboard + action tracker (ENG-0015) ─────────────────────────────
+function sevOf(s){return s==='Ok'?'ok':s==='Warning'?'warn':s==='Critical'?'crit':'unk';}
+function priOrder(p){return {Critical:1,High:2,Medium:3,Low:4}[p]||9;}
+function isOpen(a){return a.status!=='Done'&&a.status!=='Dismissed';}
+function isRun(s){return /running/i.test(s||'');}
+function fmtWhen(iso){if(!iso)return'';return new Date(iso).toLocaleString(undefined,{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});}
+function fmtDay(iso){if(!iso)return'';return new Date(iso).toLocaleDateString(undefined,{day:'2-digit',month:'short',year:'numeric'});}
+function kindBadge(k){const c=k==='Proxmox'?'pve':k==='HyperV'?'hv':'';const l={Proxmox:'PVE',HyperV:'HV',BareMetal:'BARE',Storage:'STOR',Appliance:'NET'}[k]||k;return`<span class="kind ${c}">${l}</span>`;}
+function machineByKey(k){return (st.estate?.machines||[]).find(m=>m.key===k);}
+function actionsFor(key){return st.actions.filter(a=>isOpen(a)&&(a.affectedMachines||[]).includes(key)).sort((a,b)=>priOrder(a.priority)-priOrder(b.priority)||a.ref-b.ref);}
+function faultCls(f){return f.severity==='Critical'?'crit':f.severity==='Warning'?'warn':'info';}
+const PRI_COLOR={Critical:'var(--red)',High:'var(--yellow)',Medium:'var(--blue)',Low:'var(--text2)'};
+
+function vEstate(){
+  const e=st.estate;
+  if(!e)return`<div class="empty"><div class="empty-ico">🏢</div><div class="empty-ttl">Loading estate…</div></div>`;
+  const s=e.summary,hw=e.hardware,f=e.facts||{};
+  const open=st.actions.filter(isOpen);
+  const byP=p=>open.filter(a=>a.priority===p).length;
+  const next=s.scheduled&&s.scheduled[0];
+  const visit=open.filter(a=>a.class!=='Remote');
+  const purchases=open.flatMap(a=>a.purchases||[]);
+  const hwSub=!hw.configured?'monitor not configured'
+    :hw.error?`<span style="color:var(--red)">read failed${hw.lastAttempt?' '+ago(hw.lastAttempt):''}</span>`
+    :hw.takenAt?`${hw.devices} servers · read ${ago(hw.takenAt)}`:'waiting for the first read';
+  let html=`<div class="page-hdr"><div><div class="page-ttl">Estate</div><div class="page-sub">${x(f.site||'')}</div></div>
+    <div style="display:flex;gap:8px">
+      ${canAct()?`<button class="btn btn-ghost btn-sm" onclick="refreshMonitor(this)" ${hw.configured?'':'disabled title="Set VMENTORY_OME_URL / USER / PASSWORD"'}>Re-read monitor</button>`:''}
+      ${canAct()?`<button class="btn btn-primary btn-sm" onclick="openActionModal()">New action</button>`:''}
+    </div></div>
+  <div class="tiles">
+    <div class="tile"><div class="tile-lbl">Hardware</div><div class="tile-row"><span class="sev ok">${s.hardwareOk} OK</span><span class="sev warn">${s.hardwareWarning} warn</span><span class="sev crit">${s.hardwareCritical} crit</span>${s.hardwareUnmonitored?`<span class="sev unk">${s.hardwareUnmonitored} unmonitored</span>`:''}</div><div class="tile-sub">${hwSub}</div></div>
+    <div class="tile link" onclick="setActF('open')"><div class="tile-lbl">Open actions</div><div class="tile-val">${open.length}</div><div class="tile-sub"><span class="pri Critical">${byP('Critical')} critical</span> <span class="pri High">${byP('High')} high</span> <span class="pri Medium">${byP('Medium')} med</span> <span class="pri Low">${byP('Low')} low</span></div></div>
+    <div class="tile"><div class="tile-lbl">Guests</div><div class="tile-val">${s.vmsRunning}<span style="font-size:14px;color:var(--text3);font-weight:500"> / ${s.vms} running</span></div><div class="tile-sub">${s.vmsLive} from live inventory · ${s.vms-s.vmsLive} from the recorded register</div></div>
+    <div class="tile link" onclick="setActF('visit')"><div class="tile-lbl">Next site visit</div><div class="tile-val">${visit.length}<span style="font-size:14px;color:var(--text3);font-weight:500"> items</span></div><div class="tile-sub">${purchases.length} part${purchases.length!==1?'s':''} to bring · ${next?`next window ${fmtWhen(next.scheduledStart)} (#${next.ref})`:'no window scheduled yet'}</div></div>
+    <div class="tile"><div class="tile-lbl">Backup coverage</div><div class="tile-val">${(f.backedUp||[]).length}<span style="font-size:14px;color:var(--text3);font-weight:500"> of ~50</span></div><div class="tile-sub">${x(f.backupNote||'')}</div></div>
+  </div>`;
+  if(hw.configured&&hw.error)html+=`<div class="warnbox">The hardware monitor could not be read: ${x(hw.error)}. Showing the last good reading${hw.takenAt?' from '+fmtWhen(hw.takenAt):''}.</div>`;
+  if(!hw.configured)html+=`<div class="warnbox">No hardware monitor is configured, so the cards show inventory and actions only. Set <code>VMENTORY_OME_URL</code>, <code>VMENTORY_OME_USER</code> and <code>VMENTORY_OME_PASSWORD</code> to read Dell OpenManage.</div>`;
+  const servers=e.machines.filter(m=>m.kind!=='Appliance'),net=e.machines.filter(m=>m.kind==='Appliance');
+  const secTtl=t=>`<div style="font-size:12px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin:4px 0 10px 2px">${t}</div>`;
+  html+=secTtl('Servers')+`<div class="mgrid">${servers.map(mCard).join('')}</div>`;
+  if(net.length)html+=secTtl('Network')+`<div class="mgrid">${net.map(mCard).join('')}</div>`;
+  return html;
+}
+function mCard(m){
+  const hw=m.hardware;const sev=hw?sevOf(hw.status):'unk';
+  const faults=(hw?.faults||[]).slice().sort((a,b)=>(a.severity==='Critical'?0:1)-(b.severity==='Critical'?0:1));
+  const subs=Object.entries(hw?.subsystems||{}).filter(([k,v])=>v!=='Ok');
+  const acts=actionsFor(m.key);const worst=acts[0]?.priority;
+  const running=m.vms.filter(v=>isRun(v.state)).length;
+  const hostTag=m.host?(m.host.reachability?.auth==='Ok'?'<span class="src live">inventory live</span>':'<span class="src">host registered</span>'):'';
+  return`<div class="mcard ${sev}" onclick="switchView('machine','${m.key}')">
+    <div class="mhead"><span class="sev ${sev}" title="${hw?'Hardware '+hw.status:'Not monitored'}"></span><div class="mname" title="${x(m.name)}">${x(m.name)}</div>${kindBadge(m.kind)}</div>
+    <div class="mrole">${x(m.role)}</div>
+    ${m.model?`<div style="font-size:11px;color:var(--text3)">${x(m.model)}${m.address?' · '+x(m.address):''}${m.managementIp?' · mgmt '+x(m.managementIp):''}</div>`:''}
+    ${subs.length?`<div class="subs">${subs.map(([k,v])=>`<span class="sub ${sevOf(v)}">${x(k)} ${v}</span>`).join('')}</div>`:''}
+    ${faults.length?`<div class="mfaults">${faults.slice(0,3).map(f=>`<div class="fault ${faultCls(f)}" title="${x(f.detail)}"><b>${x(f.component)}</b> — ${x(f.detail)}</div>`).join('')}${faults.length>3?`<div class="fault info">+${faults.length-3} more</div>`:''}</div>`
+      :(hw&&hw.status==='Ok'?`<div style="font-size:12px;color:var(--green)">All subsystems OK</div>`:'')}
+    <div class="mfoot">
+      ${m.vms.length?`<span><b>${running}</b>/${m.vms.length} guests <span class="src ${m.vmSource==='live'?'live':''}">${m.vmSource}</span></span>`:''}
+      <span><b style="${worst?'color:'+PRI_COLOR[worst]:''}">${acts.length}</b> open action${acts.length!==1?'s':''}</span>
+      <span style="margin-left:auto">${hostTag}</span>
+    </div></div>`;
+}
+async function refreshMonitor(btn){btn.disabled=true;btn.textContent='Reading…';try{const r=await api('POST','/api/estate/refresh');toast(r.message,r.ok?'success':'info');}catch(e){toast('Refresh failed: '+e.message,'error');}finally{btn.disabled=false;btn.textContent='Re-read monitor';}}
+
+function vMachine(key){
+  const m=machineByKey(key);
+  if(!m)return`<div class="crumb"><a onclick="switchView('estate')">Estate</a> / ?</div><div class="empty"><div class="empty-ttl">${st.estate?'Machine not found':'Loading…'}</div></div>`;
+  const hw=m.hardware;const sev=hw?sevOf(hw.status):'unk';
+  const acts=actionsFor(m.key);const done=st.actions.filter(a=>!isOpen(a)&&(a.affectedMachines||[]).includes(m.key));
+  let html=`<div class="crumb"><a onclick="switchView('estate')">Estate</a> / ${x(m.name)}</div>
+  <div class="page-hdr"><div><div class="page-ttl" style="display:flex;align-items:center;gap:10px"><span class="sev ${sev}"></span>${x(m.name)} ${kindBadge(m.kind)}</div><div class="page-sub">${x(m.role)}</div></div>
+    ${canAct()?`<button class="btn btn-primary btn-sm" onclick="openActionModal({affectedMachines:['${m.key}']})">New action for ${x(m.name)}</button>`:''}</div>
+  <div class="facts">
+    <div><div class="k">Address</div><div class="v">${x(m.address||'—')}</div></div>
+    <div><div class="k">Management</div><div class="v">${x(m.managementIp||'—')}</div></div>
+    <div><div class="k">Model</div><div class="v">${x(m.model||'—')}</div></div>
+    <div><div class="k">Service tag</div><div class="v">${x(m.serviceTag||'—')}</div></div>
+    ${m.host?`<div><div class="k">VMentory host</div><div class="v"><a style="color:var(--blue);cursor:pointer" onclick="switchView('host','${m.host.id}')">${x(m.host.fqdn||m.address)}</a> · auth ${x(m.host.reachability?.auth||'?')} · ${m.host.lastScanned?'scanned '+ago(m.host.lastScanned):'not scanned'}</div></div>`:''}
+  </div>
+  ${m.notes?`<div class="warnbox" style="background:var(--bg-card);border-color:var(--border)">${x(m.notes)}</div>`:''}
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">
+    <div class="card" style="padding:14px 16px"><div style="font-weight:700;margin-bottom:8px">Hardware ${hw?`<span class="sev ${sev}" style="margin-left:8px">${hw.status}</span>`:'<span class="src">not monitored</span>'}</div>`;
+  if(hw){
+    html+=`<div style="font-size:11px;color:var(--text3);margin-bottom:8px">Monitor label ${x(hw.deviceName)} · iDRAC ${x(hw.managementIp)} · ${hw.connected?'connected':'<span style="color:var(--red)">disconnected</span>'}</div>
+      <div class="subs" style="margin-bottom:10px">${Object.entries(hw.subsystems||{}).map(([k,v])=>`<span class="sub ${sevOf(v)}">${x(k)}</span>`).join('')}</div>`;
+    html+=hw.faults.length?`<div class="mfaults">${hw.faults.map(f=>`<div class="fault ${faultCls(f)}"><b>${x(f.component)}</b> — ${x(f.detail)}</div>`).join('')}</div>`:`<div style="font-size:13px;color:var(--green)">No faults reported</div>`;
+  }else html+=`<div style="font-size:13px;color:var(--text2)">${m.serviceTag?'The monitor has no device with this service tag.':'No iDRAC — the hardware monitor cannot see this machine.'}</div>`;
+  html+=`</div>
+    <div class="card" style="padding:14px 16px"><div style="font-weight:700;margin-bottom:8px">Open actions <span style="color:var(--text3);font-weight:500">${acts.length}</span></div>`;
+  html+=acts.length?acts.map(a=>`<div style="display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px">
+      ${canAct()?`<input type="checkbox" style="margin-top:3px;accent-color:var(--green)" onchange="setStatus('${a.id}',this.checked?'Done':'Open')" title="Mark done">`:''}
+      <span class="aref">#${a.ref}</span><span style="flex:1"><a style="cursor:pointer" onclick="gotoAction('${a.id}')">${x(a.title)}</a>${a.scheduledStart?` <span class="tag green">${fmtWhen(a.scheduledStart)}</span>`:''}</span><span class="pri ${a.priority}">${a.priority}</span></div>`).join('')
+    :`<div style="font-size:13px;color:var(--text2)">Nothing open against this machine.</div>`;
+  if(done.length)html+=`<div style="font-size:12px;color:var(--text3);margin-top:8px">${done.length} completed: ${done.map(a=>'#'+a.ref).join(', ')}</div>`;
+  html+=`</div></div>
+  <div class="card" style="padding:14px 16px;margin-top:16px"><div style="font-weight:700;margin-bottom:4px">Guests <span style="color:var(--text3);font-weight:500">${m.vms.length}</span> <span class="src ${m.vmSource==='live'?'live':''}" style="margin-left:6px">${m.vmSource}</span></div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:10px">${m.vmSource==='live'?'From VMentory\'s last inventory scan of this host.':m.vmSource==='static'?`Recorded by hand — ${x(m.staticVmsSource||'')}${m.staticVmsVerifiedAt?', verified '+fmtDay(m.staticVmsVerifiedAt):''}. A claim about the past: re-check before acting on it.`:'No guests recorded.'}</div>`;
+  if(m.vms.length)html+=`<table class="tbl"><tr><th>Guest</th><th>Address</th><th>State</th><th>Note</th></tr>${m.vms.map(v=>`<tr><td><b>${x(v.name)}</b></td><td>${x(v.address||'')}</td><td>${isRun(v.state)?'<span style="color:var(--green)">running</span>':'<span style="color:var(--text3)">'+x(v.state)+'</span>'}</td><td style="color:var(--text2)">${x(v.note||'')}</td></tr>`).join('')}</table>`;
+  return html+`</div>`;
+}
+
+// ── Actions ──
+function setActF(f){st.actF=f;if(st.view!=='actions')switchView('actions');else renderView('actions',false);}
+function setActSearch(q){st.actSearch=q;renderView('actions',false);const el=document.getElementById('act-search');if(el){el.focus();const l=el.value.length;el.setSelectionRange(l,l);}}
+function toggleAct(id){if(st.actOpen.has(id))st.actOpen.delete(id);else st.actOpen.add(id);renderView('actions',false);}
+function gotoAction(id){st.actF='all';st.actOpen.add(id);switchView('actions');setTimeout(()=>document.getElementById('arow-'+id)?.scrollIntoView({block:'center'}),50);}
+function vActions(){
+  const all=st.actions;const open=all.filter(isOpen);
+  const f=st.actF,q=st.actSearch.toLowerCase();
+  let vis=all;
+  if(f==='open')vis=open;
+  else if(f==='scheduled')vis=open.filter(a=>a.scheduledStart);
+  else if(f==='visit')vis=open.filter(a=>a.class!=='Remote');
+  else if(f==='purchases')vis=open.filter(a=>(a.purchases||[]).length);
+  else if(f==='blocked')vis=open.filter(a=>a.openBlockers>0||a.status==='Blocked');
+  else if(f==='done')vis=all.filter(a=>!isOpen(a));
+  if(q)vis=vis.filter(a=>[a.title,a.why,a.how,a.group,'#'+a.ref,...(a.affectedMachines||[])].some(s=>(s||'').toLowerCase().includes(q)));
+  const cnt={open:open.length,scheduled:open.filter(a=>a.scheduledStart).length,visit:open.filter(a=>a.class!=='Remote').length,purchases:open.filter(a=>(a.purchases||[]).length).length,blocked:open.filter(a=>a.openBlockers>0||a.status==='Blocked').length,done:all.length-open.length,all:all.length};
+  const chip=(k,l)=>`<div class="chip ${f===k?'active':''}" onclick="setActF('${k}')">${l} <span class="chip-count">${cnt[k]}</span></div>`;
+  let html=`<div class="page-hdr"><div><div class="page-ttl">Actions</div><div class="page-sub">Ordered by consequence, not effort — work top-down. Every tick, link and window leaves a dated note.</div></div>
+    ${canAct()?`<button class="btn btn-primary btn-sm" onclick="openActionModal()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg> New action</button>`:''}</div>
+  <div class="toolbar">${chip('open','Open')}${chip('scheduled','Scheduled')}${chip('visit','Site visit')}${chip('purchases','Purchases')}${chip('blocked','Waiting')}${chip('done','Done')}${chip('all','All')}<div class="tb-sp"></div><input class="search" id="act-search" placeholder="Filter…" value="${x(st.actSearch)}" oninput="setActSearch(this.value)"></div>`;
+  if(f==='visit'||f==='purchases'){
+    const parts=vis.flatMap(a=>(a.purchases||[]).map(p=>({p,ref:a.ref})));
+    const byM={};vis.forEach(a=>((a.affectedMachines||[]).length?a.affectedMachines:['—']).forEach(k=>{(byM[k]=byM[k]||[]).push(a.ref);}));
+    html+=`<div class="bring"><h5>Bring</h5>${parts.length?`<ul style="margin:0;padding-left:18px">${parts.map(o=>`<li>${x(o.p)} <span class="aref">#${o.ref}</span></li>`).join('')}</ul>`:'<span style="color:var(--text2)">No purchases listed on the visible items.</span>'}
+      <h5 style="margin-top:10px">At each machine</h5><div style="display:flex;flex-wrap:wrap;gap:6px">${Object.entries(byM).map(([k,refs])=>`<span class="tag">${x(machineByKey(k)?.name||k)}: ${refs.map(r=>'#'+r).join(' ')}</span>`).join('')}</div></div>`;
+  }
+  if(!vis.length)return html+`<div style="padding:24px 16px;text-align:center;color:var(--text3);font-size:13px">Nothing matches.</div>`;
+  const label={Critical:'data-loss or outage risk',High:'before any further change',Medium:'the programme',Low:'housekeeping'};
+  for(const p of ['Critical','High','Medium','Low']){
+    const items=vis.filter(a=>a.priority===p).sort((a,b)=>(isOpen(a)?0:1)-(isOpen(b)?0:1)||a.ref-b.ref);
+    if(!items.length)continue;
+    html+=`<div class="agroup"><div class="agroup-ttl"><span class="pri ${p}">${p}</span>${label[p]}<span class="n">${items.length}</span></div>${items.map(aRow).join('')}</div>`;
+  }
+  return html;
+}
+function aRow(a){
+  const open=isOpen(a),exp=st.actOpen.has(a.id);
+  const cls={OnSite:'<span class="tag blue">site visit</span>',Purchase:'<span class="tag warn">purchase + visit</span>'}[a.class]||'';
+  const badges=[cls,
+    a.requiresDowntime?'<span class="tag red">downtime</span>':'',
+    a.scheduledStart?`<span class="tag green" title="${x(fmtWhen(a.scheduledStart))}${a.scheduledEnd?' → '+x(fmtWhen(a.scheduledEnd)):''}">${fmtWhen(a.scheduledStart)}</span>`:'',
+    a.openBlockers?`<span class="tag warn" title="Waits on ${a.openBlockers} open item${a.openBlockers!==1?'s':''}">waits on ${a.openBlockers}</span>`:'',
+    a.impact&&a.impact.vmCount?`<span class="tag" title="${a.impact.runningVmCount} running guests affected">${a.impact.runningVmCount}/${a.impact.vmCount} VMs</span>`:'',
+    a.status==='InProgress'?'<span class="tag blue">in progress</span>':a.status==='Blocked'?'<span class="tag warn">blocked</span>':a.status==='Dismissed'?'<span class="tag">dismissed</span>':'',
+    a.source==='ome'?'<span class="tag" title="Raised automatically from the hardware monitor">monitor</span>':'',
+    (a.affectedMachines||[]).map(k=>`<span class="tag" style="cursor:pointer" title="Open machine" onclick="event.stopPropagation();switchView('machine','${k}')">${x(machineByKey(k)?.name||k)}</span>`).join('')
+  ].filter(Boolean).join('');
+  return`<div class="arow ${open?'open':'done'}" id="arow-${a.id}">
+    <div class="ahead" onclick="toggleAct('${a.id}')">
+      <div>${canAct()?`<input type="checkbox" ${open?'':'checked'} onclick="event.stopPropagation()" onchange="setStatus('${a.id}',this.checked?'Done':'Open')" title="${open?'Mark done':'Reopen'}">`:''}</div>
+      <div class="aref">#${a.ref}</div>
+      <div class="atitle ${open?'':'done'}">${x(a.title)}${a.group?`<div style="font-size:11px;color:var(--text3);font-weight:500;margin-top:2px">${x(a.group)}</div>`:''}</div>
+      <div class="abadges">${badges}</div>
+    </div>${exp?aBody(a):''}</div>`;
+}
+function aBody(a){
+  const open=isOpen(a);const byId=id=>st.actions.find(z=>z.id===id);
+  const depChip=(id,removable)=>{const d=byId(id);if(!d)return'';return`<span class="dep ${isOpen(d)?'open':'done'}"><span class="aref">#${d.ref}</span><a style="cursor:pointer" onclick="gotoAction('${d.id}')">${x(d.title)}</a>${removable&&canAct()?`<span class="rm" title="Unlink" onclick="removeDep('${a.id}','${d.id}')">×</span>`:''}</span>`;};
+  const others=st.actions.filter(z=>z.id!==a.id&&isOpen(z)&&!(a.dependsOn||[]).includes(z.id)).sort((p,q)=>p.ref-q.ref);
+  const impact=a.impact||{machines:[],vmCount:0,runningVmCount:0};
+  let h=`<div class="abody">
+    <div class="ablk"><h5>Why</h5><p>${x(a.why)||'<i>—</i>'}</p><h5>How</h5><p>${x(a.how)||'<i>—</i>'}</p><h5>Done when</h5><p>${x(a.doneWhen)||'<i>—</i>'}</p>
+      ${(a.purchases||[]).length?`<h5>Bring / buy</h5><ul>${a.purchases.map(p=>`<li>${x(p)}</li>`).join('')}</ul>`:''}
+      <h5>Waits on</h5><div>${(a.dependsOn||[]).length?a.dependsOn.map(id=>depChip(id,true)).join(''):'<span style="color:var(--text3)">nothing</span>'}</div>
+      ${canAct()?`<div class="inline-form">${others.length?`<select class="finp" id="dep-${a.id}"><option value="">Link an existing item as a prerequisite…</option>${others.map(o=>`<option value="${o.id}">#${o.ref} ${x(o.title).slice(0,70)}</option>`).join('')}</select><button class="btn btn-ghost btn-sm" onclick="addDep('${a.id}')">Link</button>`:''}<button class="btn btn-ghost btn-sm" onclick="openActionModal({blocks:['${a.id}'],affectedMachines:${JSON.stringify(a.affectedMachines||[]).replace(/"/g,'&quot;')}})">+ New prerequisite</button></div>`:''}
+      ${(a.blocks||[]).length?`<h5>Must be done before</h5><div>${a.blocks.map(id=>depChip(id,false)).join('')}</div>`:''}
+      ${canAct()?`<div class="inline-form"><button class="btn btn-ghost btn-sm" onclick="openActionModal({dependsOn:['${a.id}'],affectedMachines:${JSON.stringify(a.affectedMachines||[]).replace(/"/g,'&quot;')}})">+ New follow-up (waits on this)</button></div>`:''}
+    </div>
+    <div class="ablk"><h5>Blast radius</h5>`;
+  if(!impact.machines.length)h+=`<p style="color:var(--text3)">No machine named — nothing goes dark.</p>`;
+  else for(const m of impact.machines){
+    const run=m.vms.filter(v=>isRun(v.state)).length;
+    h+=`<div style="margin-bottom:6px"><b style="cursor:pointer" onclick="switchView('machine','${m.key}')">${x(m.name)}</b> <span class="src">${x(m.kind)}</span> <span style="color:var(--text3)">${m.vms.length?`· ${run} running of ${m.vms.length} guests${m.vms[0]?.source==='static'?' (recorded, not live)':''}`:'· no guests'}</span>
+      ${m.vms.length?`<div class="vmlist">${m.vms.map(v=>`<span class="vmchip ${isRun(v.state)?'running':'off'}" title="${x(v.source)}${v.address?' · '+x(v.address):''}${v.note?' · '+x(v.note):''}">${x(v.name)}</span>`).join('')}</div>`:''}</div>`;
+  }
+  if(impact.vmCount)h+=`<p style="font-size:12px;color:var(--text3)">${impact.runningVmCount} running guest${impact.runningVmCount!==1?'s':''} affected${a.requiresDowntime?' — this item needs downtime':''}.</p>`;
+  h+=`<h5>Schedule</h5>`;
+  if(a.scheduledStart)h+=`<p><b>${fmtWhen(a.scheduledStart)}</b>${a.scheduledEnd?' → '+fmtWhen(a.scheduledEnd):''}${a.requiresDowntime?' · needs downtime':''}</p>`;
+  if(canAct())h+=`<div class="inline-form"><input type="datetime-local" class="finp" id="sch-s-${a.id}" value="${toLocalInput(a.scheduledStart)}"><input type="datetime-local" class="finp" id="sch-e-${a.id}" value="${toLocalInput(a.scheduledEnd)}"><button class="btn btn-ghost btn-sm" onclick="saveSchedule('${a.id}')">Set window</button>${a.scheduledStart?`<button class="btn btn-ghost btn-sm" onclick="clearSchedule('${a.id}')">Clear</button>`:''}</div>`;
+  h+=`<h5>Notes</h5><div>${(a.notes||[]).slice().reverse().map(n=>`<div class="note"><span class="nm">${fmtWhen(n.at)} · ${x(n.by||'')}</span>${x(n.text)}</div>`).join('')||'<span style="color:var(--text3)">none</span>'}</div>
+    ${canAct()?`<div class="inline-form"><input class="finp" id="note-${a.id}" placeholder="Add a dated note…" onkeydown="if(event.key==='Enter')addNote('${a.id}')"><button class="btn btn-ghost btn-sm" onclick="addNote('${a.id}')">Add</button></div>`:''}
+    <p style="font-size:11px;color:var(--text3);margin-top:8px">Created ${fmtDay(a.createdAt)}${a.createdBy?' by '+x(a.createdBy):''}${a.completedAt?' · done '+fmtDay(a.completedAt)+(a.completedBy?' by '+x(a.completedBy):''):''}${a.lastDetectedAt?' · last seen by the monitor '+ago(a.lastDetectedAt):''}</p>
+    </div>`;
+  if(canAct())h+=`<div class="abtns">
+      ${open&&a.status!=='InProgress'?`<button class="btn btn-ghost btn-sm" onclick="setStatus('${a.id}','InProgress')">Start</button>`:''}
+      ${open&&a.status!=='Blocked'?`<button class="btn btn-ghost btn-sm" onclick="setStatus('${a.id}','Blocked')">Mark blocked</button>`:''}
+      ${open?`<button class="btn btn-ghost btn-sm" onclick="setStatus('${a.id}','Done')">Mark done</button><button class="btn btn-ghost btn-sm" onclick="setStatus('${a.id}','Dismissed')">Dismiss</button>`:`<button class="btn btn-ghost btn-sm" onclick="setStatus('${a.id}','Open')">Reopen</button>`}
+      <button class="btn btn-ghost btn-sm" onclick="openActionModal(null,'${a.id}')">Edit</button>
+      ${a.source==='seed'&&st.estate?.facts?.trackerUrl?`<a class="btn btn-ghost btn-sm" href="${x(st.estate.facts.trackerUrl)}" target="_blank" rel="noopener">Tracker page ↗</a>`:''}
+    </div>`;
+  return h+`</div>`;
+}
+function toLocalInput(iso){if(!iso)return'';const d=new Date(iso);const p=n=>String(n).padStart(2,'0');return`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;}
+function fromLocalInput(v){return v?new Date(v).toISOString():null;}
+async function setStatus(id,status){
+  try{await api('POST',`/api/actions/${id}/status`,{status});toast(status==='Done'?'Ticked off':status==='Open'?'Reopened':'Status → '+status,'success');}
+  catch(e){toast('Could not change status: '+e.message,'error');}
+  loadActions();loadEstate();
+}
+async function addNote(id){const el=document.getElementById('note-'+id);const t=(el?.value||'').trim();if(!t)return;try{await api('POST',`/api/actions/${id}/notes`,{text:t});}catch(e){toast('Note failed: '+e.message,'error');}loadActions();}
+async function addDep(id){const sel=document.getElementById('dep-'+id);const b=sel?.value;if(!b)return;try{await api('POST',`/api/actions/${id}/deps`,{blockerId:b});}catch(e){toast(e.message,'error');}loadActions();}
+async function removeDep(id,blocker){try{await api('DELETE',`/api/actions/${id}/deps/${blocker}`);}catch(e){toast(e.message,'error');}loadActions();}
+async function saveSchedule(id){const s=fromLocalInput(document.getElementById('sch-s-'+id)?.value),e=fromLocalInput(document.getElementById('sch-e-'+id)?.value);if(!s){toast('Set a start time first','info');return;}try{await api('PATCH',`/api/actions/${id}`,{scheduledStart:s,scheduledEnd:e});toast('Window set','success');}catch(err){toast(err.message,'error');}loadActions();loadEstate();}
+async function clearSchedule(id){try{await api('PATCH',`/api/actions/${id}`,{clearSchedule:true});}catch(err){toast(err.message,'error');}loadActions();loadEstate();}
+
+function openActionModal(preset=null,editId=null){
+  const ed=editId?st.actions.find(a=>a.id===editId):null;
+  preset=preset||{};st.actModal={editId};
+  const g=id=>document.getElementById(id);
+  g('am-ttl').textContent=ed?`Edit #${ed.ref}`:'New action';
+  g('am-title').value=ed?.title||'';g('am-why').value=ed?.why||'';g('am-how').value=ed?.how||'';g('am-done').value=ed?.doneWhen||'';
+  g('am-priority').value=ed?.priority||'Medium';g('am-class').value=ed?.class||'Remote';g('am-group').value=ed?.group||'';
+  g('am-vms').value=(ed?.affectedVms||[]).join(', ');g('am-purch').value=(ed?.purchases||[]).join('\n');
+  g('am-start').value=toLocalInput(ed?.scheduledStart);g('am-end').value=toLocalInput(ed?.scheduledEnd);g('am-down').checked=!!ed?.requiresDowntime;
+  g('am-groups').innerHTML=[...new Set(st.actions.map(a=>a.group).filter(Boolean))].map(v=>`<option value="${x(v)}">`).join('');
+  const sel=new Set(ed?.affectedMachines||preset.affectedMachines||[]);
+  g('am-machines').innerHTML=(st.estate?.machines||[]).map(m=>`<span class="mchip ${sel.has(m.key)?'on':''}" data-key="${m.key}" onclick="this.classList.toggle('on')">${x(m.name)}</span>`).join('');
+  const others=st.actions.filter(a=>a.id!==editId&&isOpen(a)).sort((p,q)=>p.ref-q.ref);
+  const opt=(selIds)=>others.map(o=>`<option value="${o.id}" ${selIds.includes(o.id)?'selected':''}>#${o.ref} ${x(o.title).slice(0,60)}</option>`).join('');
+  g('am-links').style.display=ed?'none':'';
+  g('am-dependson').innerHTML=opt(preset.dependsOn||[]);g('am-blocks').innerHTML=opt(preset.blocks||[]);
+  openModal('m-action');setTimeout(()=>g('am-title').focus(),50);
+}
+async function submitAction(){
+  const g=id=>document.getElementById(id);
+  const body={title:g('am-title').value.trim(),why:g('am-why').value,how:g('am-how').value,doneWhen:g('am-done').value,
+    priority:g('am-priority').value,class:g('am-class').value,group:g('am-group').value,
+    affectedMachines:[...document.querySelectorAll('#am-machines .mchip.on')].map(e=>e.dataset.key),
+    affectedVms:g('am-vms').value.split(',').map(s=>s.trim()).filter(Boolean),
+    purchases:g('am-purch').value.split('\n').map(s=>s.trim()).filter(Boolean),
+    requiresDowntime:g('am-down').checked,
+    scheduledStart:fromLocalInput(g('am-start').value),scheduledEnd:fromLocalInput(g('am-end').value)};
+  if(!body.title){toast('A title is required','error');return;}
+  const btn=g('am-save');btn.disabled=true;
+  try{
+    if(st.actModal?.editId){if(!body.scheduledStart)body.clearSchedule=true;await api('PATCH',`/api/actions/${st.actModal.editId}`,body);toast('Saved','success');}
+    else{body.dependsOn=[...g('am-dependson').selectedOptions].map(o=>o.value);body.blocks=[...g('am-blocks').selectedOptions].map(o=>o.value);const r=await api('POST','/api/actions',body);toast(`Created #${r.ref}`,'success');st.actOpen.add(r.id);if(st.view!=='actions')switchView('actions');}
+    closeModal('m-action');
+  }catch(e){toast('Save failed: '+e.message,'error');}
+  finally{btn.disabled=false;}
+  loadActions();loadEstate();
+}
 
 // ── Overview ──────────────────────────────────────────────────────────────────
 function vOverview(){

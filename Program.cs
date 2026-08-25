@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.EntityFrameworkCore;
 using VMentory.Core;
 using VMentory.Core.Auth;
@@ -99,15 +100,53 @@ builder.Services.AddSingleton<IVirtualizationProvider, ProxmoxProvider>();
 builder.Services.AddSingleton<ProviderRegistry>();
 builder.Services.AddHostedService<Poller>();
 
-// ── Auth: cookie-based session (ENG-0008, slice 2) ────────────────────────────
-// HttpOnly + Secure (when HTTPS) + SameSite=Strict. EventSource (GET, same-origin) sends cookies
-// automatically — no more ?token= on the SSE stream. CSRF is blocked by SameSite=Strict.
-builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+// ── Estate dashboard + remediation tracker (ENG-0015) ─────────────────────────
+// The hardware monitor (Dell OpenManage) is optional config: VMENTORY_OME_URL/USER/PASSWORD
+// (+ VMENTORY_OME_SKIP_TLS=1 for its self-signed cert, VMENTORY_OME_INTERVAL seconds). Without it
+// the estate view still renders — machines, inventory and the action list — minus hardware health.
+var omeOptions = OmeOptions.FromEnvironment();
+builder.Services.AddSingleton(omeOptions);
+builder.Services.AddSingleton(new EstateState { MonitorConfigured = omeOptions.Enabled });
+builder.Services.AddSingleton<EstateCollector>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<EstateCollector>());
+
+// ── Auth: cookie-based session (ENG-0008, slice 2) + SSO (ENG-0014) ───────────
+// HttpOnly + Secure (when HTTPS). EventSource (GET, same-origin) sends cookies automatically — no
+// more ?token= on the SSE stream. CSRF is blocked by SameSite (Strict, or Lax once OIDC is on —
+// see the note at the Cookie.SameSite assignment below).
+// Lands the "OIDC seam later" half of ENG-0008. The issuer is configuration, never a hardcoded
+// provider, so one build serves Pocket-ID on the dev instance and any other OP on a customer
+// deployment. Absent config, none of this registers and the app behaves exactly as before.
+var oidcIssuer   = Environment.GetEnvironmentVariable("VMENTORY_OIDC_ISSUER")?.TrimEnd('/');
+var oidcClientId = Environment.GetEnvironmentVariable("VMENTORY_OIDC_CLIENT_ID");
+var oidcSecret   = Environment.GetEnvironmentVariable("VMENTORY_OIDC_CLIENT_SECRET");
+var oidcEnabled  = !string.IsNullOrWhiteSpace(oidcIssuer)
+                && !string.IsNullOrWhiteSpace(oidcClientId)
+                && !string.IsNullOrWhiteSpace(oidcSecret);
+var oidcName     = EnvOr("VMENTORY_OIDC_NAME", "SSO");
+var oidcAllowed  = (Environment.GetEnvironmentVariable("VMENTORY_OIDC_ALLOWED_EMAILS") ?? "")
+    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+    .Select(e => e.ToLowerInvariant())
+    .ToHashSet();
+var oidcRole = Enum.TryParse<AppRole>(EnvOr("VMENTORY_OIDC_ROLE", "Admin"), ignoreCase: true, out var parsedOidcRole)
+    ? parsedOidcRole
+    : AppRole.Admin;
+// Password sign-in stays on by default. VMENTORY_PASSWORD_LOGIN=0 makes SSO the only door — and
+// is the break-glass in reverse: set it back to 1 and restart to get the local login returned.
+var passwordLoginEnabled = Environment.GetEnvironmentVariable("VMENTORY_PASSWORD_LOGIN") != "0";
+
+var authBuilder = builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(o =>
     {
         o.Cookie.Name     = "vmentory_session";
         o.Cookie.HttpOnly = true;
-        o.Cookie.SameSite = SameSiteMode.Strict;
+        // SameSite: Strict blocks CSRF outright, but it also withholds the cookie on the first
+        // request after an external redirect — which is exactly what an SSO callback is, so a
+        // Strict cookie can leave a user looking signed-out the instant they finish signing in.
+        // With OIDC on we drop to Lax: the cookie still never rides a cross-site POST/PATCH/DELETE,
+        // so every state-changing verb keeps its CSRF protection. Only top-level GET navigation
+        // carries the session, and a cross-origin page cannot read those responses anyway.
+        o.Cookie.SameSite = oidcEnabled ? SameSiteMode.Lax : SameSiteMode.Strict;
         o.Cookie.SecurePolicy = config.HttpOnly
             ? CookieSecurePolicy.None
             : CookieSecurePolicy.Always;
@@ -125,6 +164,104 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
             return Task.CompletedTask;
         };
     });
+
+if (oidcEnabled)
+{
+    authBuilder.AddOpenIdConnect(o =>
+    {
+        o.Authority    = oidcIssuer;
+        o.ClientId     = oidcClientId!;   // guarded: oidcEnabled required all three to be non-blank
+        o.ClientSecret = oidcSecret!;
+        o.ResponseType = "code";
+        o.UsePkce      = true;   // Pocket-ID clients are created with pkceEnabled, which *requires* PKCE
+        o.CallbackPath = "/api/auth/oidc/callback";
+        o.SaveTokens   = false;  // nothing downstream needs the access token
+        o.GetClaimsFromUserInfoEndpoint = true;
+        o.SignInScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+        o.Scope.Clear();
+        o.Scope.Add("openid");
+        o.Scope.Add("email");
+        o.Scope.Add("profile");
+
+        // The provider's principal is discarded and rebuilt. RbacCatalog reads ClaimTypes.Role, so
+        // an SSO session must carry exactly the same claim shape the password path issues or every
+        // authorization check silently fails closed.
+        o.Events.OnTokenValidated = async ctx =>
+        {
+            var email = (ctx.Principal?.FindFirstValue(ClaimTypes.Email)
+                      ?? ctx.Principal?.FindFirstValue("email")
+                      ?? "").Trim().ToLowerInvariant();
+
+            if (string.IsNullOrEmpty(email))
+            {
+                ctx.Fail("The identity provider returned no email claim.");
+                return;
+            }
+
+            if (oidcAllowed.Count > 0 && !oidcAllowed.Contains(email))
+            {
+                await RecordOidcAudit(ctx.HttpContext, email, allowed: false);
+                ctx.Fail("This account is not allowed to sign in to VMentory.");
+                return;
+            }
+
+            var role = oidcRole;
+            if (config.Persist)
+            {
+                var scopeFactory = ctx.HttpContext.RequestServices.GetRequiredService<IServiceScopeFactory>();
+                using var scope  = scopeFactory.CreateScope();
+                var userStore    = scope.ServiceProvider.GetRequiredService<IUserStore>();
+
+                var user = await userStore.FindByUsernameAsync(email);
+                if (user == null)
+                {
+                    user = new AppUserEntity
+                    {
+                        Username = email,
+                        // Deliberately not a hash. PasswordHasher.Verify requires
+                        // iterations:salt:hash and returns false for anything else, so this
+                        // account can never be reached through /api/auth/login.
+                        PasswordHash       = "",
+                        Role               = oidcRole,
+                        MustChangePassword = false,
+                        CreatedAt          = DateTimeOffset.UtcNow,
+                    };
+                    await userStore.CreateAsync(user);
+                }
+
+                // An operator may have changed the role by hand since first sign-in; respect the
+                // stored value instead of re-stamping VMENTORY_OIDC_ROLE on every login.
+                role = user.Role;
+                user.LastLoginAt = DateTimeOffset.UtcNow;
+                await userStore.UpdateAsync(user);
+                await RecordOidcAudit(ctx.HttpContext, email, allowed: true);
+            }
+
+            // SSO accounts are never placed in forced rotation — they have no password to rotate,
+            // and the chokepoint would pin them to /api/auth/* forever.
+            var claims = BuildClaims(email, role, mustChangePassword: false);
+            claims.Add(new Claim("auth_mode", "oidc"));
+            ctx.Principal = new ClaimsPrincipal(
+                new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme));
+        };
+
+        // Without these a failed sign-in surfaces as an unhandled exception page rather than
+        // something the SPA can show the operator.
+        o.Events.OnRemoteFailure = ctx =>
+        {
+            ctx.Response.Redirect("/?sso_error=" + Uri.EscapeDataString(ctx.Failure?.Message ?? "Sign-in failed"));
+            ctx.HandleResponse();
+            return Task.CompletedTask;
+        };
+        o.Events.OnAccessDenied = ctx =>
+        {
+            ctx.Response.Redirect("/?sso_error=" + Uri.EscapeDataString("Access denied"));
+            ctx.HandleResponse();
+            return Task.CompletedTask;
+        };
+    });
+}
+
 builder.Services.AddAuthorization();
 
 // ── Persistence (slice 3) ─────────────────────────────────────────────────────
@@ -186,6 +323,12 @@ if (config.Persist)
 
     await SeedAdminUserAsync(userStore);
     await LoadPersistedCredsAsync(store, secretStore);
+
+    // ENG-0015: first-run estate import (empty tables only) + last hardware reading into memory.
+    var estateState = app.Services.GetRequiredService<EstateState>();
+    await EstateSeeder.SeedAsync(db, estateState);
+    await estateState.LoadLatestAsync(db);
+    await SeedProxmoxHostFromEnvAsync(store, invStore, secretStore);
 }
 
 // ── Middleware pipeline ────────────────────────────────────────────────────────
@@ -244,6 +387,9 @@ app.Use(async (ctx, next) =>
 // POST /api/auth/login
 app.MapPost("/api/auth/login", async (HttpContext ctx, IServiceScopeFactory scopeFactory) =>
 {
+    if (!passwordLoginEnabled)
+        return Results.Json(new { error = "Password sign-in is disabled on this deployment" }, statusCode: 403);
+
     var body = await ctx.Request.ReadFromJsonAsync<LoginDto>();
     if (body == null || string.IsNullOrWhiteSpace(body.Username) || string.IsNullOrWhiteSpace(body.Password))
         return Results.BadRequest(new { error = "username and password required" });
@@ -296,8 +442,27 @@ app.MapGet("/api/auth/me", (HttpContext ctx) =>
     var username = ctx.User.FindFirstValue(ClaimTypes.Name);
     var role     = ctx.User.FindFirstValue(ClaimTypes.Role);
     var mustChange = ctx.User.FindFirstValue("must_change_password") == "true";
-    return Results.Ok(new { username, role, mustChangePassword = mustChange });
+    var authMode   = ctx.User.FindFirstValue("auth_mode") ?? "password";
+    return Results.Ok(new { username, role, mustChangePassword = mustChange, authMode });
 });
+
+// GET /api/auth/config — unauthenticated. Tells the SPA which doors exist so it can render the
+// login screen without guessing. Exposes no secret: the client id is public by construction and
+// this returns only booleans plus the provider's display name.
+app.MapGet("/api/auth/config", () => Results.Ok(new
+{
+    oidcEnabled,
+    oidcName,
+    passwordLogin = passwordLoginEnabled,
+}));
+
+// GET /api/auth/oidc/start — begins the authorization-code flow. The handler owns
+// /api/auth/oidc/callback; both sit under /api/auth/* and so are exempt from the authz chokepoint.
+app.MapGet("/api/auth/oidc/start", () => oidcEnabled
+    ? Results.Challenge(
+        new AuthenticationProperties { RedirectUri = "/" },
+        [OpenIdConnectDefaults.AuthenticationScheme])
+    : Results.Json(new { error = "SSO is not configured" }, statusCode: 404));
 
 // POST /api/auth/logout
 app.MapPost("/api/auth/logout", async (HttpContext ctx) =>
@@ -826,6 +991,9 @@ app.MapPost("/api/scan", async (HttpContext ctx, Store s, EventHub h, AppConfig 
     return Results.Ok(new { ok = true, scanning = hosts.Count });
 });
 
+// Estate dashboard + remediation tracker (ENG-0015) — see EstateEndpoints.cs.
+app.MapEstateEndpoints();
+
 // SSE: cookies are sent automatically by the browser on same-origin GET requests — no ?token= needed.
 app.MapGet("/api/events", async (HttpContext ctx, IHostApplicationLifetime lifetime) =>
 {
@@ -992,6 +1160,39 @@ static async Task LoadPersistedCredsAsync(Store store, ISecretStore secretStore)
     }
 }
 
+// ENG-0015: register a Proxmox host from configuration, so a deployment is reproducible from env
+// alone — an SSO-only console (VMENTORY_PASSWORD_LOGIN=0) has no scripted login through which to
+// add hosts. Runs on every start: creates the host if its address is unknown, and re-arms its
+// token when the secret store has lost it (ephemeral store, or a rotated KEK).
+static async Task SeedProxmoxHostFromEnvAsync(Store store, IInventoryStore invStore, ISecretStore secretStore)
+{
+    var addr  = Environment.GetEnvironmentVariable("VMENTORY_SEED_PVE_HOST")?.Trim();
+    var token = Environment.GetEnvironmentVariable("VMENTORY_SEED_PVE_TOKEN")?.Trim();
+    if (string.IsNullOrEmpty(addr) || string.IsNullOrEmpty(token)) return;
+    var name    = Environment.GetEnvironmentVariable("VMENTORY_SEED_PVE_NAME");
+    var skipTls = Environment.GetEnvironmentVariable("VMENTORY_SEED_PVE_SKIP_TLS") is not ("0" or "false");
+
+    var host = store.GetAllHosts().FirstOrDefault(h => h.Address.Equals(addr, StringComparison.OrdinalIgnoreCase));
+    if (host == null)
+    {
+        host = new VMentory.Core.Host
+        {
+            Address = addr, Fqdn = addr, Platform = PlatformKind.Proxmox,
+            UseGlobalCreds = false, SkipTlsVerification = skipTls,
+            DisplayName = string.IsNullOrWhiteSpace(name) ? null : name.Trim(),
+        };
+        store.AddHost(host);
+        await invStore.UpsertRegistrationAsync(host);
+        DevLog.Ok($"[SEED] Proxmox host {addr} registered from VMENTORY_SEED_PVE_HOST");
+    }
+    if (host.PerHostCreds == null)
+    {
+        store.UpdateHost(host.Id, h => { h.PerHostCreds = new Credentials("", token); h.UseGlobalCreds = false; });
+        await secretStore.SetAsync($"host_cred:{host.Id}", JsonSerializer.Serialize(new { username = "", password = token }));
+        DevLog.Ok($"[SEED] Proxmox token for {addr} loaded from VMENTORY_SEED_PVE_TOKEN");
+    }
+}
+
 // First-admin seed (ENG-0008): runs on startup when no users exist. Reads
 // VMENTORY_ADMIN_USER (default "admin") + VMENTORY_ADMIN_PASSWORD. If no password is configured
 // a one-time password is generated and printed to stdout (Coolify captures container logs).
@@ -1031,6 +1232,29 @@ static async Task SeedAdminUserAsync(IUserStore userStore)
         Console.WriteLine("  [SETUP] Password set from VMENTORY_ADMIN_PASSWORD. Login and change it.");
     }
     Console.ResetColor();
+}
+
+// Audit an SSO sign-in attempt. Fail-safe by design: auditing must never be the reason a login
+// breaks, so every failure here is swallowed (same posture as WriteAuditIfPossible).
+static async Task RecordOidcAudit(HttpContext http, string username, bool allowed)
+{
+    try
+    {
+        var sf = http.RequestServices.GetService<IServiceScopeFactory>();
+        if (sf == null) return;
+        using var s = sf.CreateScope();
+        var us = s.ServiceProvider.GetService<IUserStore>();
+        if (us == null) return;
+        await us.WriteAuditAsync(new AuditEventEntity
+        {
+            Timestamp     = DateTimeOffset.UtcNow,
+            Username      = username,
+            Verb          = "login_oidc",
+            Allowed       = allowed,
+            CorrelationId = http.TraceIdentifier,
+        });
+    }
+    catch { /* never break sign-in over an audit write */ }
 }
 
 static List<Claim> BuildClaims(string username, AppRole role, bool mustChangePassword) =>

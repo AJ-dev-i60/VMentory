@@ -1,0 +1,425 @@
+{
+  "_comment": "ENG-0015 first-run seed for the iSixty i60 estate. Imported once into empty tables; edits after that live in the database. Machines from the Outline '01 · Address register' (verified 2026-08-18); actions from '07 · Action tracker' as of 2026-08-25.",
+  "facts": {
+    "site": "i60 site — colocated at Xneelo, one flat 172.0.0.0/24 behind a FortiGate 100F; mid-migration from Hyper-V to Proxmox",
+    "verifiedAt": "2026-08-18",
+    "backedUp": ["SQL133", "Production [135]", "Albatross [106]", "oldDC [101]", "Latte [121]"],
+    "backupNote": "Five machines out of roughly fifty are backed up by Arcserve. Nothing else in the estate has a backup.",
+    "monitoringNote": "Atera covers the Hyper-V guests; none of vega14's twenty guests carry an agent. Hardware health comes from Dell OpenManage (172.0.0.200).",
+    "trackerUrl": "https://outline.edgestudios.co.za/doc/07-action-tracker-3F0WvzArXy",
+    "docsUrl": "https://outline.edgestudios.co.za/collection/cn-isixty-hosting-environment-XLezP6Pois"
+  },
+  "machines": [
+    {
+      "key": "vega14", "name": "vega14[14]", "address": "172.0.0.14", "kind": "Proxmox", "sortOrder": 10,
+      "role": "Proxmox host — 20 guests. Destination of the Rhea evacuation; also hosts the EdgeStudios VPS (VM 171).",
+      "model": "PowerEdge R740", "serviceTag": "JMGFPC3", "managementIp": "172.0.0.208",
+      "notes": "iDRAC is labelled ODIN_18. vmbr0 moved from nic3 (100 Mbps) to nic2 (1 Gbps) on 2026-08-18 and persisted; nic3's cable and FortiGate port4 remain suspect and untested.",
+      "staticVmsVerifiedAt": "2026-08-25T12:00:00+02:00", "staticVmsSource": "pvesh get /cluster/resources on vega14",
+      "staticVms": [
+        {"name": "windows", "address": null, "state": "stopped", "note": "VMID 100"},
+        {"name": "anythingllm", "address": "172.0.0.150", "state": "running", "note": "LXC 101 — AnythingLLM"},
+        {"name": "onyx", "address": "172.0.0.151", "state": "running", "note": "LXC 102 — serves stratsyschat.i60.co.za"},
+        {"name": "relman", "address": "172.0.0.140", "state": "running", "note": "LXC 140 — release manager"},
+        {"name": "mocha-prod", "address": "172.0.0.141", "state": "running", "note": "VM 141"},
+        {"name": "mocha-uat", "address": "172.0.0.142", "state": "running", "note": "VM 142"},
+        {"name": "mocha-dev", "address": "172.0.0.143", "state": "running", "note": "VM 143"},
+        {"name": "kijani", "address": "172.0.0.144", "state": "running", "note": "VM 144 — NOT the live Kijani host"},
+        {"name": "vega-pg18", "address": "172.0.0.152", "state": "running", "note": "LXC 152 — Postgres 18"},
+        {"name": "outline", "address": "172.0.0.153", "state": "running", "note": "LXC 153 — the wiki"},
+        {"name": "vega-dev", "address": "172.0.0.154", "state": "running", "note": "LXC 154"},
+        {"name": "coolify", "address": "172.0.0.220", "state": "running", "note": "VM 155 — deploy.i60.co.za, *.app.i60.co.za"},
+        {"name": "vega-prod", "address": "172.0.0.156", "state": "running", "note": "LXC 156"},
+        {"name": "vega-uat", "address": "172.0.0.155", "state": "running", "note": "LXC 157"},
+        {"name": "vega-runner", "address": "172.0.0.158", "state": "running", "note": "LXC 158 — CI runner"},
+        {"name": "vega-ingress", "address": "172.0.0.160", "state": "running", "note": "LXC 160 — ingress via 129.232.154.108 one-to-one NAT"},
+        {"name": "uma-review", "address": "172.0.0.162", "state": "running", "note": "LXC 162"},
+        {"name": "cursiv", "address": "172.0.0.163", "state": "running", "note": "LXC 163"},
+        {"name": "kijani164", "address": "172.0.0.164", "state": "running", "note": "VM 164 — the Kijani host"},
+        {"name": "aj-linux-box-71", "address": "172.0.0.71", "state": "running", "note": "VM 171 — the EdgeStudios Coolify VPS; fronts edgestudios.co.za (this dashboard runs here)"},
+        {"name": "sql233", "address": "172.0.0.233", "state": "running", "note": "VM 233 — SQL133 clone, workbench"}
+      ]
+    },
+    {
+      "key": "atlas", "name": "Atlas[103]", "address": "172.0.0.103", "kind": "HyperV", "sortOrder": 20,
+      "role": "Hyper-V host — 9 guests, including the domain's second DC, the Arcserve primary, GitLab and the OpenManage console itself.",
+      "model": "PowerEdge R820", "serviceTag": "6PY7WX1", "managementIp": "172.0.0.204",
+      "notes": "iDRAC7 — locks the account after a few bad logins; the direct password is unknown (item 19) but OpenManage reaches it with its own credential. Reboots take 10–11 minutes because every guest is set to Save state (item 8).",
+      "staticVmsVerifiedAt": "2026-08-18T12:00:00+02:00", "staticVmsSource": "Get-VM over WinRM, 2026-08-18 survey",
+      "staticVms": [
+        {"name": "i60DC2 [9]", "address": "172.0.0.9", "state": "Running", "note": "1 vCPU · 1.9 GB — second i60.local DC"},
+        {"name": "Arcserve_Primary [12]", "address": "172.0.0.12", "state": "Running", "note": "8 vCPU · 31.2 GB — the Arcserve primary"},
+        {"name": "GitLab [40]", "address": "172.0.0.40", "state": "Running", "note": "6 vCPU · 15.6 GB"},
+        {"name": "AJ Linux Box [71]", "address": "172.0.0.71", "state": "Off", "note": "migrated to vega14 (VM 171); powered-off leftover"},
+        {"name": "Albatross [106]", "address": "172.0.0.106", "state": "Running", "note": "12 vCPU · 62.5 GB"},
+        {"name": "Wazuh [131]", "address": "172.0.0.131", "state": "Running", "note": "4 vCPU · 8 GB"},
+        {"name": "Production [135]", "address": "172.0.0.135", "state": "Running", "note": "8 vCPU · 11.7 GB"},
+        {"name": "Dell OpenManage [200]", "address": "172.0.0.200", "state": "Running", "note": "4 vCPU · 19.7 GB — the hardware monitor this dashboard reads"},
+        {"name": "Arcserve_Linux", "address": null, "state": "Running", "note": "abandoned experiment, never worked, never removed"}
+      ]
+    },
+    {
+      "key": "sagan", "name": "Sagan[125]", "address": "172.0.0.125", "kind": "HyperV", "sortOrder": 30,
+      "role": "Hyper-V host — 7 guests, including the old isixty.local DC, Portainer (the shared reverse proxy), the live Frappe and the mail document processor.",
+      "model": "PowerEdge R820", "serviceTag": "3BGQH5J", "managementIp": "172.0.0.206",
+      "notes": "585 CPU-throttle events 2025-12 → 2026-08-11, clustered 04:00–06:00 SAST; cause never found. Four Foreign disks in bays 8–11 hold Storage at Warning. I60NIC team degraded.",
+      "staticVmsVerifiedAt": "2026-08-18T12:00:00+02:00", "staticVmsSource": "Get-VM over WinRM, 2026-08-18 survey",
+      "staticVms": [
+        {"name": "oldDC [101]", "address": "172.0.0.101", "state": "Running", "note": "the OLD isixty.local domain controller — the one in the Arcserve backup set"},
+        {"name": "IIS [104]", "address": "172.0.0.104", "state": "Running", "note": null},
+        {"name": "Portainer [116]", "address": "172.0.0.116", "state": "Running", "note": "the shared reverse proxy — every public *.i60.co.za site"},
+        {"name": "Frappe [118]", "address": "172.0.0.118", "state": "Running", "note": "the live Frappe"},
+        {"name": "Email document processor [124]", "address": "172.0.0.124", "state": "Running", "note": "a.k.a. email-proxy"},
+        {"name": "Lifetime [137]", "address": "172.0.0.137", "state": "Running", "note": "hostname WIN-7ELP6I79D3H"},
+        {"name": "DATAWAREHOUSE [249]", "address": "172.0.0.249", "state": "Running", "note": null}
+      ]
+    },
+    {
+      "key": "titan", "name": "Titan[21]", "address": "172.0.0.21", "kind": "HyperV", "sortOrder": 40,
+      "role": "Hyper-V host — 6 guests, including DEV (running on a differencing chain inside an Arcserve restore session) and DATAWAREHOUSE. Conversion candidate: no storage dependency.",
+      "model": "PowerEdge R820", "serviceTag": "2FY0H5J", "managementIp": "172.0.0.205",
+      "notes": "iSCSI Target Server role is installed and listening on 3260 but has zero targets and zero virtual disks — residue, not a dependency (item 25).",
+      "staticVmsVerifiedAt": "2026-08-18T12:00:00+02:00", "staticVmsSource": "Get-VM over WinRM, 2026-08-18 survey",
+      "staticVms": [
+        {"name": "Leon_Portainer [44]", "address": "172.0.0.44", "state": "Running", "note": "disk is named LibreChat_Linux"},
+        {"name": "Theo_Linux [73]", "address": "172.0.0.73", "state": "Running", "note": null},
+        {"name": "Old RDP [112]", "address": "172.0.0.112", "state": "Running", "note": "Windows Server 2012 R2, workgroup, hostname ZAPTASISVM3"},
+        {"name": "DEV [139]", "address": "172.0.0.139", "state": "Running", "note": "differencing chain whose parents live inside Arcserve recovery point S0000000392 — items 1 and 2"},
+        {"name": "DATAWAREHOUSE [244]", "address": "172.0.0.244", "state": "Running", "note": "Cafe_DW_Theo — never backed up (item 4)"},
+        {"name": "Frappe [118]", "address": null, "state": "Off", "note": "dead leftover with no disks — Frappe moved to Sagan"}
+      ]
+    },
+    {
+      "key": "rhea", "name": "Rhea[11]", "address": "172.0.0.11", "kind": "HyperV", "sortOrder": 50,
+      "role": "Hyper-V host — 3 guests, including the LIVE i60.local domain controller and Latte. Scheduled for retirement: emptied, then pulled from the rack (evacuation programme).",
+      "model": "PowerEdge R620", "serviceTag": "1ZK1302", "managementIp": "172.0.0.201",
+      "notes": "Recabled 2026-08-18: NIC2+NIC3 up at 1 Gbps each (team 2 Gbps); NIC1 and NIC4 still down, so no redundancy margin. Retired, not converted — spend nothing on it.",
+      "staticVmsVerifiedAt": "2026-08-18T12:00:00+02:00", "staticVmsSource": "Get-VM over WinRM, 2026-08-18 survey",
+      "staticVms": [
+        {"name": "i60DC1 [10]", "address": "172.0.0.10", "state": "Running", "note": "the LIVE i60.local domain controller — never V2V a DC (item 11)"},
+        {"name": "Latte [121]", "address": "172.0.0.121", "state": "Running", "note": "24 vCPU · 97.7 GB assigned against 99.6 GB demand — memory-starved today (item 13)"},
+        {"name": "Cafe_DW", "address": null, "state": "Off", "note": "believed to be a stale export — confirm with the owner before deleting (item 12)"}
+      ]
+    },
+    {
+      "key": "sql133", "name": "SQL133[133]", "address": "172.0.0.133", "kind": "BareMetal", "sortOrder": 60,
+      "role": "Bare-metal SQL Server. Source of the SQL233 clone on vega14 and of DEV's disk chain.",
+      "model": "PowerEdge R820", "serviceTag": "G319J32", "managementIp": "172.0.0.203",
+      "notes": "Onboard NIC port 1 (the FortiGate leg) logged 34 short link drops 2026-08-18 → 22 — same onset as the Rhea recabling and vega14's nic3 fault (item 35).",
+      "staticVms": []
+    },
+    {
+      "key": "nextcloud", "name": "Nextcloud[15]", "address": "172.0.0.15", "kind": "BareMetal", "sortOrder": 70,
+      "role": "Bare metal. Runs Nextcloud, published at 156.38.152.107.",
+      "model": "PowerEdge R720", "serviceTag": "58B5F5J", "managementIp": "172.0.0.202",
+      "notes": "A repurposed R720 — its iDRAC still carries the old identity OLD_ISIXTYSQL. PSU 1 has failed: the box runs on PSU 2 alone with no power redundancy (item 34).",
+      "staticVms": []
+    },
+    {
+      "key": "arcserve-storage", "name": "Arcserve storage[212]", "address": "172.0.0.212", "kind": "Storage", "sortOrder": 80,
+      "role": "Supermicro, Ubuntu 24.04 — serves the iSCSI pool behind every Arcserve backup to ArcservePrimary[12], and nothing else.",
+      "model": "Supermicro", "serviceTag": null, "managementIp": "172.0.0.207",
+      "notes": "The former Arcserve UDP appliance, rebuilt as a plain storage server. No OS or IPMI credential is held, so its hardware health cannot be read (item 30). Not a Dell — not in OpenManage.",
+      "staticVms": []
+    },
+    {
+      "key": "fortigate", "name": "FortiGate I60DC", "address": "172.0.0.13", "kind": "Appliance", "sortOrder": 90,
+      "role": "Edge firewall, FortiOS 7.4.12. Its lan hard-switch is half of the access layer — 11 of 20 ports live, 10 of them unidentified.",
+      "model": "FortiGate 100F", "serviceTag": null, "managementIp": "172.0.0.13:9443",
+      "notes": "Management and API on port 9443, not 443. The lan switch lives in the NP6XLITE fabric and exposes no per-port MAC table by any route — architectural, not a permissions problem (item 29).",
+      "staticVms": []
+    },
+    {
+      "key": "switch-dc", "name": "Switch_DC", "address": "172.0.0.2", "kind": "Appliance", "sortOrder": 100,
+      "role": "MikroTik access switch — the other half of the access layer. One unprotected ether1 uplink to the FortiGate.",
+      "model": "MikroTik CRS326-24G-2S+RM", "serviceTag": null, "managementIp": "172.0.0.2",
+      "notes": "RouterOS REST API on port 80, claude_code account. LLDP is off — enable it on the next visit so the port map becomes re-derivable from the hosts.",
+      "staticVms": []
+    },
+    {
+      "key": "switch-2", "name": "Second switch (uncabled)", "address": "", "kind": "Appliance", "sortOrder": 110,
+      "role": "Racked and powered with no cables in it at all. The dual-switch failover design it was bought for was never built.",
+      "model": "MikroTik CRS326-24G-2S+RM", "serviceTag": null, "managementIp": null,
+      "notes": "Not a fault to diagnose: its silence over MNDP and lack of an address are consequences of having no connection. Cabling it is item 27.",
+      "staticVms": []
+    }
+  ],
+  "actions": [
+    {
+      "ref": 1, "title": "Stop Arcserve purging recovery point S0000000392", "priority": "Critical", "class": "Remote", "group": "Data-loss risk",
+      "why": "DEV[139] runs on differencing disks whose parent VHDs live inside that recovery point. Arcserve treats it as an ordinary backup artefact and can reclaim it on retention. If it goes, DEV is unrecoverable — not degraded, gone.",
+      "how": "Exclude the recovery point from retention in the Arcserve console (credential held since item 3).",
+      "doneWhen": "the recovery point is excluded from retention and that exclusion is visible in the Arcserve console",
+      "affectedMachines": ["titan"], "affectedVms": ["DEV [139]"], "createdAt": "2026-08-17T00:00:00+02:00",
+      "notes": [{"at": "2026-08-18T00:00:00+02:00", "text": "No longer blocked — item 3 is closed, the console is readable, so the recovery point can be pinned."}]
+    },
+    {
+      "ref": 2, "title": "Merge DEV[139]'s AVHDX chain onto real storage", "priority": "Critical", "class": "Remote", "group": "Data-loss risk",
+      "why": "Permanent fix for item 1 — removes the dependency on a backup artefact staying alive.",
+      "how": "Cold operation, after hours. Export first; Sagan's second volume has 2.64 TB free.",
+      "doneWhen": "DEV boots from a flat VHDX with no parent references remaining",
+      "affectedMachines": ["titan"], "affectedVms": ["DEV [139]"], "requiresDowntime": true, "createdAt": "2026-08-17T00:00:00+02:00"
+    },
+    {
+      "ref": 3, "title": "Obtain a credential for ArcservePrimary[12] and read the backup posture", "priority": "Critical", "class": "Remote", "group": "Data-loss risk", "status": "Done",
+      "why": "Without the console readable there was no verified safety net under the rest of this list.",
+      "how": "WinRM 5985 + NTLM as the LOCAL account .\\administrator — the leading .\\ matters, the box is domain-joined.",
+      "doneWhen": "the backup posture is read and recorded",
+      "affectedMachines": ["atlas"], "affectedVms": ["Arcserve_Primary [12]"], "createdAt": "2026-08-17T00:00:00+02:00", "completedAt": "2026-08-18T00:00:00+02:00",
+      "notes": [{"at": "2026-08-18T00:00:00+02:00", "text": "Closed. Credential stored at ~/.arcserve-primary-pass. Five machines are protected — SQL133, Production[135], Albatross[106], oldDC[101], Latte[121]; roughly forty-five have no backup. The protected DC01 is the OLD isixty.local controller at .101, not the live one at .10."}]
+    },
+    {
+      "ref": 4, "title": "Install the Arcserve agent on DATAWAREHOUSE[244]", "priority": "High", "class": "Remote", "group": "Data-loss risk",
+      "why": "It has no agent at all. It has never been backed up.",
+      "how": "Install the agent, add it to a plan, run a full backup.",
+      "doneWhen": "a full backup completes and appears in the job history",
+      "affectedMachines": ["titan"], "affectedVms": ["DATAWAREHOUSE [244]"], "createdAt": "2026-08-17T00:00:00+02:00"
+    },
+    {
+      "ref": 5, "title": "Investigate the DEV[139] backup gap", "priority": "High", "class": "Remote", "group": "Data-loss risk",
+      "why": "Last successful backup was 2025-10-16, roughly ten months ago. Establish whether the job is failing, disabled, or was never scheduled.",
+      "how": "Read the job history in the console; fix the cause; run a backup.",
+      "doneWhen": "the cause is known and a successful backup has run",
+      "affectedMachines": ["titan"], "affectedVms": ["DEV [139]"], "createdAt": "2026-08-17T00:00:00+02:00"
+    },
+    {
+      "ref": 6, "title": "Block KB5121645 on Atlas[103]", "priority": "High", "class": "Remote", "group": "Before any migration work",
+      "why": "It is failing and retrying. Each attempt is a three-reboot cycle costing roughly 64 minutes of downtime for every guest on Atlas.",
+      "how": "Hide or block the update; confirm no further install attempts in the event log.",
+      "doneWhen": "the update is hidden or blocked and no further install attempts appear in the event log",
+      "affectedMachines": ["atlas"], "createdAt": "2026-08-17T00:00:00+02:00"
+    },
+    {
+      "ref": 7, "title": "Disable unattended Windows Update installs on Atlas[103]", "priority": "High", "class": "Remote", "group": "Before any migration work",
+      "why": "The 12 August outage was self-inflicted and unscheduled. Nothing currently prevents a repeat.",
+      "how": "Set the policy to notify-only; read the policy back to confirm.",
+      "doneWhen": "the policy is set to notify-only and confirmed with a policy read-back",
+      "affectedMachines": ["atlas"], "createdAt": "2026-08-17T00:00:00+02:00"
+    },
+    {
+      "ref": 8, "title": "Change AutomaticStopAction from Save to Shutdown on Atlas guests", "priority": "High", "class": "Remote", "group": "Before any migration work",
+      "why": "Roughly 116 GB is written to and then read back from RAID-5 on every host reboot. This, not BIOS POST, is why reboots take 10 to 11 minutes. Cheapest fix on the list — it roughly halves every future Atlas reboot.",
+      "how": "Per-VM setting change, no downtime beyond the next planned reboot. Stagger AutomaticStartDelay while there — all nine guests are at zero.",
+      "doneWhen": "all guests report Shutdown and the next reboot is measurably faster",
+      "affectedMachines": ["atlas"], "createdAt": "2026-08-17T00:00:00+02:00"
+    },
+    {
+      "ref": 9, "title": "Re-check Atlas disk 0:1:5 properly", "priority": "High", "class": "Remote", "group": "Before any migration work", "status": "Done",
+      "why": "The earlier OMSA all-clear looked like a false negative.",
+      "how": "Read the bay directly from the iDRAC through OpenManage.",
+      "doneWhen": "the disk's real state is known",
+      "affectedMachines": ["atlas"], "createdAt": "2026-08-17T00:00:00+02:00", "completedAt": "2026-08-24T00:00:00+02:00",
+      "notes": [{"at": "2026-08-24T00:00:00+02:00", "text": "Answered via OpenManage: bay 5 (ST960020 CLAR600) PredictiveFailureState = Yes, RAID Online. The OMSA all-clear was a false negative. Now a replacement job — item 33."}]
+    },
+    {
+      "ref": 10, "title": "Write a rollback plan and confirm free space for each move", "priority": "High", "class": "Remote", "group": "Before any migration work",
+      "why": "With almost no verified backups, the export IS the safety net.",
+      "how": "For each planned migration, write the rollback path and confirm the landing target's free space.",
+      "doneWhen": "each planned migration has a written rollback path and a confirmed landing target",
+      "affectedMachines": ["rhea", "vega14"], "createdAt": "2026-08-17T00:00:00+02:00"
+    },
+    {
+      "ref": 11, "title": "Build a fresh domain controller, then demote i60DC1[10]", "priority": "Medium", "class": "Remote", "group": "Rhea evacuation",
+      "why": "Never V2V a domain controller — USN rollback risk. Promote fresh, then demote the old one. The new DC must NOT land on Atlas: DC2 already lives there, and both DCs on one host defeats the point.",
+      "how": "Promote a new DC on vega14 (not Atlas), confirm replication, demote i60DC1.",
+      "doneWhen": "replication is healthy from the new DC and i60DC1 is cleanly demoted",
+      "affectedMachines": ["rhea"], "affectedVms": ["i60DC1 [10]"], "dependsOn": [10], "createdAt": "2026-08-17T00:00:00+02:00"
+    },
+    {
+      "ref": 12, "title": "Confirm Cafe_DW is a stale export, then delete it", "priority": "Medium", "class": "Remote", "group": "Rhea evacuation",
+      "why": "The filename evidence says stale, but that is inference. Confirm with the owner — do not assume.",
+      "how": "Owner confirms; then remove the files.",
+      "doneWhen": "the owner has confirmed and the files are removed",
+      "affectedMachines": ["rhea"], "affectedVms": ["Cafe_DW"], "createdAt": "2026-08-17T00:00:00+02:00"
+    },
+    {
+      "ref": 13, "title": "Move Latte[121] to vega14 — right-size its RAM on landing", "priority": "Medium", "class": "Remote", "group": "Rhea evacuation",
+      "why": "Demand is 99.6 GB against 97.7 GB assigned — it is memory-starved today. Fix it as part of the move; do not carry the fault across. Both ends of the transfer are now at ≥1 Gbps (items 23 and 28).",
+      "how": "Export, transfer, import on vega14 with assigned memory comfortably above demand. Run ethtool nic2 on vega14 before committing the window — the cable fault was routed around, not repaired.",
+      "doneWhen": "Latte runs on its new host with assigned memory comfortably above demand",
+      "affectedMachines": ["rhea", "vega14"], "affectedVms": ["Latte [121]"], "requiresDowntime": true, "dependsOn": [10, 23, 28], "createdAt": "2026-08-17T00:00:00+02:00"
+    },
+    {
+      "ref": 14, "title": "Empty Rhea[11], then pull it from the rack", "priority": "Medium", "class": "OnSite", "group": "Rhea evacuation",
+      "why": "Rhea is retired, not converted. Do not spend money on it — no controller upgrades, no disks.",
+      "how": "After every guest is off it: power down, unrack, decommission.",
+      "doneWhen": "the host is powered down, unracked and decommissioned",
+      "affectedMachines": ["rhea"], "requiresDowntime": true, "dependsOn": [11, 12, 13], "createdAt": "2026-08-17T00:00:00+02:00"
+    },
+    {
+      "ref": 15, "title": "Free an extra rack unit", "priority": "Medium", "class": "OnSite", "group": "Site visit / purchase",
+      "why": "The R620 is 1U and the R740 is 2U. The swap is not 1:1. This must be resolved BEFORE the site visit, not during it — a 2U server does not fit a 1U slot.",
+      "how": "Identify what can move or be removed to give 2U of contiguous space.",
+      "doneWhen": "2U of contiguous space is confirmed available",
+      "createdAt": "2026-08-17T00:00:00+02:00"
+    },
+    {
+      "ref": 16, "title": "Fit the second R740", "priority": "Medium", "class": "OnSite", "group": "Site visit / purchase",
+      "why": "Identical to vega14, bought at the same time, never fitted. It becomes Proxmox node 2 and the staging target for Titan, then Sagan, then Atlas. It cannot be onboarded into OpenManage until it is racked and has an iDRAC address.",
+      "how": "Rack, cable (both switching layers), give the iDRAC an address, install Proxmox, join the cluster.",
+      "doneWhen": "the node is racked, cabled, running Proxmox and accepting workloads",
+      "dependsOn": [15, 21], "createdAt": "2026-08-17T00:00:00+02:00"
+    },
+    {
+      "ref": 17, "title": "Fix NIC2 on Atlas[103] and the I60NIC team on Sagan[125]", "priority": "High", "class": "OnSite", "group": "Site visit / purchase",
+      "why": "Both hosts are currently running without network redundancy. Every second leg lands on the FortiGate's lan hard-switch (the second MikroTik is uncabled), so diagnose from the host side: Get-NetAdapter reports link speed and state per NIC.",
+      "how": "Read the team state on each host; reseat or replace the failed legs' cables; confirm all members up.",
+      "doneWhen": "both teams show all members up",
+      "affectedMachines": ["atlas", "sagan"], "createdAt": "2026-08-17T00:00:00+02:00"
+    },
+    {
+      "ref": 18, "title": "Identify the foreign disks in Atlas bays 8–15 (and Sagan bays 8–11)", "priority": "Medium", "class": "OnSite", "group": "Site visit / purchase",
+      "sourceKey": "ome:6PY7WX1:disk-foreign",
+      "why": "Roughly 6 TB of unknown content. Do not clear the foreign config blindly. Sagan carries the same pattern — four Foreign disks in bays 8–11 — which holds its Storage subsystem at Warning. Treat both together.",
+      "how": "OpenManage enumerated them 2026-08-24: Atlas bays 8,9,10,11,14,15 = ST91000640SS (1 TB), bay 12 = ST1000NX0453 (1 TB), bay 13 = ST960020 (558 GB). Identify the contents, record a keep-or-clear decision, then import or clear.",
+      "doneWhen": "contents are identified and a keep-or-clear decision is recorded, for Atlas AND Sagan",
+      "affectedMachines": ["atlas", "sagan"], "createdAt": "2026-08-17T00:00:00+02:00"
+    },
+    {
+      "ref": 19, "title": "Recover the iDRAC password for Atlas (.204)", "priority": "Low", "class": "Remote", "group": "Site visit / purchase",
+      "why": ".204 is Atlas's iDRAC (R820, tag 6PY7WX1, iDRAC7). OpenManage already reaches it with its own stored credential, so hardware health is visible — recovering the direct login is about convenience and independence, not visibility. The stored R820 password returns 401: a stale secret, same pattern as vega14's.",
+      "how": "In-band racadm needs no credentials and cannot lock anything out — use that. iDRAC7 locks accounts: one retry, then stop.",
+      "doneWhen": "direct iDRAC access is restored and the working credential is stored properly",
+      "affectedMachines": ["atlas"], "createdAt": "2026-08-17T00:00:00+02:00"
+    },
+    {
+      "ref": 20, "title": "Rotate the Atera API key", "priority": "Low", "class": "Remote", "group": "Housekeeping",
+      "why": "Flagged as pasted into chat on 2026-07-01.",
+      "how": "Revoke the old key; store the replacement outside chat history.",
+      "doneWhen": "the old key is revoked and the replacement is stored outside chat history",
+      "createdAt": "2026-08-17T00:00:00+02:00"
+    },
+    {
+      "ref": 21, "title": "Plan a QDevice for the Proxmox cluster", "priority": "Low", "class": "Remote", "group": "Housekeeping",
+      "why": "A two-node Proxmox cluster has no quorum without one. Decide the host before node 2 goes in, not after.",
+      "how": "Choose and document a QDevice host that is not on either node.",
+      "doneWhen": "a QDevice host is chosen and documented",
+      "affectedMachines": ["vega14"], "createdAt": "2026-08-17T00:00:00+02:00"
+    },
+    {
+      "ref": 22, "title": "Restore SSH access to GitLab[40], and re-test Portainer[116]", "priority": "Medium", "class": "Remote", "group": "Network & access",
+      "why": "GitLab cleanly rejects the operator key (Permission denied) — a genuinely missing authorisation, not a naming problem. Portainer[116] (i60admin) has not been re-tested since the key-rename correction; its status is unknown.",
+      "how": "Install the public half of ~/.ssh/edgestudios_deploy on GitLab out-of-band. Attempt Portainer and record which failure (if any) you actually saw — a missing identity file HANGS, a rejected key refuses immediately.",
+      "doneWhen": "a key-based login succeeds to GitLab[40], and Portainer[116] has been tested either way and recorded",
+      "affectedMachines": ["atlas", "sagan"], "affectedVms": ["GitLab [40]", "Portainer [116]"], "createdAt": "2026-08-18T00:00:00+02:00",
+      "notes": [{"at": "2026-08-18T00:00:00+02:00", "text": "vega14 was never broken: the key was regenerated as ~/.ssh/edgestudios_deploy on 2026-07-31 and its public half was in vega14's authorized_keys all along. The false 'vega14 is down' call came from reasoning about a filename instead of attempting the connection."}]
+    },
+    {
+      "ref": 23, "title": "Finish Rhea's NIC team — two of four members are still down", "priority": "High", "class": "OnSite", "group": "Rhea evacuation",
+      "why": "Recabled 2026-08-18: NIC2 and NIC3 up at 1 Gbps each, team now 2 Gbps (backup throughput 10.83 → 80.30 MB/s). Still Degraded: NIC1 and NIC4 are disconnected, so there is no redundancy margin. Error counters reset on link-state change — current zeroes are not evidence of health.",
+      "how": "Bring NIC1 and NIC4 up (4 Gbps) and learn whether NIC1's old cable or its switch port was faulty. Re-read error counters after several days.",
+      "doneWhen": "all four members are up, and a test transfer confirms the achieved rate before any migration window is committed",
+      "affectedMachines": ["rhea"], "createdAt": "2026-08-18T00:00:00+02:00"
+    },
+    {
+      "ref": 24, "title": "Get read access to the FortiGate and the MikroTik switches", "priority": "Medium", "class": "Remote", "group": "Network & access", "status": "Done",
+      "why": "The estate had no physical network documentation — no VLAN plan, no port map, no uplink record.",
+      "how": "FortiGate REST API on 9443 (token at ~/.fortigate-i60-token); Switch_DC found by MNDP discovery from vega14, then given 172.0.0.2 and a claude_code account, read over RouterOS REST on port 80.",
+      "doneWhen": "both live switching layers are read and mapped",
+      "affectedMachines": ["fortigate", "switch-dc"], "createdAt": "2026-08-18T00:00:00+02:00", "completedAt": "2026-08-18T00:00:00+02:00",
+      "notes": [{"at": "2026-08-18T00:00:00+02:00", "text": "Done for everything that is connected. The second switch needs no read access because there is nothing to read — it has no cables in it (item 27). Enable LLDP on Switch_DC at the next visit."}]
+    },
+    {
+      "ref": 25, "title": "Establish what Titan[21] is serving on iSCSI", "priority": "Medium", "class": "Remote", "group": "Rhea evacuation", "status": "Done",
+      "why": "172.0.0.21 answers on port 3260 and nothing accounted for it — a possible storage dependency blocking Titan's conversion.",
+      "how": "Read the target and initiator services separately.",
+      "doneWhen": "the consumer of the target is known",
+      "affectedMachines": ["titan"], "createdAt": "2026-08-18T00:00:00+02:00", "completedAt": "2026-08-18T00:00:00+02:00",
+      "notes": [{"at": "2026-08-18T00:00:00+02:00", "text": "It serves nothing: the iSCSI Target Server role is installed and WinTarget listens on 3260, but zero targets and zero virtual disks are defined. The Titan conversion has no storage dependency. Do not read the stopped MSiSCSI initiator as the answer — that is the client side."}]
+    },
+    {
+      "ref": 26, "title": "Name the two unidentified Dell servers", "priority": "Medium", "class": "Remote", "group": "Network & access", "status": "Done",
+      "why": "Two chassis on the management network had no name against them.",
+      "how": "Read each machine's serial and match it to the service tag its iDRAC reports over Redfish (which answers unauthenticated).",
+      "doneWhen": "both are named",
+      "affectedMachines": ["nextcloud", "sql133"], "createdAt": "2026-08-18T00:00:00+02:00", "completedAt": "2026-08-18T00:00:00+02:00",
+      "notes": [{"at": "2026-08-18T00:00:00+02:00", "text": ".202 (58B5F5J) is Nextcloud[15]; .203 (G319J32) is SQL133[133]. Seven Dell chassis, seven iDRACs — every machine in the rack is on the management network."}]
+    },
+    {
+      "ref": 27, "title": "Cable the second MikroTik switch", "priority": "Medium", "class": "Purchase", "group": "Site visit / purchase",
+      "why": "Bought for a dual-switch failover design that was never built. Today every host's second NIC lands on the FortiGate's lan hard-switch, so there is no switch redundancy anywhere — and Switch_DC's single ether1 uplink is an unprotected link between the two halves.",
+      "how": "Inter-switch uplink first (both units have sfp-sfpplus1/2 with no modules — a DAC or a pair of modules makes it 10 Gbps), then move half of each host's team legs across. Same visit: set 172.0.0.3 on its bridge, create the claude_code account, enable LLDP on both units.",
+      "doneWhen": "the second switch is reachable at 172.0.0.3, and at least one host has a team leg on each unit",
+      "affectedMachines": ["switch-2", "switch-dc"], "purchases": ["10 Gbps SFP+ DAC cable, or a pair of SFP+ modules, for the inter-switch link"], "createdAt": "2026-08-18T00:00:00+02:00"
+    },
+    {
+      "ref": 28, "title": "vega14's degraded link — bypassed and persisted; the faulty cable is still untested", "priority": "Medium", "class": "OnSite", "group": "Rhea evacuation", "status": "InProgress",
+      "why": "nic3 (Intel X550, FortiGate port4) held gigabit for two months, then flapped nine times in 22 minutes on 2026-08-18 and settled at 100 Mb/s. Its sibling port nic2 negotiates a clean 1 Gbps, so the card is not the problem — the fault is in nic3's cable or FortiGate port4. Strongest lead: Rhea was recabled in this rack the same day.",
+      "how": "Bypassed 2026-08-18: vmbr0 moved to nic2 (Switch_DC ether22, 1 Gbps), persisted in /etc/network/interfaces with the rationale in a comment block. At the next visit: reseat nic3's cable and FortiGate port4 before ordering anything. Never add a second port to vmbr0 — bridge-stp is off and it would loop; bond instead.",
+      "doneWhen": "vega14 holds 1 Gbps without flapping, confirmed from dmesg after several days",
+      "affectedMachines": ["vega14"], "createdAt": "2026-08-18T00:00:00+02:00",
+      "notes": [{"at": "2026-08-18T16:47:00+02:00", "text": "Swap done via a detached, self-reverting script: ~4 s interruption, all 19 guest taps stayed on the bridge. iDRAC (.208, on MikroTik ether14) confirmed as a genuine backstop; root authenticates over Redfish — the stored password had been rotated, the username was always root."}]
+    },
+    {
+      "ref": 29, "title": "Identify the ten unknown FortiGate LAN ports", "priority": "Medium", "class": "Remote", "group": "Network & access",
+      "why": "Switch_DC is mapped port by port; the FortiGate's lan hard-switch is not. Ten of its eleven live ports are unidentified, including port3 at 17.3 billion packets — the busiest port in the estate. There is NO per-port MAC table on this platform by any route — architectural, not permissions.",
+      "how": "In order of preference: (1) owner runs the packet sniffer as full admin on each port — four frames give a source MAC; (2) traffic correlation via per-port counters; (3) link-state elimination. Do not widen the read-only account to allow the sniffer.",
+      "doneWhen": "every live LAN port on the FortiGate has a host against it on the port map",
+      "affectedMachines": ["fortigate"], "createdAt": "2026-08-18T00:00:00+02:00"
+    },
+    {
+      "ref": 30, "title": "Obtain a credential for Arcserve storage[212] and its IPMI at .207", "priority": "Medium", "class": "Remote", "group": "Data-loss risk",
+      "why": "The chassis holding every Arcserve backup cannot have its health read — no OS or IPMI credential is held. It also gates the Linux server backup project (PBS wants an iSCSI LUN from the same pool; a LUN cannot be carved without a shell).",
+      "how": "Password hunt first — whoever rebuilt the appliance as Ubuntu 24.04 set it. Failing that, a site visit: single-user boot on the console, or an IPMI reset from the chassis. Do not guess at the IPMI login repeatedly.",
+      "doneWhen": "root on .212 and an IPMI login are held and stored outside chat history, and the export stack is written up",
+      "affectedMachines": ["arcserve-storage"], "createdAt": "2026-08-24T00:00:00+02:00"
+    },
+    {
+      "ref": 31, "title": "Make OpenManage able to raise the alarm again — email reconfigured to Microsoft 365", "priority": "High", "class": "Remote", "group": "OpenManage hardware backlog", "status": "Done",
+      "why": "OME had been detecting real faults for months and telling no one: SMTP pointed at Gmail with a blank password. A smoke alarm wired to a disconnected bell.",
+      "how": "Relay through the Cloudnexus 365 tenant MX on port 25 (no auth), sender ome-alerts@cloudnexus.co.za, policy broadened to AllTargets.",
+      "doneWhen": "a real alert lands in the inbox",
+      "affectedMachines": ["atlas"], "affectedVms": ["Dell OpenManage [200]"], "createdAt": "2026-08-24T00:00:00+02:00", "completedAt": "2026-08-25T00:00:00+02:00",
+      "notes": [{"at": "2026-08-25T00:00:00+02:00", "text": "Confirmed delivered to Inbox, not Junk. 2,225 stale alerts acknowledged the same day (history retained). Optional hardening: add ip4:156.38.152.98 to the cloudnexus.co.za SPF."}]
+    },
+    {
+      "ref": 32, "title": "Re-scope the estate-wide OpenManage alert mute", "priority": "Medium", "class": "Remote", "group": "OpenManage hardware backlog",
+      "why": "A policy from 2023-05-29 auto-ignores the Critical device-health-deteriorated rollup (DW9000) on ALL devices — set to silence Sagan, but it blanket-mutes that critical for every server. Removing it before Sagan is fixed just re-floods a channel.",
+      "how": "After item 36: narrow the policy to Sagan alone, or delete it. claude_ops can edit policies.",
+      "doneWhen": "the policy targets Sagan only (or is gone) and genuine health-critical alerts on other hosts are no longer suppressed",
+      "dependsOn": [31, 36], "createdAt": "2026-08-24T00:00:00+02:00"
+    },
+    {
+      "ref": 33, "title": "Replace Atlas[103] disk bay 5", "priority": "High", "class": "Purchase", "group": "OpenManage hardware backlog",
+      "sourceKey": "ome:6PY7WX1:disk-predfail:5",
+      "why": "Predictive failure confirmed via OpenManage (item 9). It is an Online array member — redundant but exposed; a second failure in that array loses data.",
+      "how": "Hot-swap with a matching drive; let the array rebuild.",
+      "doneWhen": "the disk is swapped, the array rebuilds, and OpenManage shows bay 5 Online with no predictive flag",
+      "affectedMachines": ["atlas"], "purchases": ["558 GB 6G SAS drive (ST960020 CLAR600 family)"], "createdAt": "2026-08-24T00:00:00+02:00"
+    },
+    {
+      "ref": 34, "title": "Replace the Nextcloud host (.202, R720) PSU 1", "priority": "High", "class": "Purchase", "group": "OpenManage hardware backlog",
+      "sourceKey": "ome:58B5F5J:psu:1",
+      "why": "PSU 1 has failed (\"Failed to read\"); the box runs on PSU 2 alone with no power redundancy — a second event takes Nextcloud down. This is what holds .202 at Critical.",
+      "how": "Reseat first — it may be a seating fault, not a dead unit. Replace if it stays failed.",
+      "doneWhen": "both PSUs read Presence Detected and .202 clears to OK",
+      "affectedMachines": ["nextcloud"], "purchases": ["750 W redundant PSU — PWR SPLY,750WP,RDNT"], "createdAt": "2026-08-24T00:00:00+02:00"
+    },
+    {
+      "ref": 35, "title": "SQL133[133] NIC port 1 is flapping — reseat its FortiGate-side cable", "priority": "Medium", "class": "OnSite", "group": "OpenManage hardware backlog",
+      "why": "OpenManage logged 34 short link drops on NIC.Integrated.1-1 (the FortiGate leg) clustered 2026-08-18 → 22 — the same onset as the Rhea recabling and vega14's nic3 degradation. Three symptoms of one cable-handling event; corroborates item 28.",
+      "how": "Reseat SQL133's FortiGate-side cable at the same visit that checks vega14's port4 and Rhea's NIC1.",
+      "doneWhen": "SQL133 NIC1 holds link with no drops for several days in OpenManage's alert history",
+      "affectedMachines": ["sql133"], "createdAt": "2026-08-24T00:00:00+02:00"
+    },
+    {
+      "ref": 36, "title": "Investigate Sagan[125] throttling; replace the degraded RAID batteries (Sagan H710P, Atlas H710)", "priority": "Medium", "class": "Purchase", "group": "OpenManage hardware backlog",
+      "sourceKey": "ome:3BGQH5J:raid-controller:perc-h710p-adapter",
+      "why": "585 CPU-throttle events on Sagan between 2025-12-15 and 2026-08-11, clustered 04:00–06:00 SAST — a scheduled heavy job hitting a thermal or power cap; quiet since 8/11 but never explained. Two RAID write-cache batteries are degraded (Atlas H710, Sagan H710P), forcing write-through and slowing every write.",
+      "how": "On site: check Sagan's fans and dust, replace both BBUs (machine powered off), and look at the foreign disks of item 18 while there. If ORION_20's chassis (.209, R820, 4QY7WX1 — removed from OME as decommissioned) is still racked, unrack it.",
+      "doneWhen": "the throttle cause is known or ruled out, both batteries read OK, and Sagan clears to OK once its foreign disks are resolved",
+      "affectedMachines": ["sagan", "atlas"], "purchases": ["2 × PERC RAID controller battery (BBU) — H710 and H710P"], "requiresDowntime": true, "createdAt": "2026-08-24T00:00:00+02:00"
+    },
+    {
+      "ref": 37, "title": "Onboard the rest of the estate into OpenManage, then build one consolidated remediation list", "priority": "Low", "class": "Remote", "group": "OpenManage hardware backlog", "status": "InProgress",
+      "why": "Get every manageable node into the console so the whole estate's hardware health is in one place, then work a single prioritised list from a good standpoint.",
+      "how": "Coverage is complete for the i60 site: a full 172.0.0.0/24 Redfish sweep on 2026-08-25 found exactly seven Dell iDRACs, all managed. Remaining: the un-racked second R740 (item 16) and — if it is a Dell — the DR-site Hyper-V host, which this OME cannot reach.",
+      "doneWhen": "every reachable iDRAC/BMC is a managed device, the email policy covers all of them, and a single consolidated action list exists",
+      "createdAt": "2026-08-25T00:00:00+02:00",
+      "notes": [
+        {"at": "2026-08-25T00:00:00+02:00", "text": "vega14 (.208, JMGFPC3) onboarded — managed count is 7. Email policy broadened to AllTargets."},
+        {"at": "2026-08-25T14:00:00+02:00", "text": "The consolidated list is THIS tracker — VMentory's estate dashboard (ENG-0015), seeded from the Outline tracker on this date. Tick-off state now lives here."}
+      ]
+    }
+  ]
+}

@@ -17,6 +17,13 @@
     <ProjectReference Include="VMentory.Core\VMentory.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- ENG-0014: OIDC sign-in. The only NuGet dependency in the solution; everything else is BCL.
+         Taken deliberately rather than hand-rolling the code flow, because discovery, PKCE, nonce,
+         state and id-token validation are all things a bespoke implementation gets subtly wrong. -->
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="8.0.30" />
+  </ItemGroup>
+
   <!-- This project lives at the repo root, so the SDK's default globs would otherwise pull in
        sibling project folders (VMentory.Core, and later Providers.*/Agent). Exclude them here.
        Add a line per new sibling project as it lands. -->
