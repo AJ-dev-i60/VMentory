@@ -9,6 +9,7 @@ using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using VMentory.Core;
 using VMentory.Core.Auth;
@@ -332,6 +333,25 @@ if (config.Persist)
 }
 
 // ── Middleware pipeline ────────────────────────────────────────────────────────
+
+// Behind a reverse proxy (VMENTORY_HTTP_ONLY=1 — Coolify/Traefik terminates TLS) every request
+// arrives as plain HTTP, so any absolute URL the app builds — the OIDC redirect_uri above all —
+// would say http:// and the IdP rejects it as an unregistered callback (seen live 2026-08-25:
+// Pocket-ID "Invalid callback URL"). Trust the proxy's X-Forwarded-Proto/Host so the app
+// describes itself the way the browser reached it. Only in HttpOnly mode: with Core-terminated
+// TLS there is no proxy to trust. KnownProxies is cleared because the proxy's address inside the
+// Docker network is not predictable; the container's port is not published, so only the proxy
+// can reach it anyway.
+if (config.HttpOnly)
+{
+    var forwarded = new ForwardedHeadersOptions
+    {
+        ForwardedHeaders = ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost | ForwardedHeaders.XForwardedFor,
+    };
+    forwarded.KnownNetworks.Clear();
+    forwarded.KnownProxies.Clear();
+    app.UseForwardedHeaders(forwarded);
+}
 
 app.Use(async (ctx, next) =>
 {

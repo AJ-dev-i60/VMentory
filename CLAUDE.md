@@ -274,6 +274,14 @@ at most hourly), so the guest lists behind the blast radius stay live without pr
     `JsonElement`). (e) Sessions expire silently → 401; the client re-authenticates once. Accounts lock
     on repeated failures, so it never retries auth in a loop.
 
+17. **Behind Coolify/Traefik the app must trust `X-Forwarded-Proto`, or SSO breaks with "Invalid
+    callback URL".** In `VMENTORY_HTTP_ONLY=1` mode the request reaches Kestrel as plain HTTP, so the
+    OIDC handler built `redirect_uri=http://…/api/auth/oidc/callback` while Pocket-ID had the `https://`
+    URL registered — exact-match rejection, seen live 2026-08-25 on the first SSO sign-in after the
+    ENG-0014 deploy. `Program.cs` now applies `UseForwardedHeaders` (proto/host/for, known proxies
+    cleared) **only when HttpOnly**. Diagnose in one call: `curl -sI …/api/auth/oidc/start` and read the
+    `redirect_uri` in the `Location` header; compare with `GET /api/oidc/clients/{id}` on Pocket-ID.
+
 16. **`dotnet ef` with a user-local SDK needs `DOTNET_ROOT`.** With the SDK installed via
     `dotnet-install.sh` into `~/.dotnet`, the `dotnet-ef` global tool fails with *"Failed to resolve
     libhostfxr.so"* until `DOTNET_ROOT=~/.dotnet` is exported. `dotnet build` works without it.
