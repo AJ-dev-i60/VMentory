@@ -71,6 +71,6 @@ public enum ActionClass { Remote, OnSite, Purchase }
 public enum ActionStatus { Open, InProgress, Blocked, Done, Dismissed }
 
 // The VMs that go dark if an action is carried out on its machines — computed, never stored.
-public record ImpactVm(string Name, string? Address, string State, string Source);   // Source: live | static
+public record ImpactVm(string Name, string? Address, string State, string Source, string? Note = null);   // Source: live | static | named
 public record ImpactMachine(string Key, string Name, string Kind, List<ImpactVm> Vms);
 public record ActionImpact(List<ImpactMachine> Machines, int VmCount, int RunningVmCount);

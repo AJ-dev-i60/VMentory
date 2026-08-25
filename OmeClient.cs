@@ -200,8 +200,12 @@ public sealed class OmeClient : IDisposable
         try
         {
             if (_token != null && !force) return _token;
-            using var resp = await _http.PostAsJsonAsync("api/SessionService/Sessions",
-                new { UserName = _opt.User, Password = _opt.Password, SessionType = "API" }, ct);
+            // Not PostAsJsonAsync: System.Net.Http.Json defaults to the Web options, which camel-case
+            // the body to userName/password — and OME answers HTTP 400 to that. It wants the
+            // property names exactly as Dell spells them, so serialise with no naming policy.
+            var body = JsonSerializer.Serialize(new { UserName = _opt.User, Password = _opt.Password, SessionType = "API" });
+            using var content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
+            using var resp = await _http.PostAsync("api/SessionService/Sessions", content, ct);
             if (!resp.IsSuccessStatusCode)
                 throw new HttpRequestException($"OME sign-in failed: HTTP {(int)resp.StatusCode}");
             _token = resp.Headers.TryGetValues("X-Auth-Token", out var v) ? v.FirstOrDefault() : null;

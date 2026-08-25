@@ -16,6 +16,21 @@ public static class EstateEndpoints
 
     public static void MapEstateEndpoints(this WebApplication app)
     {
+        // --mock registers no DbContext (gotcha #7). The estate has nothing to stand on there, so
+        // the read endpoints answer empty and the write endpoints are simply not mapped.
+        if (!app.Services.GetRequiredService<AppConfig>().Persist)
+        {
+            app.MapGet("/api/estate", () => Results.Ok(new
+            {
+                facts = (object?)null,
+                hardware = new { configured = false, devices = 0 },
+                summary = new { machines = 0, hardwareOk = 0, hardwareWarning = 0, hardwareCritical = 0, hardwareUnmonitored = 0, vms = 0, vmsRunning = 0, vmsLive = 0, openActions = 0, siteVisitItems = 0, scheduled = Array.Empty<object>() },
+                machines = Array.Empty<object>(),
+            }));
+            app.MapGet("/api/actions", () => Results.Ok(Array.Empty<object>()));
+            return;
+        }
+
         // ── Estate view ──────────────────────────────────────────────────────
         app.MapGet("/api/estate", async (Store store, EstateState state, IServiceScopeFactory scopes, OmeOptions ome) =>
         {
@@ -80,11 +95,16 @@ public static class EstateEndpoints
             });
         });
 
-        app.MapPost("/api/estate/refresh", async (HttpContext ctx, EstateCollector collector) =>
+        app.MapPost("/api/estate/refresh", async (HttpContext ctx, EstateCollector collector, EstateState state, OmeOptions ome) =>
         {
             if (!Can(ctx)) return Forbid();
+            if (!ome.Enabled) return Results.Ok(new { ok = false, message = "No hardware monitor is configured" });
+            var before = state.LastAttempt;
             var ran = await collector.CollectOnceAsync(ctx.RequestAborted);
-            return Results.Ok(new { ok = ran, message = ran ? "Hardware monitor re-read" : "Monitor not configured or a read is already running" });
+            var message = ran ? $"Hardware monitor re-read — {state.Hardware?.Devices.Count ?? 0} servers"
+                        : state.LastAttempt != before ? $"Monitor read failed: {state.LastError}"
+                        : "A read is already running";
+            return Results.Ok(new { ok = ran, message });
         });
 
         // ── Actions ──────────────────────────────────────────────────────────
@@ -347,7 +367,7 @@ public static class EstateEndpoints
         List<StaticVm> stat;
         try { stat = JsonSerializer.Deserialize<List<StaticVm>>(m.StaticVmsJson, J) ?? []; } catch { stat = []; }
         return stat.Count > 0
-            ? (stat.Select(v => new ImpactVm(v.Name, v.Address, v.State, "static")).ToList(), "static")
+            ? (stat.Select(v => new ImpactVm(v.Name, v.Address, v.State, "static", v.Note)).ToList(), "static")
             : ([], "none");
     }
 
