@@ -199,7 +199,12 @@ In `--mock` mode the two estate GETs answer empty and the estate write routes ar
 **Estate env contract (ENG-0015).** `VMENTORY_OME_URL` + `VMENTORY_OME_USER` + `VMENTORY_OME_PASSWORD`
 (all three, else the collector idles and the estate shows inventory + actions only), `VMENTORY_OME_SKIP_TLS=1`
 (OME's self-signed cert), `VMENTORY_OME_INTERVAL` (seconds, default 300, min 30), `VMENTORY_ESTATE_SEED=0`
-(skip the first-run import).
+(skip the first-run import). **Proxmox host from config:** `VMENTORY_SEED_PVE_HOST` (address) +
+`VMENTORY_SEED_PVE_TOKEN` (bare `user@realm!tokenid=secret`), optional `VMENTORY_SEED_PVE_NAME`,
+`VMENTORY_SEED_PVE_SKIP_TLS` (default on). Runs on **every** start: registers the host if its address is
+unknown and re-arms the token if the secret store lost it — the way an SSO-only deployment (no scripted
+login) gets its first host. The collector also re-scans every Proxmox host each cycle (snapshot persisted
+at most hourly), so the guest lists behind the blast radius stay live without pressing Scan.
 
 > **Forthcoming (ENG-0012, planned — slice-5 era, NOT yet built).** Credentials become first-class
 > named entities. When that slice lands, this table changes: `POST /api/credentials` is **repurposed**

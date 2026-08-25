@@ -3,10 +3,41 @@
 > **Purpose:** pick up Phase 2 from a clean clone on any machine. Read this top-to-bottom and you
 > know where we are, what's decided, what's open, and what to do next.
 >
-> **Last updated:** 2026-08-03 (**monitoring-first re-focus** — see the handoff note below)
-> · **Phase:** 2.0 foundation — original build slices 1–3 + re-baselined slices (1)–(4) all built &
-> verified; deployed on Coolify; **next is the re-sequenced slice (5): named credentials (ENG-0012)**,
-> ahead of the health model and the Hyper-V SSH transport · **Branch:** `dev`
+> **Last updated:** 2026-08-25 (**ENG-0014 SSO + ENG-0015 Estate dashboard built** — see the handoff
+> note below) · **Phase:** 2.0 foundation — re-baselined slices (1)–(4) built; **slice (8) landed early
+> and wider as ENG-0015**; SSO landed as ENG-0014; **next is still slice (5): named credentials
+> (ENG-0012)**, then the health model and the Hyper-V SSH transport · **Branch:** `dev`
+>
+> ---
+>
+> ### 🔻 Handoff note — 2026-08-25 session · ENG-0014 SSO + ENG-0015 Estate dashboard & remediation tracker
+>
+> **Two things shipped to `dev`.** (1) **ENG-0014 — OIDC/SSO sign-in** (a separate session, same day):
+> generic authorization-code + PKCE via the one NuGet dep, issuer as config, SSO principals rebuilt
+> into the password path's claim shape; the dev instance is now **SSO-only** (`VMENTORY_PASSWORD_LOGIN=0`,
+> Pocket-ID, allowlist = the owner). (2) **ENG-0015 — the Estate dashboard + remediation tracker**, the
+> owner's "VMentory 2.0" ask: physical machines joined to **Dell OpenManage** hardware health, the
+> hypervisor inventory, and an **interactive action list** — tick-off, prerequisites/follow-ups
+> (cycle-checked), maintenance windows, dated notes, and a **per-action VM blast radius** (live guests
+> when the host is scanned, the labelled static register otherwise). Seeded once from the owner's
+> Outline tracker (37 items, numbers preserved) and the address register (11 machines, 46 guests).
+> **VMentory is now the source of truth for the iSixty action list.** Full record: ENG-0015.
+>
+> **Verified live** against the real OpenManage from a scratch DB: 7 servers, Atlas/Sagan/Nextcloud
+> faults derived exactly as the console shows them, four seeded items adopted by key, two new items
+> raised (#38 Atlas H710 battery, #39 Sagan foreign disks), second read idempotent; vega14 seeded from
+> env (`VMENTORY_SEED_PVE_HOST/TOKEN`) with 21 guests live.
+>
+> **Why the env-seeded host exists:** with the console SSO-only there is no scripted login to add a
+> host through `/api/hosts`. `SeedProxmoxHostFromEnvAsync` runs every start and also re-arms a token
+> the secret store lost. `VMENTORY_KEK` is now set on the dev instance, so credentials persist.
+>
+> **Still true / still open:** every Hyper-V host's guests are a **static list** until ENG-0013 lands
+> (the UI says so on every card); ENG-0012 (named credentials) remains next; ENG-0011a's health tiers
+> are not yet rendered for the hypervisor hosts — the estate view shows the existing reachability.
+> **→ design agent:** interim UI shipped; request in `design/requests/from-codebase/2026-08-25-estate-dashboard.md`.
+> **→ engineering agent:** the collector re-scans Proxmox each cycle — when ENG-0013 lands, the same
+> loop is where Hyper-V goes live and the static lists retire.
 >
 > ---
 >

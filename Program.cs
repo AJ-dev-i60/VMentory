@@ -328,6 +328,7 @@ if (config.Persist)
     var estateState = app.Services.GetRequiredService<EstateState>();
     await EstateSeeder.SeedAsync(db, estateState);
     await estateState.LoadLatestAsync(db);
+    await SeedProxmoxHostFromEnvAsync(store, invStore, secretStore);
 }
 
 // ── Middleware pipeline ────────────────────────────────────────────────────────
@@ -1156,6 +1157,39 @@ static async Task LoadPersistedCredsAsync(Store store, ISecretStore secretStore)
             }
         }
         catch { /* corrupt entry — skip */ }
+    }
+}
+
+// ENG-0015: register a Proxmox host from configuration, so a deployment is reproducible from env
+// alone — an SSO-only console (VMENTORY_PASSWORD_LOGIN=0) has no scripted login through which to
+// add hosts. Runs on every start: creates the host if its address is unknown, and re-arms its
+// token when the secret store has lost it (ephemeral store, or a rotated KEK).
+static async Task SeedProxmoxHostFromEnvAsync(Store store, IInventoryStore invStore, ISecretStore secretStore)
+{
+    var addr  = Environment.GetEnvironmentVariable("VMENTORY_SEED_PVE_HOST")?.Trim();
+    var token = Environment.GetEnvironmentVariable("VMENTORY_SEED_PVE_TOKEN")?.Trim();
+    if (string.IsNullOrEmpty(addr) || string.IsNullOrEmpty(token)) return;
+    var name    = Environment.GetEnvironmentVariable("VMENTORY_SEED_PVE_NAME");
+    var skipTls = Environment.GetEnvironmentVariable("VMENTORY_SEED_PVE_SKIP_TLS") is not ("0" or "false");
+
+    var host = store.GetAllHosts().FirstOrDefault(h => h.Address.Equals(addr, StringComparison.OrdinalIgnoreCase));
+    if (host == null)
+    {
+        host = new VMentory.Core.Host
+        {
+            Address = addr, Fqdn = addr, Platform = PlatformKind.Proxmox,
+            UseGlobalCreds = false, SkipTlsVerification = skipTls,
+            DisplayName = string.IsNullOrWhiteSpace(name) ? null : name.Trim(),
+        };
+        store.AddHost(host);
+        await invStore.UpsertRegistrationAsync(host);
+        DevLog.Ok($"[SEED] Proxmox host {addr} registered from VMENTORY_SEED_PVE_HOST");
+    }
+    if (host.PerHostCreds == null)
+    {
+        store.UpdateHost(host.Id, h => { h.PerHostCreds = new Credentials("", token); h.UseGlobalCreds = false; });
+        await secretStore.SetAsync($"host_cred:{host.Id}", JsonSerializer.Serialize(new { username = "", password = token }));
+        DevLog.Ok($"[SEED] Proxmox token for {addr} loaded from VMENTORY_SEED_PVE_TOKEN");
     }
 }
 

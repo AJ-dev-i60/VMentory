@@ -27,20 +27,21 @@ public sealed class EstateState
     }
 }
 
-// Polls the hardware monitor, persists the reading, turns faults into suggested actions.
-// Deliberately not on the 30 s reachability cadence: OME answers slowly, and hardware faults do
-// not change by the minute. Default 5 min, VMENTORY_OME_INTERVAL to override.
-public sealed class EstateCollector(OmeOptions opt, EstateState state, EventHub hub, IServiceScopeFactory scopes, AppConfig config) : BackgroundService
+// Polls the hardware monitor, persists the reading, turns faults into suggested actions — and
+// re-scans the Proxmox hosts on the same cadence so the guest lists behind the blast radius stay
+// live between manual scans. Deliberately not on the 30 s reachability cadence: OME answers
+// slowly, and hardware faults do not change by the minute. Default 5 min, VMENTORY_OME_INTERVAL.
+public sealed class EstateCollector(OmeOptions opt, EstateState state, EventHub hub, IServiceScopeFactory scopes, AppConfig config,
+                                    Store store, ProviderRegistry registry) : BackgroundService
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly Dictionary<string, DateTimeOffset> _lastPersisted = new();
 
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
-        if (!opt.Enabled || !config.Persist)
-        {
+        if (!config.Persist) return;
+        if (!opt.Enabled)
             DevLog.Warn("[ESTATE] hardware monitor not configured (VMENTORY_OME_URL/USER/PASSWORD) — estate shows tracker + inventory only");
-            return;
-        }
         await Task.Delay(TimeSpan.FromSeconds(15), ct);
         while (!ct.IsCancellationRequested)
         {
@@ -54,10 +55,13 @@ public sealed class EstateCollector(OmeOptions opt, EstateState state, EventHub 
     // Also the target of POST /api/estate/refresh. Overlapping calls coalesce into one.
     public async Task<bool> CollectOnceAsync(CancellationToken ct)
     {
-        if (!opt.Enabled || !config.Persist) return false;
+        if (!config.Persist) return false;
         if (!await _gate.WaitAsync(0, ct)) return false;
         try
         {
+            await RescanProxmoxAsync(ct);
+            if (!opt.Enabled) return false;
+
             using var client = new OmeClient(opt);
             var snap = await client.ReadAsync(ct);
             state.LastAttempt = snap.TakenAt;
@@ -86,6 +90,38 @@ public sealed class EstateCollector(OmeOptions opt, EstateState state, EventHub 
             return true;
         }
         finally { _gate.Release(); }
+    }
+
+    // Proxmox is a cheap REST read, so every Proxmox host with a token gets re-inventoried each
+    // cycle. The in-memory Store is updated every time; a snapshot is persisted at most hourly so
+    // the history table does not fill with identical readings.
+    private async Task RescanProxmoxAsync(CancellationToken ct)
+    {
+        foreach (var host in store.GetAllHosts().Where(h => h.Platform == VMentory.Core.PlatformKind.Proxmox))
+        {
+            if (host.ScanState == VMentory.Core.ScanState.Scanning) continue;
+            try
+            {
+                var (ok, err) = await registry.For(VMentory.Core.PlatformKind.Proxmox).ScanAsync(host, ct);
+                var now = DateTimeOffset.UtcNow;
+                store.UpdateHost(host.Id, h =>
+                {
+                    if (ok) { h.ScanState = VMentory.Core.ScanState.Done; h.LastScanned = now; h.ScanError = ""; h.Reachability.Auth = VMentory.Core.AuthState.Ok; h.Connecting = false; }
+                    else    { h.ScanState = VMentory.Core.ScanState.Error; h.ScanError = err; }
+                });
+                if (ok && (!_lastPersisted.TryGetValue(host.Id, out var last) || now - last > TimeSpan.FromHours(1)))
+                {
+                    using var scope = scopes.CreateScope();
+                    await scope.ServiceProvider.GetRequiredService<IInventoryStore>().SaveSnapshotAsync(host, ct);
+                    _lastPersisted[host.Id] = now;
+                }
+                var updated = store.GetHost(host.Id);
+                if (updated != null) hub.Broadcast("hostUpdated", updated);
+                if (!ok) DevLog.Warn($"[ESTATE] Proxmox rescan of {host.Address} failed: {err}");
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex) { DevLog.Warn($"[ESTATE] Proxmox rescan of {host.Address}: {ex.Message}"); }
+        }
     }
 }
 
