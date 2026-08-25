@@ -123,6 +123,16 @@ defaults to the `VMENTORY_DB` directory → `/data/errors.log` in the container;
 fail-safe — a bad path degrades to no-op). `GET /health` is an unauthenticated liveness probe. Behind a
 reverse proxy (Coolify/Traefik), set `VMENTORY_HTTP_ONLY=1`.
 
+**SSO env contract (ENG-0014).** `VMENTORY_OIDC_ISSUER` + `VMENTORY_OIDC_CLIENT_ID` +
+`VMENTORY_OIDC_CLIENT_SECRET` — all three required, and OIDC stays completely unregistered unless all
+three are set. `VMENTORY_OIDC_NAME` (button label, default `SSO`), `VMENTORY_OIDC_ALLOWED_EMAILS`
+(comma-separated; **empty means allow any account the IdP authenticates** — set it),
+`VMENTORY_OIDC_ROLE` (role granted on *first* sign-in only, default `Admin`),
+`VMENTORY_PASSWORD_LOGIN=0` (closes local password sign-in; `1` or unset leaves it open).
+Callback path is `/api/auth/oidc/callback` — register that exact URL with the provider.
+⚠️ Enabling OIDC drops the session cookie from `SameSite=Strict` to `Lax`; see ENG-0014 for why the
+CSRF posture survives.
+
 ## Release workflow
 
 ```powershell
@@ -144,8 +154,11 @@ runs `dotnet restore` + `dotnet build VMentory.sln -c Release` on every push/PR 
 | Method | Path | Description |
 |---|---|---|
 | GET | `/health` | Unauthenticated liveness probe — `{status, version, build}` |
-| POST | `/api/auth/login` | Cookie-based login — `{username, password}` → sets `vmentory_session` cookie |
-| GET | `/api/auth/me` | Current user — `{username, role, mustChangePassword}` |
+| GET | `/api/auth/config` | Unauthenticated — which sign-in doors exist: `{oidcEnabled, oidcName, passwordLogin}` |
+| POST | `/api/auth/login` | Cookie-based login — `{username, password}` → sets `vmentory_session` cookie. **403 when `VMENTORY_PASSWORD_LOGIN=0`** |
+| GET | `/api/auth/oidc/start` | Begins the OIDC authorization-code flow (404 when SSO is unconfigured) |
+| GET | `/api/auth/oidc/callback` | Owned by the OIDC handler; not a hand-written route |
+| GET | `/api/auth/me` | Current user — `{username, role, mustChangePassword, authMode}` (`authMode` = `password` \| `oidc`) |
 | POST | `/api/auth/logout` | Clears the session cookie |
 | POST | `/api/auth/change-password` | Change password (forced on first login) |
 | GET | `/api/state` | Full snapshot: `hosts, totals, diff, credentialsSet, mockMode, build` |

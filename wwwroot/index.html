@@ -517,15 +517,23 @@ textarea.finp{resize:vertical;min-height:80px}
     <div class="auth-title">Sign in</div>
     <div class="auth-sub">Enter your console credentials to continue.</div>
     <div class="auth-err" id="login-err"></div>
-    <div class="fgrp">
-      <label class="flbl">Username</label>
-      <input type="text" id="login-user" class="finp" style="width:100%" autocomplete="username" onkeydown="if(event.key==='Enter')document.getElementById('login-pass').focus()">
+    <div id="login-password-form">
+      <div class="fgrp">
+        <label class="flbl">Username</label>
+        <input type="text" id="login-user" class="finp" style="width:100%" autocomplete="username" onkeydown="if(event.key==='Enter')document.getElementById('login-pass').focus()">
+      </div>
+      <div class="fgrp">
+        <label class="flbl">Password</label>
+        <input type="password" id="login-pass" class="finp" style="width:100%" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitLogin()">
+      </div>
+      <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:8px" onclick="submitLogin()" id="login-btn">Sign in</button>
     </div>
-    <div class="fgrp">
-      <label class="flbl">Password</label>
-      <input type="password" id="login-pass" class="finp" style="width:100%" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitLogin()">
+    <!-- SSO (ENG-0014). Both blocks are hidden until /api/auth/config says otherwise, so a
+         deployment with no OIDC configured renders exactly the previous screen. -->
+    <div id="login-sso-divider" style="display:none;align-items:center;gap:10px;margin:14px 0 10px;color:var(--muted);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase">
+      <span style="flex:1;height:1px;background:var(--border)"></span>or<span style="flex:1;height:1px;background:var(--border)"></span>
     </div>
-    <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:8px" onclick="submitLogin()" id="login-btn">Sign in</button>
+    <button class="btn" id="login-sso-btn" style="display:none;width:100%;justify-content:center" onclick="location.href='/api/auth/oidc/start'">Continue with SSO</button>
     <div class="auth-foot" id="login-role-hint"></div>
   </div>
 </div>
@@ -582,6 +590,21 @@ async function api(m,path,body){
 }
 
 // ── Auth screens ──────────────────────────────────────────────────────────────
+// Which sign-in doors this deployment exposes. Failing open to password-only keeps the screen
+// usable if the probe itself fails.
+async function applyAuthConfig(){
+  let c={oidcEnabled:false,passwordLogin:true,oidcName:'SSO'};
+  try{c=await fetch('/api/auth/config',{credentials:'include'}).then(r=>r.json());}catch(e){}
+  document.getElementById('login-password-form').style.display=c.passwordLogin?'':'none';
+  document.getElementById('login-sso-divider').style.display=(c.oidcEnabled&&c.passwordLogin)?'flex':'none';
+  const sb=document.getElementById('login-sso-btn');
+  sb.style.display=c.oidcEnabled?'':'none';
+  if(c.oidcEnabled)sb.textContent='Continue with '+(c.oidcName||'SSO');
+  const sub=document.querySelector('#auth-login .auth-sub');
+  if(sub)sub.textContent=c.passwordLogin?'Enter your console credentials to continue.'
+                                        :'Sign in with '+(c.oidcName||'SSO')+' to continue.';
+  return c;
+}
 function showLogin(){
   document.getElementById('auth-login').style.display='flex';
   document.getElementById('auth-chpw').style.display='none';
@@ -589,7 +612,13 @@ function showLogin(){
   document.getElementById('login-user').value='';
   document.getElementById('login-pass').value='';
   document.getElementById('login-err').style.display='none';
-  setTimeout(()=>document.getElementById('login-user').focus(),50);
+  applyAuthConfig().then(c=>{
+    // A failed SSO round-trip comes back as ?sso_error=... rather than an exception page.
+    const e=new URLSearchParams(location.search).get('sso_error');
+    if(e){showErr(document.getElementById('login-err'),decodeURIComponent(e));
+          history.replaceState({},'',location.pathname+location.hash);}
+    if(c.passwordLogin)setTimeout(()=>document.getElementById('login-user').focus(),50);
+  });
 }
 function showChangePassword(){
   document.getElementById('auth-chpw').style.display='flex';
