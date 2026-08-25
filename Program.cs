@@ -100,6 +100,16 @@ builder.Services.AddSingleton<IVirtualizationProvider, ProxmoxProvider>();
 builder.Services.AddSingleton<ProviderRegistry>();
 builder.Services.AddHostedService<Poller>();
 
+// ── Estate dashboard + remediation tracker (ENG-0015) ─────────────────────────
+// The hardware monitor (Dell OpenManage) is optional config: VMENTORY_OME_URL/USER/PASSWORD
+// (+ VMENTORY_OME_SKIP_TLS=1 for its self-signed cert, VMENTORY_OME_INTERVAL seconds). Without it
+// the estate view still renders — machines, inventory and the action list — minus hardware health.
+var omeOptions = OmeOptions.FromEnvironment();
+builder.Services.AddSingleton(omeOptions);
+builder.Services.AddSingleton(new EstateState { MonitorConfigured = omeOptions.Enabled });
+builder.Services.AddSingleton<EstateCollector>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<EstateCollector>());
+
 // ── Auth: cookie-based session (ENG-0008, slice 2) + SSO (ENG-0014) ───────────
 // HttpOnly + Secure (when HTTPS). EventSource (GET, same-origin) sends cookies automatically — no
 // more ?token= on the SSE stream. CSRF is blocked by SameSite (Strict, or Lax once OIDC is on —
@@ -313,6 +323,11 @@ if (config.Persist)
 
     await SeedAdminUserAsync(userStore);
     await LoadPersistedCredsAsync(store, secretStore);
+
+    // ENG-0015: first-run estate import (empty tables only) + last hardware reading into memory.
+    var estateState = app.Services.GetRequiredService<EstateState>();
+    await EstateSeeder.SeedAsync(db, estateState);
+    await estateState.LoadLatestAsync(db);
 }
 
 // ── Middleware pipeline ────────────────────────────────────────────────────────
@@ -974,6 +989,9 @@ app.MapPost("/api/scan", async (HttpContext ctx, Store s, EventHub h, AppConfig 
 
     return Results.Ok(new { ok = true, scanning = hosts.Count });
 });
+
+// Estate dashboard + remediation tracker (ENG-0015) — see EstateEndpoints.cs.
+app.MapEstateEndpoints();
 
 // SSE: cookies are sent automatically by the browser on same-origin GET requests — no ?token= needed.
 app.MapGet("/api/events", async (HttpContext ctx, IHostApplicationLifetime lifetime) =>
