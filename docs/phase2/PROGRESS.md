@@ -32,6 +32,13 @@
 > host through `/api/hosts`. `SeedProxmoxHostFromEnvAsync` runs every start and also re-arms a token
 > the secret store lost. `VMENTORY_KEK` is now set on the dev instance, so credentials persist.
 >
+> **Deployed 2026-08-25 15:00 SAST (build `v26.08.25.1459`).** The first SSO sign-in failed with
+> Pocket-ID's *"Invalid callback URL"*: behind Coolify's Traefik the OIDC handler built
+> `redirect_uri=http://…` while the client had `https://…` registered. Fixed the same hour
+> (`3c11e6d`, build `v26.08.25.1510`) with `UseForwardedHeaders` in HttpOnly mode — **gotcha #17**.
+> The redirect was verified `https://` after the redeploy; the owner's sign-in itself was not yet
+> confirmed when the session closed.
+>
 > **Still true / still open:** every Hyper-V host's guests are a **static list** until ENG-0013 lands
 > (the UI says so on every card); ENG-0012 (named credentials) remains next; ENG-0011a's health tiers
 > are not yet rendered for the hypervisor hosts — the estate view shows the existing reachability.
