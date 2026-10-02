@@ -59,7 +59,7 @@ public static class InventoryEndpoints
 
         // Start / shutdown / stop / reboot — the write token of the guest's node, state-checked here and
         // again by Proxmox, audited either way. Shutdown/stop/reboot need confirm:true (one-line confirm).
-        app.MapPost("/api/inventory/guests/{hostId}/{type}/{vmid:int}/power", async (string hostId, string type, int vmid, Deps d, HttpContext ctx) =>
+        app.MapPost("/api/inventory/guests/{hostId}/{type}/{vmid:int}/power", async (string hostId, string type, int vmid, Deps d, ActivityRegistry reg, HttpContext ctx) =>
         {
             PowerDto? b;
             try { b = await ctx.Request.ReadFromJsonAsync<PowerDto>(J); } catch { b = null; }
@@ -94,8 +94,13 @@ public static class InventoryEndpoints
                 var form = action == "shutdown" ? new[] { new KeyValuePair<string, string>("timeout", "180") } : null;
                 var upid = (await pve.PostAsync($"/nodes/{PveClient.Enc(n.Name)}/{type}/{vmid}/status/{action}", form, ctx.RequestAborted)).GetString();
                 await Audit(d, who, $"guest.{action}", upid, new { guest = g.Name, type, vmid, node = n.Name, ok = true });
-                _ = FollowAsync(d, n, upid!);
-                return Results.Ok(new { ok = true, upid, message = $"{action} sent to {g.Name}" });
+                var task = reg.Add(new ActivityRegistry.PowerTask
+                {
+                    Upid = upid!, HostId = n.Host.Id, Node = n.Name, Guest = g.Name, GuestType = type, Vmid = vmid, Action = action!, By = who,
+                });
+                d.Hub.Broadcast("activity", new { kind = "power", id = task.Id });
+                _ = FollowAsync(d.Store, d.Collector, d.Hub, n, task);
+                return Results.Ok(new { ok = true, upid, id = task.Id, message = $"{action} sent to {g.Name}" });
             }
             catch (PveException ex)
             {
@@ -122,23 +127,27 @@ public static class InventoryEndpoints
     }
 
     // When a power task finishes, re-read the fleet so the tree shows the new state without waiting a cycle.
-    private static async Task FollowAsync(Deps d, NodeCtx n, string upid)
+    // Deps is request-scoped, so only singletons cross into this background follow-up.
+    private static async Task FollowAsync(Store store, FleetCollector collector, EventHub hub, NodeCtx n, ActivityRegistry.PowerTask task)
     {
         try
         {
-            var tok = FleetCollector.ReadToken(d.Store, n.Host);
+            var tok = FleetCollector.ReadToken(store, n.Host);
             if (tok == null) return;
             using var pve = new PveClient(n.Host.Address, tok, n.Host.SkipTlsVerification);
-            var until = DateTimeOffset.UtcNow.AddMinutes(4);
+            var until = DateTimeOffset.UtcNow.AddMinutes(10);
             while (DateTimeOffset.UtcNow < until)
             {
-                var st = await pve.GetAsync($"/nodes/{PveClient.Enc(n.Name)}/tasks/{PveClient.Enc(upid)}/status", CancellationToken.None);
-                if (Pj.Str(st, "status") == "stopped") break;
+                var st = await pve.GetAsync($"/nodes/{PveClient.Enc(n.Name)}/tasks/{PveClient.Enc(task.Upid)}/status", CancellationToken.None);
+                if (Pj.Str(st, "status") == "stopped") { task.ExitStatus = Pj.Str(st, "exitstatus") ?? "stopped"; break; }
                 await Task.Delay(2000);
             }
-            await d.Collector.CollectOnceAsync(CancellationToken.None);
+            task.ExitStatus ??= "no result after 10 min — check the task in Proxmox";
+            task.FinishedAt = DateTimeOffset.UtcNow;
+            hub.Broadcast("activity", new { kind = "power", id = task.Id, done = true });
+            await collector.CollectOnceAsync(CancellationToken.None);
         }
-        catch { }
+        catch (Exception ex) { task.ExitStatus ??= "lost track: " + ex.Message; task.FinishedAt ??= DateTimeOffset.UtcNow; hub.Broadcast("activity", new { kind = "power", id = task.Id, done = true }); }
     }
 
     private static object NodeDto(NodeCtx n, FleetCtx f)

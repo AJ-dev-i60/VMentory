@@ -22,6 +22,12 @@ the reason in the tooltip. This list is what has to be built to fill those gaps.
 | 9 | **Disk "used" inside the guest** ("620 GB · 310 GB used") | Shows **allocated on storage** (what the disk occupies on the pool, via the node probe) — labelled "allocated", not "used". | Guest-agent `get-fsinfo` gives filesystem used/total for agent-enabled guests; then both could be shown. |
 | 10 | **Power actions tested end to end** | Start/Shutdown/Stop/Reboot are wired to Proxmox with the write token, state-checked, confirmed and audited; every guard rail tested. **No real power action has been sent** — that would touch a production guest. | First real test on a throwaway guest (same one as the first Migrate test). |
 
+## Added after the design (owner request, 2026-10-02)
+
+* **Activity strip** under the header — persistent across sessions and screens (server-side feed), shows every move / power action underway plus anything finished in the last 90 s; each item opens it.
+* **Actions page** (`#actions`) — underway + recent moves, power actions and drains, each with live phase, task log, cancel / cleanup / abort. Executing a migration now lands here instead of a dialog.
+* **Self-host hard block** — the VM that runs VMentory can only be moved live.
+
 ## Parked (built before v4, not in this design — backend still running, UI removed)
 
 * Estate dashboard (machines × OpenManage hardware health) and the **remediation action tracker** (ENG-0015) — `/api/estate`, `/api/actions` still serve; the OME collector still raises actions.

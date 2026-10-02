@@ -99,6 +99,7 @@ _**Phase-2 layout (2.0 slice 1):** the solution `VMentory.sln` has two projects 
 | `EstateEndpoints.cs` | `/api/estate`, `/api/estate/refresh`, `/api/actions` CRUD + `/status` `/notes` `/deps`; blast-radius computation; `ManageActions` gate |
 | `Fleet/` | **ENG-0016 Proxmox fleet.** `FleetOptions` (env + the forced-command SSH probe), `PveClient` (REST, `Pj` null-safe JSON readers), `FleetCollector` (polls every node in parallel; `FleetState` keeps last good reading per node), `FleetAnalysis` (capacity, score, vetoes, findings — pure), `FleetPreflight` (live checks before a move), `MigrationRunner` (one move at a time, UPID tracking, cancel, failure cleanup, audit), `FleetEndpoints` (API + drain planner), `FleetSeed` (multi-node env seed, first-run rules) |
 | `VMentory.Core/Fleet/FleetModels.cs` / `Persistence/FleetEntities.cs` | Readings (nullable = unknown, never 0) / `FleetRuleEntity`, `NodeMaintenanceEntity`, `MigrationJobEntity`, `DrainPlanEntity` (`AddFleet` migration) |
+| `Fleet/ActivityEndpoints.cs` / `ActivityRegistry.cs` | The activity feed (strip + Actions page); power tasks held server-side so every session sees them |
 | `Fleet/InventoryEndpoints.cs` | UI v4 API: `/api/inventory` (tree with per-guest shares of node/pool, live IPs/OS, disk media), guest power verbs, task status |
 | `docs/ui-v4-gaps.md` | What the v4 design asks for that is not built yet, and what was parked |
 | `ops/provision-fleet-nodes.sh` | Per node: read-only `vmentory@pve!monitor`, write `vmentory-ops@pve!migrate` (role `VMentoryMigrate`), probe key + `/usr/local/sbin/vmentory-probe`. Idempotent; secrets to `~/.vmentory-pve-<node>-*token` |
@@ -208,6 +209,8 @@ runs `dotnet restore` + `dotnet build VMentory.sln -c Release` on every push/PR 
 | GET | `/api/inventory` | **UI v4.** `{fleet, nodes[] (capacity, storages with media), guests[] (os, ips + source/reason, services from tags, cpu/ram/disk with share + othersShare, rules, consoleUrl)}` |
 | POST | `/api/inventory/guests/{hostId}/{type}/{vmid}/power` | `{action: start\|shutdown\|stop\|reboot, confirm}` — node's write token; state-checked (409), `confirm:true` required except start; Start/Stop need `ProviderCapability.Start/Stop` (Admin, VmOperator), reboot needs `Reset` (Admin). Audited `guest.*` |
 | GET | `/api/inventory/nodes/{hostId}/tasks/{upid}` | Task status (read token) |
+| GET | `/api/activity` | Everything underway or recent for the strip + Actions page: migrations (DB), power actions (`ActivityRegistry`, in memory, last 100), running drains — `{active, items[]}`. SSE `activity` / `fleetJob` events trigger a reload |
+| GET | `/api/activity/power/{id}` | One power action with its Proxmox task log |
 
 All `/api/*` routes (except `/api/auth/*`) require the `vmentory_session` cookie set by `/api/auth/login`.
 In `--mock` mode the two estate GETs answer empty and the estate write routes are not mapped (no DbContext).
@@ -316,6 +319,11 @@ root). `VMENTORY_FLEET_INTERVAL` (s, default 60), `VMENTORY_FLEET_PROBE_INTERVAL
     a node did not report stays `null` and the UI shows `—` with the reason. Do not add fallbacks like `?? 0` in
     `Fleet/` for anything displayed, do not reintroduce a "typical" transfer rate (ETA comes only from this
     deployment's measured moves), and do not copy example figures from a brief into code or seeds.
+
+21. **A SelfHost-rule guest can only move live (hard block, 2026-10-02).** VMentory shut down its own VM (171,
+    `aj-linux-box-71`) on an offline move: the shutdown kills VMentory before the copy starts, so the move can never
+    finish and the guest stays stopped (it was started again by hand). `FleetPreflight` now blocks any non-Online
+    move of a *running* SelfHost guest; the runner re-runs preflight before its shutdown step, so drains are covered.
 
 20. **UI v4 data sources.** IPs/OS names come from the QEMU guest agent (`agent/network-get-interfaces`,
     `agent/get-osinfo` — readable by PVEAuditor) and `lxc/{id}/interfaces`; a guest without a running agent has

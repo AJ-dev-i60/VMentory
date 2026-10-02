@@ -118,6 +118,7 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<EstateCollector>()
 var fleetOptions = FleetOptions.FromEnvironment(dataDir);
 builder.Services.AddSingleton(fleetOptions);
 builder.Services.AddSingleton<FleetState>();
+builder.Services.AddSingleton<ActivityRegistry>();
 builder.Services.AddSingleton<FleetCollector>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<FleetCollector>());
 builder.Services.AddHostedService<MigrationRunner>();
@@ -1032,6 +1033,7 @@ app.MapEstateEndpoints();
 // Proxmox fleet (ENG-0016) — see Fleet/FleetEndpoints.cs.
 app.MapFleetEndpoints();
 app.MapInventoryEndpoints();
+app.MapActivityEndpoints();
 
 // SSE: cookies are sent automatically by the browser on same-origin GET requests — no ?token= needed.
 app.MapGet("/api/events", async (HttpContext ctx, IHostApplicationLifetime lifetime) =>

@@ -434,7 +434,7 @@ public static class FleetEndpoints
             if (!g.Running) { row.RowAction = DrainRowAction.Stay; notes.Add("stopped — stays unless you switch it to Move"); }
             if (g.MigrationBlockers.Count > 0) notes.Add("blocked: " + string.Join("; ", g.MigrationBlockers));
             if (FleetAnalysis.HasRule(f, g, FleetRuleKind.Ephemeral)) notes.Add("ephemeral — consider deleting it rather than moving it");
-            if (FleetAnalysis.HasRule(f, g, FleetRuleKind.SelfHost)) notes.Add("self-host — moved last; an offline move stops this console until it is back");
+            if (FleetAnalysis.HasRule(f, g, FleetRuleKind.SelfHost)) notes.Add("self-host — moved last; only a live move is allowed (an offline move would stop VMentory before the copy)");
             if (g.Onboot == false && g.Running) notes.Add("onboot=0 — moved early");
 
             if (row.RowAction == DrainRowAction.Move)

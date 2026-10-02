@@ -173,6 +173,27 @@ pre.log{background:var(--bg);border:1px solid var(--border);border-radius:6px;pa
 *{scrollbar-width:thin;scrollbar-color:var(--border) transparent}
 .meta .long{display:inline}.meta .short{display:none}
 @media(max-width:599px){.meta .long{display:none}.meta .short{display:inline}}
+.badge{background:var(--blue);color:#fff;border-radius:9px;font-size:11px;font-weight:700;padding:0 6px;margin-left:6px;line-height:17px}
+/* activity strip — every session sees what is underway */
+.strip{display:flex;align-items:center;gap:8px;padding:6px 12px;background:color-mix(in srgb,var(--blue) 14%,var(--bg-card));border-bottom:1px solid var(--border);overflow-x:auto;flex-shrink:0;white-space:nowrap}
+.sitem{display:inline-flex;align-items:center;gap:7px;padding:4px 10px;border-radius:14px;border:1px solid var(--border-lt);background:var(--bg-card);color:var(--text);text-decoration:none;font-size:12.5px;max-width:460px;flex-shrink:0}
+.sitem:hover{border-color:var(--blue)}
+.sitem .ph2{color:var(--text2);overflow:hidden;text-overflow:ellipsis;max-width:260px}
+.sitem.ok{border-color:var(--green)}.sitem.failed,.sitem.cancelled{border-color:var(--red)}
+.strip .all{margin-left:auto;font-size:12.5px;color:var(--blue);text-decoration:none;flex-shrink:0;padding-left:8px}
+.st-ic{width:14px;text-align:center;flex:none;font-weight:700}
+.st-ok{color:var(--green)}.st-failed,.st-cancelled{color:var(--red)}.st-queued{color:var(--text3)}
+/* Actions page */
+.apage{flex:1;display:flex;min-height:0}
+.alist{width:420px;flex-shrink:0;border-right:1px solid var(--border);overflow-y:auto;padding:12px 0}
+.adetail{flex:1;overflow-y:auto;padding:20px 24px;min-width:0}
+@media(max-width:899px){.alist{width:100%;border-right:none}.apage.has-sel .alist{display:none}.apage:not(.has-sel) .adetail{display:none}.adetail{padding:14px 12px}}
+.asec{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);padding:10px 14px 6px;font-weight:700}
+.aitem{display:grid;grid-template-columns:18px 1fr auto;gap:4px 10px;padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer;align-items:start}
+.aitem:hover{background:var(--bg-hover)}.aitem.sel{background:var(--bg-sel)}
+.aitem .t{font-weight:600;font-size:13.5px}.aitem .s{grid-column:2/4;font-size:12px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.aitem .w{font-size:11.5px;color:var(--text3);white-space:nowrap}
+.back{background:none;border:none;color:var(--blue);cursor:pointer;font-size:13px;margin-bottom:10px;padding:0}
 .empty{padding:40px 16px;text-align:center;color:var(--text2)}
 </style>
 </head>
@@ -182,11 +203,13 @@ pre.log{background:var(--bg);border:1px solid var(--border);border-radius:6px;pa
     <div class="logo"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="5" rx="1"/><rect x="2" y="10" width="20" height="5" rx="1"/><rect x="2" y="17" width="20" height="5" rx="1"/></svg>VMentory</div>
     <span class="meta" id="hmeta"></span>
     <span class="sp"></span>
+    <button class="ibtn" id="act-nav" onclick="goActions()" title="Moves and power actions — underway and recent">Actions<span class="badge" id="act-badge" style="display:none"></span></button>
     <button class="ibtn" onclick="refreshNow(this)" title="Re-read every node now" aria-label="Refresh"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg></button>
     <button class="ibtn" onclick="toggleTheme()" title="Light / dark" aria-label="Theme"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"/></svg></button>
     <button class="ibtn" onclick="logout()" title="Sign out" aria-label="Sign out"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/></svg></button>
   </header>
-  <div class="layout">
+  <div class="strip" id="strip" style="display:none"></div>
+  <div class="layout" id="layout">
     <aside class="tree">
       <div class="filters">
         <input class="search" id="q" placeholder="name, IP, role…" autocomplete="off" oninput="st.q=this.value;renderTree()">
@@ -202,6 +225,7 @@ pre.log{background:var(--bg);border:1px solid var(--border);border-radius:6px;pa
     </aside>
     <section class="panel" id="panel"></section>
   </div>
+  <div class="apage" id="apage" style="display:none"></div>
 </div>
 <div id="tip"></div>
 <div id="menu-root"></div>
@@ -236,7 +260,7 @@ pre.log{background:var(--bg);border:1px solid var(--border);border-radius:6px;pa
 </div>
 
 <script>
-const st={user:null,inv:null,q:'',kind:'all',nodeF:'',collapsed:new Set(),sel:{kind:'fleet'},open:null,menu:null,pending:{},move:null,build:''};
+const st={view:'inv',act:null,actSel:null,actDetail:null,user:null,inv:null,q:'',kind:'all',nodeF:'',collapsed:new Set(),sel:{kind:'fleet'},open:null,menu:null,pending:{},move:null,build:''};
 const WIDE=matchMedia('(min-width:900px)');
 WIDE.addEventListener('change',()=>{closeMenu();renderAll();});
 
@@ -302,13 +326,18 @@ async function start(){
   readHash();await load();
   if(started)return;started=true;
   setInterval(load,15000);
-  try{const es=new EventSource('/api/events');es.addEventListener('fleetUpdated',()=>load());es.addEventListener('fleetJob',()=>load());}catch{}
+  activityLoop();
+  try{const es=new EventSource('/api/events');es.addEventListener('fleetUpdated',()=>load());
+      es.addEventListener('fleetJob',()=>{loadActivity();load();});es.addEventListener('activity',()=>loadActivity());}catch{}
 }
 async function load(){try{st.inv=await api('GET','/api/inventory');}catch(e){if(!st.inv)document.getElementById('rows').innerHTML=`<div class="empty">Could not read the inventory: ${x(e.message)}</div>`;return;}renderAll();}
 async function refreshNow(b){b.disabled=true;try{await api('POST','/api/fleet/refresh');await load();toast('Every node re-read','ok');}catch(e){toast(e.message,'err');}b.disabled=false;}
 
 // ── selection + url ──────────────────────────────────────────────────────────
-function readHash(){const h=decodeURIComponent(location.hash.slice(1));const m=h.match(/^g\/(.+\/(qemu|lxc)\/\d+)$/);if(m){st.sel={kind:'guest',key:m[1]};st.open=m[1];return;}const n=h.match(/^n\/(.+)$/);if(n){st.sel={kind:'node',id:n[1]};return;}st.sel={kind:'fleet'};}
+function readHash(){const h=decodeURIComponent(location.hash.slice(1));
+  const a=h.match(/^actions(?:\/(migrate|power|drain)\/(.+))?$/);
+  if(a){st.view='actions';const sel=a[1]?{kind:a[1],id:a[2]}:null;if(JSON.stringify(sel)!==JSON.stringify(st.actSel)){st.actSel=sel;st.actDetail=null;if(sel)loadActDetail();}return;}
+  st.view='inv';st.actSel=null;const m=h.match(/^g\/(.+\/(qemu|lxc)\/\d+)$/);if(m){st.sel={kind:'guest',key:m[1]};st.open=m[1];return;}const n=h.match(/^n\/(.+)$/);if(n){st.sel={kind:'node',id:n[1]};return;}st.sel={kind:'fleet'};}
 window.addEventListener('hashchange',()=>{readHash();renderAll();});
 function selGuest(key){closeMenu();if(WIDE.matches){st.sel={kind:'guest',key};location.hash='g/'+key;}else{st.open=st.open===key?null:key;}renderAll();}
 function selNode(id){closeMenu();if(WIDE.matches){st.sel={kind:'node',id};location.hash='n/'+id;}else{toggleNode(id);return;}renderAll();}
@@ -318,7 +347,13 @@ function setKind(k){st.kind=k;document.querySelectorAll('.chip').forEach(c=>c.cl
 function closePanel(){st.sel={kind:'fleet'};history.replaceState(null,'',location.pathname);renderAll();}
 
 // ── render ───────────────────────────────────────────────────────────────────
-function renderAll(){renderHeader();renderTree();renderPanel();if(st.menu)renderMenu();if(st.move&&!st.move.job){}}
+function renderAll(){
+  const actions=st.view==='actions';
+  document.getElementById('layout').style.display=actions?'none':'flex';
+  document.getElementById('apage').style.display=actions?'flex':'none';
+  renderHeader();renderStrip();
+  if(actions)renderActions();else{renderTree();renderPanel();}
+  if(st.menu)renderMenu();}
 function renderHeader(){const v=st.inv;if(!v)return;const f=v.fleet;
   document.getElementById('hmeta').innerHTML=`<span class="long">${f.guests} guests · ${f.running} running · ${f.nodesReachable}/${f.nodes} nodes · read ${v.lastCycle?new Date(v.lastCycle).toLocaleTimeString():'—'}${st.build?' · '+x(st.build):''}</span><span class="short">${f.guests} guests</span>`;
   const sel=document.getElementById('nodesel');sel.innerHTML='<option value="">node ▾ all</option>'+v.nodes.map(n=>`<option value="${n.hostId}" ${n.hostId===st.nodeF?'selected':''}>${x(n.node)}</option>`).join('');}
@@ -349,7 +384,7 @@ function renderTree(){
       const k=gkey(g),open=!WIDE.matches&&st.open===k,sel=WIDE.matches&&st.sel.kind==='guest'&&st.sel.key===k;
       const ip=firstIp(g);
       h+=`<div class="row guest ${sel||open?'sel':''}" onclick="selGuest('${k}')">
-        <span class="nm">${st.pending[k]?'<span class="spin"></span>':`<span class="dot ${g.running?'on':''}" data-tip="${x(g.status)}${g.lock?' · lock '+x(g.lock):''}"></span>`}<span class="vmid">${g.vmid}</span><span class="t">${open?'▾ ':''}${x(g.name)}</span>${g.type==='lxc'?'<span class="ctb">CT</span>':''}${g.lock?`<span class="ctb" style="color:var(--yellow)" data-tip="lock: ${x(g.lock)}">LOCK</span>`:''}</span>
+        <span class="nm">${busyFor(g)?'<span class="spin" data-tip="'+x(busyFor(g).title+' — '+(busyFor(g).phase||''))+'"></span>':`<span class="dot ${g.running?'on':''}" data-tip="${x(g.status)}${g.lock?' · lock '+x(g.lock):''}"></span>`}<span class="vmid">${g.vmid}</span><span class="t">${open?'▾ ':''}${x(g.name)}</span>${g.type==='lxc'?'<span class="ctb">CT</span>':''}${g.lock?`<span class="ctb" style="color:var(--yellow)" data-tip="lock: ${x(g.lock)}">LOCK</span>`:''}</span>
         <span class="ics">${osIc(g)}${svcIcs(g)}</span>
         <span class="ip" data-tip="${x(ip?g.ips.join(' · ')+' ('+g.ipSource+')':ipWhy(g))}">${ip?x(ip)+(g.ips.length>1?' <span class="faint">+'+(g.ips.length-1)+'</span>':''):'—'}</span></div>`;
       if(open)h+=`<div class="inl">${inlineBody(g)}</div>`;
@@ -376,7 +411,7 @@ function renderPanel(){
 
 function guestPanel(g){
   const k=gkey(g);
-  let h=`<div class="ph"><span class="dot ${g.running?'on':''}"></span><h1>${x(g.name)}</h1><span class="tag">${g.type==='lxc'?'CT':'VM'} ${g.vmid}</span>${g.lock?`<span class="tag warn">lock ${x(g.lock)}</span>`:''}${g.stale?'<span class="tag warn">stale read</span>':''}${st.pending[k]?`<span class="tag"><span class="spin"></span> ${x(st.pending[k].a)}…</span>`:''}
+  let h=`<div class="ph"><span class="dot ${g.running?'on':''}"></span><h1>${x(g.name)}</h1><span class="tag">${g.type==='lxc'?'CT':'VM'} ${g.vmid}</span>${g.lock?`<span class="tag warn">lock ${x(g.lock)}</span>`:''}${g.stale?'<span class="tag warn">stale read</span>':''}${busyFor(g)?`<a class="tag" style="text-decoration:none" href="#actions/${busyFor(g).kind}/${busyFor(g).id}"><span class="spin"></span> ${x(busyFor(g).title)}…</a>`:''}
     <button class="act" onclick="openMenu('${k}',this)">Actions ▾</button><button class="x" onclick="closePanel()" title="Close">✕</button></div>
   <div class="sub">${g.os.label||g.os.cls?`<span style="display:inline-flex;gap:5px;align-items:center">${osIc(g)}${x(g.os.label||'')}</span>`:'<span class="faint">OS not reported</span>'}
     ${g.services.map(s=>`<span style="display:inline-flex;gap:5px;align-items:center">${ic(s.icon,s.label+' — from '+s.source)}${x(s.label)}</span>`).join('')}</div>
@@ -440,8 +475,8 @@ function pickNodeFilter(id){st.nodeF=id;st.open=null;renderHeader();renderTree()
 
 // ── Actions ▾ ────────────────────────────────────────────────────────────────
 function can(a){const r=st.user?.role||'';if(a==='reboot'||a==='migrate')return r==='Admin';if(['start','shutdown','stop'].includes(a))return r==='Admin'||r==='VmOperator';return true;}
-function menuItems(g){const n=nodeById(g.hostId);const nowrite=!n?.hasWriteToken;const busy=st.pending[gkey(g)];
-  const off=(a,cond,why)=>!can(a)?'your role cannot do this':nowrite?'no write token for '+g.node:busy?busy.a+' in progress':g.lock?'locked ('+g.lock+')':cond?why:null;
+function menuItems(g){const n=nodeById(g.hostId);const nowrite=!n?.hasWriteToken;const busy=busyFor(g);
+  const off=(a,cond,why)=>!can(a)?'your role cannot do this':nowrite?'no write token for '+g.node:busy?busy.title+' is underway':g.lock?'locked ('+g.lock+')':cond?why:null;
   return[
     {a:'start',g:'▶',l:'Start',dis:off('start',g.running,'disabled while running')},
     {a:'shutdown',g:'■',l:'Shutdown',dis:off('shutdown',!g.running,'only while running'),confirm:`Shut down ${g.name}? A clean ACPI shutdown (up to 180 s).`},
@@ -472,14 +507,10 @@ function menuPick(key,a){const g=guestByKey(key);const it=menuItems(g).find(i=>i
 async function doPower(key,a){
   const g=guestByKey(key);closeMenu();
   try{const r=await api('POST',`/api/inventory/guests/${g.hostId}/${g.type}/${g.vmid}/power`,{action:a,confirm:true});
-    st.pending[key]={a,upid:r.upid,hostId:g.hostId};toast(r.message);renderAll();watchTask(key);}
+    toast(r.message);await loadActivity();}
   catch(e){toast(`${a} failed: ${e.message}`,'err');}
 }
-async function watchTask(key){const p=st.pending[key];const until=Date.now()+240000;
-  while(Date.now()<until){await new Promise(r=>setTimeout(r,2000));
-    try{const s=await api('GET',`/api/inventory/nodes/${p.hostId}/tasks/${encodeURIComponent(p.upid)}`);
-      if(s.status==='stopped'){delete st.pending[key];const g=guestByKey(key);toast(s.exitstatus==='OK'?`${p.a} of ${g?.name||key} finished`:`${p.a} of ${g?.name||key}: ${s.exitstatus}`,s.exitstatus==='OK'?'ok':'err');await load();return;}}catch{}}
-  delete st.pending[key];renderAll();}
+
 
 // ── Migrate… (ENG-0016 move: ranked targets → dry-run preflight → typed confirm → job) ─────
 function closeModal(){document.getElementById('modal-root').innerHTML='';if(st.move?.timer)clearInterval(st.move.timer);st.move=null;}
@@ -494,7 +525,6 @@ async function openMove(g){
 function pickTarget(id,r=true){const t=st.move.targets.find(t=>t.hostId===id);Object.assign(st.move,{sel:id,storage:t.suggestedStorage||t.storages[0]?.storage||null,mode:t.mode,pf:null,ack:false});if(r)renderMove();}
 function renderMove(){
   const mv=st.move;if(!mv)return;const g=mv.g;
-  if(mv.job){renderJob();return;}
   const t=mv.targets.find(t=>t.hostId===mv.sel);
   let h=`<h3>Migrate ${x(g.name)} <span class="faint" style="font-size:13px;font-weight:400">${g.type==='lxc'?'CT':'VM'} ${g.vmid} on ${x(g.node)} · ${x(g.status)} · ${fb(g.ram.allocated)} RAM · ${g.diskAllocated!=null?fb(g.diskAllocated)+' allocated':'size unknown'}</span></h3>
    <div class="note" style="margin-bottom:8px">Best target first. Any node can be chosen — vetoes are shown, not hidden.</div>`;
@@ -525,15 +555,77 @@ function pfView(p){const row=(k,v)=>`<tr><td class="faint" style="white-space:no
   return h+'</div>';}
 async function execMove(){const mv=st.move,g=mv.g;
   try{const r=await api('POST','/api/fleet/migrations',{hostId:g.hostId,type:g.type,vmid:g.vmid,targetHostId:mv.sel,storage:mv.storage,mode:mv.mode,dryRun:false,confirm:mv.confirm,acknowledgeWarnings:mv.ack});
-    mv.job=r.job;mv.timer=setInterval(pollJob,3000);renderJob();}
+    closeModal();toast('Move queued — following it on the Actions page','ok');await loadActivity();location.hash='actions/migrate/'+r.job.id;}
   catch(e){toast(e.message,'err');if(e.body?.preflight){mv.pf=e.body.preflight;renderMove();}}}
-async function pollJob(){const mv=st.move;if(!mv?.job)return;try{const r=await api('GET','/api/fleet/jobs/'+mv.job.id);if(!st.move)return;mv.job=r.job;mv.log=r.log;renderJob();if(!['Queued','Running'].includes(r.job.status)){clearInterval(mv.timer);load();}}catch{}}
-function renderJob(){const j=st.move.job;const live=['Queued','Running'].includes(j.status);
-  modal(`<h3>Migrating ${x(j.guestName)} → ${x(j.targetNode)}</h3><div class="sub"><span class="tag ${j.status==='Failed'?'red':''}">${x(j.status)}</span>${live?'<span class="spin"></span>':''}<span>${x(j.phase||'')}</span></div>
-   ${j.error?`<div class="warnbox">${x(j.error)}</div>`:''}<div class="note">${x(j.mode)} · ${j.bytesPlanned!=null?fb(j.bytesPlanned):'size unknown'} · one move at a time across the fleet; you can close this — the move continues.</div>
-   <pre class="log">${x(st.move.log||'waiting for the task log…')}</pre>
-   <div class="frow" style="justify-content:flex-end">${live?`<button class="btn btn-danger" onclick="cancelJob()">Cancel the move</button>`:''}<button class="btn" onclick="closeModal()">Close</button></div>`);}
-async function cancelJob(){try{const r=await api('POST','/api/fleet/jobs/'+st.move.job.id+'/cancel');toast('Cancel: '+r.status);pollJob();}catch(e){toast(e.message,'err');}}
+
+// ── Activity: strip + Actions page (server-side feed, so every session sees the same) ──
+function busyFor(g){return st.act?.items.find(i=>i.active&&i.guest===g.name&&(i.node===g.node||i.target===g.node));}
+async function loadActivity(){try{st.act=await api('GET','/api/activity');}catch{return;}
+  const b=document.getElementById('act-badge');b.textContent=st.act.active;b.style.display=st.act.active?'':'none';
+  renderStrip();if(st.view==='actions')renderActions();else if(st.inv){renderTree();renderPanel();}}
+function activityLoop(){loadActivity().finally(()=>setTimeout(activityLoop,(st.act?.active||st.view==='actions')?4000:15000));}
+function goActions(){location.hash='actions';}
+function stIcon(stt){return stt==='running'||stt==='aborting'?'<span class="spin"></span>':stt==='queued'?'<span class="st-ic st-queued">⧗</span>':stt==='ok'?'<span class="st-ic st-ok">✓</span>':'<span class="st-ic st-failed">✕</span>';}
+function since(iso){if(!iso)return'';const s=(Date.now()-new Date(iso))/1000;return s<60?'just now':ago(s);}
+function renderStrip(){
+  const el=document.getElementById('strip');const a=st.act;if(!a){el.style.display='none';return;}
+  const show=a.items.filter(i=>i.active||(i.finishedAt&&Date.now()-new Date(i.finishedAt)<90000));
+  if(!show.length){el.style.display='none';return;}
+  el.style.display='flex';
+  el.innerHTML=show.map(i=>`<a class="sitem ${i.active?'':i.status}" href="#actions/${i.kind}/${i.id}" title="${x(i.title+(i.phase?' — '+i.phase:''))}">${stIcon(i.status)}<b>${x(i.title)}</b>${i.phase||i.error?`<span class="ph2">${x(i.error||i.phase)}</span>`:''}</a>`).join('')+
+    `<a class="all" href="#actions">All actions →</a>`;
+}
+function renderActions(){
+  const pg=document.getElementById('apage');const a=st.act;
+  pg.classList.toggle('has-sel',!!st.actSel);
+  const keepL=pg.querySelector('.alist')?.scrollTop||0,keepD=pg.querySelector('.adetail')?.scrollTop||0;
+  if(!a){pg.innerHTML='<div class="empty">Loading…</div>';return;}
+  const row=i=>`<div class="aitem ${st.actSel&&st.actSel.kind===i.kind&&st.actSel.id===i.id?'sel':''}" onclick="location.hash='actions/${i.kind}/${i.id}'">${stIcon(i.status)}<span class="t">${x(i.title)}</span><span class="w">${since(i.startedAt)}</span><span class="s">${x(i.error||i.phase||i.status)}${i.by?' · '+x(i.by):''}</span></div>`;
+  const act=a.items.filter(i=>i.active),rec=a.items.filter(i=>!i.active);
+  pg.innerHTML=`<div class="alist"><div class="asec">Underway (${act.length})</div>${act.length?act.map(row).join(''):'<div class="note" style="padding:6px 14px">Nothing is running.</div>'}
+      <div class="asec">Recent</div>${rec.length?rec.map(row).join(''):'<div class="note" style="padding:6px 14px">No finished actions yet.</div>'}
+      <div class="note" style="padding:10px 14px">Moves are kept permanently; power actions for the last 100 (in memory). <a href="#" style="color:var(--blue)" onclick="location.hash='';return false">← Inventory</a></div></div>
+    <div class="adetail">${actDetailHtml()}</div>`;
+  pg.querySelector('.alist').scrollTop=keepL;pg.querySelector('.adetail').scrollTop=keepD;
+}
+async function loadActDetail(){const sel=st.actSel;if(!sel)return;
+  try{const url=sel.kind==='migrate'?'/api/fleet/jobs/'+sel.id:sel.kind==='power'?'/api/activity/power/'+sel.id:'/api/fleet/drains/'+sel.id;
+    const d=await api('GET',url);if(st.actSel!==sel)return;st.actDetail={kind:sel.kind,d};}
+  catch(e){if(st.actSel===sel)st.actDetail={kind:sel.kind,err:e.message};}
+  if(st.view==='actions')renderActions();
+  const live=st.actDetail?.d&&(sel.kind==='migrate'?['Queued','Running'].includes(st.actDetail.d.job.status):sel.kind==='power'?st.actDetail.d.running:st.actDetail.d.plan.status==='Running');
+  if(live)setTimeout(()=>{if(st.actSel===sel)loadActDetail();},3000);}
+function when(iso){return iso?new Date(iso).toLocaleString(undefined,{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',second:'2-digit'}):'—';}
+function actDetailHtml(){
+  const back=`<button class="back" onclick="location.hash='actions'">← All actions</button>`;
+  if(!st.actSel)return`<div class="empty">Select an action to see its progress and log.</div>`;
+  const D=st.actDetail;if(!D)return back+'<div class="note">Loading…</div>';
+  if(D.err)return back+`<div class="warnbox">${x(D.err)}</div>`;
+  const kv=(rows)=>`<div class="kv">${rows.filter(r=>r[1]!=null&&r[1]!=='').map(([k,v])=>`<span class="k">${k}</span><span>${v}</span>`).join('')}</div>`;
+  if(D.kind==='migrate'){const j=D.d.job;const live=['Queued','Running'].includes(j.status);const pf=D.d.preflight;
+    const gHost=j.status==='Succeeded'?j.targetHostId:j.sourceHostId,gVmid=j.status==='Succeeded'?j.targetVmid:j.vmid;
+    return back+`<div class="ph"><h1>Migrate ${x(j.guestName)}</h1><span class="tag ${j.status==='Failed'?'red':''}">${x(j.status)}</span>${live?'<span class="spin"></span>':''}</div>
+     <div class="sub">${x(j.sourceNode)} → ${x(j.targetNode||'?')} · ${x(j.mode)} · ${j.bytesPlanned!=null?fb(j.bytesPlanned)+' to copy':'size unknown'}${j.measuredBytesPerSec?' · measured '+fb(j.measuredBytesPerSec)+'/s':''}</div>
+     ${j.error?`<div class="warnbox">${x(j.error)}</div>`:''}
+     ${kv([['Phase',x(j.phase||'')],['Guest',`<a href="#g/${gHost}/${j.guestType}/${gVmid}" style="color:var(--blue)">${x(j.guestName)}</a> (${j.guestType} ${j.vmid}${j.targetVmid&&j.targetVmid!==j.vmid?' → '+j.targetVmid:''})`],['Store',x(j.targetStorage||'')],['Requested',`${when(j.createdAt)} by ${x(j.createdBy||'?')}`],['Started',when(j.startedAt)],['Finished',j.finishedAt?when(j.finishedAt)+' ('+fdur((new Date(j.finishedAt)-new Date(j.startedAt||j.createdAt))/1000)+')':''],['Proxmox task',j.upid?`<span class="mono">${x(j.upid)}</span>`:''],['Drain',j.drainPlanId?'part of a drain plan':'']])}
+     ${j.partialOnTarget&&!j.cleanupDone?`<div class="warnbox">A partial copy this job created is on ${x(j.targetNode)} as ${j.targetVmid}. ${can('migrate')?`<button class="btn btn-danger" onclick="jobCleanup('${j.id}')">Remove it</button>`:''}</div>`:''}
+     ${j.sourceRestarted?'<div class="note" style="color:var(--green)">The guest was started again on the source after the failure.</div>':''}
+     ${live&&can('migrate')?`<div class="frow"><button class="btn btn-danger" onclick="jobCancel('${j.id}')">${j.status==='Running'?'Cancel the copy':'Cancel (not started yet)'}</button></div>`:''}
+     <div class="box"><h2>Task log ${live?'<span class="faint" style="font-weight:400">(live)</span>':''}</h2><pre class="log" style="margin:0;max-height:420px">${x(D.d.log||'no task log yet')}</pre></div>
+     ${pf?`<div class="box pf"><h2>Preflight at execution</h2>${pf.blockers?.length?`<ul class="bad">${pf.blockers.map(b=>`<li>${x(b)}</li>`).join('')}</ul>`:''}${pf.warnings?.length?`<ul class="wrn">${pf.warnings.map(b=>`<li>${x(b)}</li>`).join('')}</ul>`:''}<div class="note">${x(pf.modeReason||'')} · ${x(pf.targetVmidNote||'')}</div></div>`:''}`;}
+  if(D.kind==='power'){const t=D.d;
+    return back+`<div class="ph"><h1>${x(t.action[0].toUpperCase()+t.action.slice(1))} ${x(t.guest)}</h1><span class="tag ${t.running?'':t.exitStatus==='OK'?'':'red'}">${t.running?'running':x(t.exitStatus)}</span>${t.running?'<span class="spin"></span>':''}</div>
+     ${kv([['Guest',`<a href="#g/${t.hostId}/${t.guestType}/${t.vmid}" style="color:var(--blue)">${x(t.guest)}</a> (${t.guestType} ${t.vmid})`],['Node',x(t.node)],['By',x(t.by||'?')],['Started',when(t.startedAt)],['Finished',t.finishedAt?when(t.finishedAt)+' ('+fdur((new Date(t.finishedAt)-new Date(t.startedAt))/1000)+')':''],['Proxmox task',`<span class="mono">${x(t.upid)}</span>`]])}
+     <div class="box"><h2>Task log</h2><pre class="log" style="margin:0">${x(t.log||'no output')}</pre></div>`;}
+  const p=D.d.plan;const live=p.status==='Running';
+  return back+`<div class="ph"><h1>Clear host ${x(p.sourceNode)}</h1><span class="tag">${x(p.status)}</span>${live?'<span class="spin"></span>':''}</div>
+   <div class="sub">${D.d.cost.moves} moves · ${fb(D.d.cost.bytesKnown)} known to copy${p.abortRequested?' · abort requested':''}</div>
+   ${live&&can('migrate')&&!p.abortRequested?`<div class="frow"><button class="btn" onclick="drainAbort('${p.id}',false)">Abort after the current move</button><button class="btn btn-danger" onclick="drainAbort('${p.id}',true)">Abort now</button></div>`:''}
+   <table class="ntbl"><tr><th>#</th><th>Guest</th><th>Target</th><th>Status</th><th>Phase</th></tr>${D.d.rows.map(r=>`<tr class="click" onclick="location.hash='actions/migrate/${r.job.id}'"><td>${r.job.seq+1}</td><td>${x(r.job.guestName)}</td><td>${x(r.job.targetNode||'—')}</td><td>${x(r.job.status)}</td><td class="note">${x(r.job.error||r.job.phase||r.planNote||'')}</td></tr>`).join('')}</table>`;
+}
+async function jobCancel(id){try{const r=await api('POST','/api/fleet/jobs/'+id+'/cancel');toast('Cancel: '+r.status);loadActivity();loadActDetail();}catch(e){toast(e.message,'err');}}
+async function jobCleanup(id){try{const r=await api('POST','/api/fleet/jobs/'+id+'/cleanup');toast(r.message,'ok');loadActDetail();}catch(e){toast(e.message,'err');}}
+async function drainAbort(id,now){try{const r=await api('POST','/api/fleet/drains/'+id+'/abort',{now});toast(r.message);loadActivity();loadActDetail();}catch(e){toast(e.message,'err');}}
 
 start();
 </script>

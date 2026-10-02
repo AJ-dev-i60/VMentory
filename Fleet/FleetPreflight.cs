@@ -127,7 +127,15 @@ public static class FleetPreflight
             {
                 case FleetRuleKind.Pinned: p.Warnings.Add($"pinned ('{r.Name}'): must never run twice — the source copy stays locked by Proxmox after the move; do not unlock it while the moved copy exists"); break;
                 case FleetRuleKind.Ephemeral: p.Warnings.Add($"ephemeral ('{r.Name}'): a deletion candidate rather than something to migrate"); break;
-                case FleetRuleKind.SelfHost: p.Warnings.Add($"'{r.Name}': this guest runs VMentory or something it depends on — an offline move stops this console until the guest is back"); break;
+                // Hard block (2026-10-02, after VM 171 shut itself down mid-move): an offline/restart move of
+                // the guest VMentory runs on makes VMentory shut down its own host before the copy starts, so
+                // the move can never complete and the guest is left stopped. Only a live move keeps it running.
+                case FleetRuleKind.SelfHost when g.Running && p.Mode != MigrationMode.Online:
+                    p.Blockers.Add($"'{r.Name}': this guest runs VMentory (or something it needs). An {p.Mode.ToString().ToLowerInvariant()} move shuts it down before the copy starts — which stops VMentory, so the move can never finish and the guest is left stopped. Only a live move is allowed (same CPU model on both nodes); otherwise move it by hand with qm remote-migrate.");
+                    break;
+                case FleetRuleKind.SelfHost:
+                    p.Warnings.Add($"'{r.Name}': this guest runs VMentory — expect this console to pause briefly at the live switchover");
+                    break;
                 case FleetRuleKind.AntiAffinity: p.DependsOn.Add($"anti-affinity group '{r.Name}': {string.Join(", ", FleetAnalysis.Members(r))}"); break;
             }
         }
