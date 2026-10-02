@@ -74,5 +74,5 @@ for line in sys.stdin:
     fd=os.open(p, os.O_WRONLY|os.O_CREAT|os.O_EXCL, 0o600); os.write(fd, f"{tid}={v}\n".encode()); os.close(fd)
     print("   saved", kind, "token ->", p)
 ' "$n"
-  ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i "$KEY" root@"$h" 2>&1 | awk -F'\t' 'NF<3{print "   probe: "$0; next} {c[$1]++} END{for (k in c) print "   probe: " c[k] " " k " volume lines"}'
+  ssh -o BatchMode=yes -o IdentitiesOnly=yes -o IdentityAgent=none -o StrictHostKeyChecking=accept-new -i "$KEY" root@"$h" 2>&1 | awk -F'\t' 'NF<3{print "   probe: "$0; next} {c[$1]++} END{for (k in c) print "   probe: " c[k] " " k " volume lines"}'
 done
