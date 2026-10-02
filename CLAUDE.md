@@ -97,6 +97,9 @@ _**Phase-2 layout (2.0 slice 1):** the solution `VMentory.sln` has two projects 
 | `EstateCollector.cs` | `BackgroundService`: polls OME every `VMENTORY_OME_INTERVAL` s (default 300), persists snapshots, `ActionSuggester` raises/adopts/reopens actions per fault; `EstateState` = latest reading in memory |
 | `EstateSeed.cs` / `wwwroot/estate-seed.json` | First-run import of machines + the owner's action tracker into **empty tables only** (`VMENTORY_ESTATE_SEED=0` disables). The seed is a snapshot of the Outline tracker as of 2026-08-25 — after first run the DB is the truth, not this file |
 | `EstateEndpoints.cs` | `/api/estate`, `/api/estate/refresh`, `/api/actions` CRUD + `/status` `/notes` `/deps`; blast-radius computation; `ManageActions` gate |
+| `Fleet/` | **ENG-0016 Proxmox fleet.** `FleetOptions` (env + the forced-command SSH probe), `PveClient` (REST, `Pj` null-safe JSON readers), `FleetCollector` (polls every node in parallel; `FleetState` keeps last good reading per node), `FleetAnalysis` (capacity, score, vetoes, findings — pure), `FleetPreflight` (live checks before a move), `MigrationRunner` (one move at a time, UPID tracking, cancel, failure cleanup, audit), `FleetEndpoints` (API + drain planner), `FleetSeed` (multi-node env seed, first-run rules) |
+| `VMentory.Core/Fleet/FleetModels.cs` / `Persistence/FleetEntities.cs` | Readings (nullable = unknown, never 0) / `FleetRuleEntity`, `NodeMaintenanceEntity`, `MigrationJobEntity`, `DrainPlanEntity` (`AddFleet` migration) |
+| `ops/provision-fleet-nodes.sh` | Per node: read-only `vmentory@pve!monitor`, write `vmentory-ops@pve!migrate` (role `VMentoryMigrate`), probe key + `/usr/local/sbin/vmentory-probe`. Idempotent; secrets to `~/.vmentory-pve-<node>-*token` |
 | `VMentory.Web.csproj` | SDK Web project (the exe); `AssemblyName=VMentory`; `Version` defaults to `1.0.0`; references `VMentory.Core` |
 | `VMentory.Core/VMentory.Core.csproj` | Classlib SDK project; domain model |
 | `VMentory.sln` | Solution tying `VMentory.Web` + `VMentory.Core` together |
@@ -192,6 +195,14 @@ runs `dotnet restore` + `dotnet build VMentory.sln -c Release` on every push/PR 
 | POST | `/api/actions/{id}/notes` | Append a dated note |
 | POST / DELETE | `/api/actions/{id}/deps[/{blockerId}]` | Link / unlink a prerequisite. **400 on a cycle** |
 | DELETE | `/api/actions/{id}` | Admin only; prefer `Dismissed` — deletion loses the note trail |
+| GET | `/api/fleet` | **ENG-0016.** `{lastCycle, config, policy, rate, nodes[] (capacity, score, vetoes, reasoning, hardware, maintenance), guests[], findings (boot safety, anti-affinity, spares, CPU groups, read problems), rules[], jobs[], drains[]}` |
+| POST | `/api/fleet/refresh` | Re-read every node now, probe included |
+| GET | `/api/fleet/guests/{hostId}/{type}/{vmid}/targets` | Ranked targets for one guest (vetoed ones included, flagged) |
+| POST | `/api/fleet/preflight` · `/api/fleet/migrations` | Preflight with live checks. `migrations` is **dry run unless `dryRun:false`**, then needs `confirm:"<guest> to <node>"` and `acknowledgeWarnings` when warned (`MigrateGuest`) |
+| GET / POST | `/api/fleet/jobs/{id}` · `/cancel` · `/cleanup` | Job + task log; cancel (queued or running); remove a partial copy this job created on the target |
+| POST | `/api/fleet/nodes/{hostId}/maintenance` · `/drain` | Maintenance on/off (reason + future expiry required); create a draft drain plan (`DrainHost`) |
+| GET / PATCH / POST | `/api/fleet/drains/{id}` · `/rows/{jobId}` · `/execute` · `/abort` · `/discard` · `/reverse` | Plan with cost; edit rows (draft only); execute needs `confirm:"drain <node>"`; abort `{now}`; reverse = new draft moving guests back |
+| POST / PATCH / DELETE | `/api/fleet/rules[/{id}]` | Placement rules (`DrainHost`) |
 
 All `/api/*` routes (except `/api/auth/*`) require the `vmentory_session` cookie set by `/api/auth/login`.
 In `--mock` mode the two estate GETs answer empty and the estate write routes are not mapped (no DbContext).
@@ -205,6 +216,14 @@ In `--mock` mode the two estate GETs answer empty and the estate write routes ar
 unknown and re-arms the token if the secret store lost it — the way an SSO-only deployment (no scripted
 login) gets its first host. The collector also re-scans every Proxmox host each cycle (snapshot persisted
 at most hourly), so the guest lists behind the blast radius stay live without pressing Scan.
+
+**Fleet env contract (ENG-0016).** `VMENTORY_SEED_PVE_HOSTS` — more nodes, `address|user@realm!id=secret|name` per
+line or `;` (read-only tokens; same register/re-arm behaviour as the single seed). `VMENTORY_PVE_MIGRATE_TOKENS` —
+`address|token` per entry, the **write** tokens, used only by move/drain (never by the poller); a node without one cannot
+be a move source or target. `VMENTORY_PVE_PROBE_KEY` — base64 of the probe's OpenSSH private key (written to
+`DataDir/fleet-probe-key`, known_hosts `DataDir/fleet-known_hosts`, accept-new); `VMENTORY_PVE_PROBE_USER` (default
+root). `VMENTORY_FLEET_INTERVAL` (s, default 60), `VMENTORY_FLEET_PROBE_INTERVAL` (s, default 600),
+`VMENTORY_FLEET_SEED=0` (skip first-run rules).
 
 > **Forthcoming (ENG-0012, planned — slice-5 era, NOT yet built).** Credentials become first-class
 > named entities. When that slice lands, this table changes: `POST /api/credentials` is **repurposed**
@@ -287,3 +306,14 @@ at most hourly), so the guest lists behind the blast radius stay live without pr
     libhostfxr.so"* until `DOTNET_ROOT=~/.dotnet` is exported. `dotnet build` works without it.
 
 14. **The Hyper-V provider does not work in the container — at all, and never has.** Not a config problem, not a credential problem, not a firewall problem. `Reachability.RunPowerShellAsync` (`Reachability.cs:169`) launches **`powershell.exe`**, the ICMP check (`:20`) launches **`ping.exe`**, `:52` ensures the **local** WinRM service and `:80-82` mutates **`WSMan:\localhost\Client\TrustedHosts`**, and both `Reachability.cs:113` and `Scanner.cs:216` run `Invoke-Command -ComputerName … -Authentication Negotiate` — the whole path assumes **the Core process is itself a domain-joined Windows WinRM client**, which was true of the Phase-1 single-exe and became false the moment slice (1) containerized it (ENG-0010). On Linux the only surviving check is the bare TCP probe at `Program.cs:517`, so **a perfectly healthy HV host presents as "port open, every scan failed."** This is the root cause of the ENG-0011 trigger, which was misread as a *logging* gap for six weeks. **Do not try to fix this by porting the PowerShell path** — `powershell.exe` is not coming to the image. **ENG-0013 replaces it** with SSH + PowerShell executed *on the host* via the shared `ISshExecutor`; `BuildRemoteWrapper`, `RunPowerShellAsync`, the WinRM ensure and the `TrustedHosts` mutation are all **deleted, not ported**. Until slice (7) lands, treat any HV host in the deployed dev instance as **expected-broken**, not as a bug to chase.
+
+18. **Fleet numbers are never defaulted (ENG-0016, owner's hard rule).** Every reading field is nullable; a value
+    a node did not report stays `null` and the UI shows `—` with the reason. Do not add fallbacks like `?? 0` in
+    `Fleet/` for anything displayed, do not reintroduce a "typical" transfer rate (ETA comes only from this
+    deployment's measured moves), and do not copy example figures from a brief into code or seeds.
+
+19. **The PVEAuditor role cannot read per-volume usage, store listings or storage config.** Verified live on vega14
+    2026-10-02: `/nodes/{n}/storage/{s}/content[/{vol}]` → 403 `VM.Config.Disk`; `/storage/{id}` → 403
+    `Datastore.Allocate`. Those facts (plus ARC cap and DMI serial) come from the forced-command probe
+    (`ops/provision-fleet-nodes.sh`). Never "fix" a 403 here by widening the poller's role — the poller must stay
+    unable to write.
