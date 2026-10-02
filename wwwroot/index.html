@@ -552,13 +552,13 @@ function pfView(p){const row=(k,v)=>`<tr><td class="faint" style="white-space:no
     ${row('ETA',p.etaSeconds!=null?`${fdur(p.etaSeconds)} at the measured ${fb(p.rateBytesPerSec)}/s`:'— no transfer rate measured on this deployment yet')}${row('Downtime',x(p.downtime))}
     ${row('Depends on',p.dependsOn.length?p.dependsOn.map(x).join('<br>'):'<span class="faint">nothing recorded</span>')}</table><ul class="inf">${p.info.map(b=>`<li>${x(b)}</li>`).join('')}</ul>`;
   const offlineVm=p.guestType==='qemu'&&p.wasRunning&&p.mode==='Offline';
-  if(!p.blockers.length)h+=`${offlineVm?`<label class="frow"><input type="checkbox" id="mv-force" ${st.move.force?'checked':''} onchange="st.move.force=this.checked"> If it does not shut down cleanly within 180 s, force it off (a power cut — only for guests that can take one)</label>`:''}${p.warnings.length?`<label class="frow"><input type="checkbox" ${st.move.ack?'checked':''} onchange="st.move.ack=this.checked"> I have read the warnings and want to proceed</label>`:''}
+  if(!p.blockers.length)h+=`${offlineVm?`<label class="frow"><input type="checkbox" id="mv-force" ${st.move.force?'checked':''} onchange="st.move.force=this.checked"> If it does not shut down cleanly within 180 s, force it off (a power cut — only for guests that can take one)</label>`:''}<label class="frow"><input type="checkbox" ${st.move.rmsrc?'checked':''} onchange="st.move.rmsrc=this.checked"> Remove the source copy when the move succeeds — no rollback copy is kept (otherwise it stays on ${x(p.sourceNode)} stopped and locked, and only root can remove it)</label>${p.warnings.length?`<label class="frow"><input type="checkbox" ${st.move.ack?'checked':''} onchange="st.move.ack=this.checked"> I have read the warnings and want to proceed</label>`:''}
     <div class="frow"><span>Type <b class="mono">${x(p.confirmPhrase)}</b> to execute:</span><input class="inp" id="mv-c" value="${x(st.move.confirm)}" oninput="st.move.confirm=this.value"><button class="btn btn-danger" onclick="execMove()">Execute move</button></div>`;
   return h+'</div>';}
 async function ejectIsos(){const g=st.move.g;const b=document.getElementById('eject-btn');if(b){b.disabled=true;b.textContent='Ejecting…';}
   try{const r=await api('POST',`/api/fleet/guests/${g.hostId}/${g.type}/${g.vmid}/eject-isos`);toast(r.message,'ok');await load();await runPreflight();}catch(e){toast(e.message,'err');if(b){b.disabled=false;b.textContent='Eject the mounted ISOs and re-check';}}}
 async function execMove(){const mv=st.move,g=mv.g;
-  try{const r=await api('POST','/api/fleet/migrations',{hostId:g.hostId,type:g.type,vmid:g.vmid,targetHostId:mv.sel,storage:mv.storage,mode:mv.mode,dryRun:false,confirm:mv.confirm,acknowledgeWarnings:mv.ack,forceStopOnTimeout:!!mv.force});
+  try{const r=await api('POST','/api/fleet/migrations',{hostId:g.hostId,type:g.type,vmid:g.vmid,targetHostId:mv.sel,storage:mv.storage,mode:mv.mode,dryRun:false,confirm:mv.confirm,acknowledgeWarnings:mv.ack,forceStopOnTimeout:!!mv.force,removeSourceOnSuccess:!!mv.rmsrc});
     closeModal();toast('Move queued — following it on the Actions page','ok');await loadActivity();location.hash='actions/migrate/'+r.job.id;}
   catch(e){toast(e.message,'err');if(e.body?.preflight){mv.pf=e.body.preflight;renderMove();}}}
 
@@ -613,7 +613,7 @@ function actDetailHtml(){
      <div class="sub">${x(j.sourceNode)} → ${x(j.targetNode||'?')} · ${x(j.mode)} · ${j.bytesPlanned!=null?fb(j.bytesPlanned)+' to copy':'size unknown'}${j.measuredBytesPerSec?' · measured '+fb(j.measuredBytesPerSec)+'/s':''}</div>
      ${j.error?`<div class="warnbox">${x(j.error)}</div>`:''}
      ${kv([['Phase',x(j.phase||'')],['Guest',`<a href="#g/${gHost}/${j.guestType}/${gVmid}" style="color:var(--blue)">${x(j.guestName)}</a> (${j.guestType} ${j.vmid}${j.targetVmid&&j.targetVmid!==j.vmid?' → '+j.targetVmid:''})`],['Store',x(j.targetStorage||'')],['Requested',`${when(j.createdAt)} by ${x(j.createdBy||'?')}`],['Started',when(j.startedAt)],['Finished',j.finishedAt?when(j.finishedAt)+' ('+fdur((new Date(j.finishedAt)-new Date(j.startedAt||j.createdAt))/1000)+')':''],['Proxmox task',j.upid?`<span class="mono">${x(j.upid)}</span>`:''],['Drain',j.drainPlanId?'part of a drain plan':'']])}
-     ${j.partialOnTarget&&!j.cleanupDone?`<div class="warnbox">A partial copy this job created is on ${x(j.targetNode)} as ${j.targetVmid}. ${can('migrate')?`<button class="btn btn-danger" onclick="jobCleanup('${j.id}')">Remove it</button>`:''}</div>`:''}
+     ${j.partialOnTarget&&!j.cleanupDone?`<div class="warnbox">A partial copy this job created is on ${x(j.targetNode)} as ${j.targetVmid} — it is locked and cannot start, but it holds the VMID and some space. ${can('migrate')?`<button class="btn btn-danger" onclick="jobCleanup('${j.id}')">Remove it</button>`:''}</div>`:''}
      ${j.sourceRestarted?'<div class="note" style="color:var(--green)">The guest was started again on the source after the failure.</div>':''}
      ${live&&can('migrate')?`<div class="frow"><button class="btn btn-danger" onclick="jobCancel('${j.id}')">${j.status==='Running'?'Cancel the copy':'Cancel (not started yet)'}</button></div>`:''}
      <div class="box"><h2>Task log ${live?'<span class="faint" style="font-weight:400">(live)</span>':''}</h2><pre class="log" style="margin:0;max-height:420px">${x(D.d.log||'no task log yet')}</pre></div>
@@ -629,7 +629,7 @@ function actDetailHtml(){
    <table class="ntbl"><tr><th>#</th><th>Guest</th><th>Target</th><th>Status</th><th>Phase</th></tr>${D.d.rows.map(r=>`<tr class="click" onclick="location.hash='actions/migrate/${r.job.id}'"><td>${r.job.seq+1}</td><td>${x(r.job.guestName)}</td><td>${x(r.job.targetNode||'—')}</td><td>${x(r.job.status)}</td><td class="note">${x(r.job.error||r.job.phase||r.planNote||'')}</td></tr>`).join('')}</table>`;
 }
 async function jobCancel(id){try{const r=await api('POST','/api/fleet/jobs/'+id+'/cancel');toast('Cancel: '+r.status);loadActivity();loadActDetail();}catch(e){toast(e.message,'err');}}
-async function jobCleanup(id){try{const r=await api('POST','/api/fleet/jobs/'+id+'/cleanup');toast(r.message,'ok');loadActDetail();}catch(e){toast(e.message,'err');}}
+async function jobCleanup(id){try{const r=await api('POST','/api/fleet/jobs/'+id+'/cleanup');toast(r.message,'ok');loadActDetail();}catch(e){toast(e.message+(e.body?.hint?' — '+e.body.hint:''),'err');}}
 async function drainAbort(id,now){try{const r=await api('POST','/api/fleet/drains/'+id+'/abort',{now});toast(r.message);loadActivity();loadActDetail();}catch(e){toast(e.message,'err');}}
 
 start();

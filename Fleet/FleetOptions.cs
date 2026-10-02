@@ -120,6 +120,7 @@ public sealed class FleetOptions
                 {
                     if (tab[0] is "zfs" or "lvm" or "file" && long.TryParse(tab[2], out var bytes))
                         r.Allocated[$"{tab[0]}:{tab[1]}"] = bytes;
+                    else if (tab[0] == "snap") { r.MigrationSnapshots.Add(tab[2]); }
                     else if (tab[0] == "media")
                     {
                         var kv = System.Text.RegularExpressions.Regex.Matches(tab[2], "(\\w+)=\"([^\"]*)\"")

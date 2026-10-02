@@ -185,6 +185,7 @@ public static class FleetPreflight
             await BackupJobs(t, tgt.Name, g, p, ct);
         }
         await CheckWritePrivilegesAsync(src, tgt, g, p, opt, ct);
+        CheckResidue(src, tgt, g, p);
         if (srcTok != null)
         {
             using var s = new PveClient(src.Host.Address, srcTok, src.Host.SkipTlsVerification);
@@ -198,6 +199,31 @@ public static class FleetPreflight
             await BackupJobs(s, src.Name, g, p, ct);
         }
         return p;
+    }
+
+    // Residue of an interrupted move (cancel, crash). Found 2026-10-02: a cancel mid-`zfs send` left
+    // `vm-131-disk-1@__migration__` on the source, and the next move of that guest failed in seconds with
+    // "dataset already exists"; the target kept a locked placeholder and an orphaned volume. The API cannot
+    // remove either without root, so preflight names them and the exact commands.
+    private static void CheckResidue(NodeCtx src, NodeCtx tgt, GuestReading g, PreflightResult p)
+    {
+        if (src.Probe == null) p.Info.Add("residue check skipped on the source: the node probe has not run");
+        else
+        {
+            var mine = g.Disks.Select(d => d.Volume[(d.Volume.IndexOf(':') + 1)..]).ToList();
+            var stale = src.Probe.MigrationSnapshots.Where(s => mine.Any(v => s.Contains("/" + v + "@"))).ToList();
+            if (stale.Count > 0)
+                p.Blockers.Add($"an earlier move of this guest was interrupted and left {stale.Count} snapshot(s) on {src.Name}; the next move would fail with \"dataset already exists\". Remove on {src.Name} as root: " +
+                               string.Join("; ", stale.Select(s => $"zfs destroy {s}")) + $" (probe read {src.Probe.TakenAt:HH:mm} UTC)");
+        }
+        if (tgt.Probe != null && p.TargetVmid is int tv && p.TargetVmidWasFree)
+        {
+            var orphans = tgt.Probe.Allocated.Keys.Where(k => k.StartsWith("zfs:") && System.Text.RegularExpressions.Regex.IsMatch(k, $@"/(vm|base)-{tv}-disk-\d+$"))
+                .Select(k => k[4..]).ToList();
+            orphans.AddRange(tgt.Probe.Allocated.Keys.Where(k => k.StartsWith("lvm:") && System.Text.RegularExpressions.Regex.IsMatch(k, $@"/vm-{tv}-disk-\d+$")).Select(k => k[4..]));
+            if (orphans.Count > 0)
+                p.Blockers.Add($"VMID {tv} is free on {tgt.Name} but volume(s) named for it exist there — residue of an interrupted move: {string.Join(", ", orphans)}. Remove on {tgt.Name} as root (zfs destroy / lvremove) once you have checked they belong to no guest.");
+        }
     }
 
     // The write tokens' actual privileges, read live from each node, against what this guest's move needs.

@@ -36,6 +36,8 @@ echo "product=$(cat /sys/class/dmi/id/product_name 2>/dev/null)"
 awk '/^[a-z]+:/{t=$1; sub(":","",t); id=$2; print "cfg\t" id "\ttype=" t; next} id!="" && ($1=="pool"||$1=="vgname"||$1=="path"||$1=="sparse"||$1=="thinpool"){print "cfg\t" id "\t" $1 "=" $2}' /etc/pve/storage.cfg 2>/dev/null
 # ZFS: logical bytes referenced (uncompressed — what zfs send / drive-mirror transfers)
 command -v zfs >/dev/null 2>&1 && zfs list -Hp -t volume,filesystem -o name,logicalreferenced 2>/dev/null | awk -F'\t' '{print "zfs\t"$1"\t"$2}'
+# snapshots an interrupted move leaves behind block the next move of that guest ("dataset already exists")
+command -v zfs >/dev/null 2>&1 && zfs list -H -t snapshot -o name 2>/dev/null | grep '@__migration__' | sed 's/^/snap\tzfs\t/'
 # LVM: thin LVs = size x data_percent; thick LVs = their full size
 command -v lvs >/dev/null 2>&1 && lvs --noheadings --nosuffix --units b --separator '|' -o vg_name,lv_name,lv_size,data_percent 2>/dev/null \
   | awk -F'|' '{gsub(/ /,"",$1); gsub(/ /,"",$2); gsub(/ /,"",$4); a=($4=="")?$3:$3*$4/100; printf "lvm\t%s/%s\t%.0f\n",$1,$2,a}'

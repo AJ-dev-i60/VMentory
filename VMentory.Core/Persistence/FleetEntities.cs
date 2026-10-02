@@ -85,6 +85,9 @@ public class MigrationJobEntity
     public bool CancelRequested { get; set; }
     // operator's explicit choice: if a clean shutdown times out, power the guest off instead of failing
     public bool ForceStopOnTimeout { get; set; }
+    // operator's explicit choice: Proxmox deletes the source copy at the end of a successful move (delete=1).
+    // Without it the source stays stopped + locked — a rollback, but only root can ever unlock or remove it.
+    public bool RemoveSourceOnSuccess { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }
     public string? CreatedBy { get; set; }

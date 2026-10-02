@@ -55,6 +55,8 @@ public sealed class ProbeReading
     [JsonIgnore] public Dictionary<string, Dictionary<string, string>> StorageCfg { get; set; } = new(StringComparer.Ordinal);
     // physical disks under each guest store, as the kernel sees them
     [JsonIgnore] public Dictionary<string, List<ProbeDisk>> Media { get; set; } = new(StringComparer.Ordinal);
+    // ZFS snapshots named @__migration__ — residue of an interrupted move (dataset@__migration__)
+    public List<string> MigrationSnapshots { get; set; } = [];
 }
 
 public sealed record ProbeDisk(string Name, bool? Rotational, string Model, string Transport);

@@ -107,6 +107,7 @@ public static class FleetEndpoints
                 TargetVmid = pf.TargetVmid, TargetStorage = pf.TargetStorage, Mode = pf.Mode, BytesPlanned = pf.BytesAllocated,
                 Status = MigrationJobStatus.Queued, Phase = "queued", PreflightJson = JsonSerializer.Serialize(pf, J),
                 ForceStopOnTimeout = b.ForceStopOnTimeout == true,
+                RemoveSourceOnSuccess = b.RemoveSourceOnSuccess == true,
                 CreatedAt = now, QueuedAt = now, CreatedBy = User(ctx),
             };
             db.MigrationJobs.Add(job);
@@ -177,14 +178,40 @@ public static class FleetEndpoints
             using var pve = new PveClient(tgt.Address, tok, tgt.SkipTlsVerification, TimeSpan.FromSeconds(60));
             try
             {
-                await pve.DeleteAsync($"/nodes/{PveClient.Enc(j.TargetNode!)}/{j.GuestType}/{j.TargetVmid}?purge=1&destroy-unreferenced-disks=1", ctx.RequestAborted);
+                // Proxmox deletes asynchronously: the request returns a task id, and only the task's exit
+                // status says whether anything was removed (found 2026-10-02: a 200 here once removed nothing).
+                var tn = PveClient.Enc(j.TargetNode!);
+                var upid = (await pve.DeleteAsync($"/nodes/{tn}/{j.GuestType}/{j.TargetVmid}?purge=1&destroy-unreferenced-disks=1", ctx.RequestAborted)).GetString();
+                var readTok = FleetCollector.ReadToken(d.Store, tgt);
+                string? exit = null;
+                if (upid != null && readTok != null)
+                {
+                    using var r = new PveClient(tgt.Address, readTok, tgt.SkipTlsVerification);
+                    for (var i = 0; i < 60 && exit == null; i++)
+                    {
+                        var st2 = await r.GetAsync($"/nodes/{tn}/tasks/{PveClient.Enc(upid)}/status", ctx.RequestAborted);
+                        if (Pj.Str(st2, "status") == "stopped") exit = Pj.Str(st2, "exitstatus") ?? "stopped"; else await Task.Delay(1000, ctx.RequestAborted);
+                    }
+                }
+                var by = $"on {j.TargetNode} as root: qm unlock {j.TargetVmid}; qm destroy {j.TargetVmid} --purge; then look for orphaned volumes: zfs list -t volume | grep vm-{j.TargetVmid}- (or lvs | grep vm-{j.TargetVmid}-)";
+                if (exit != "OK")
+                {
+                    await Audit(d, ctx, "fleet.migrate.cleanup-failed", j.Id, new { j.TargetNode, j.TargetVmid, exit });
+                    return Results.Json(new
+                    {
+                        error = exit == null ? "the removal task did not report back" : $"Proxmox could not remove it: {exit}",
+                        hint = exit?.Contains("locked") == true
+                            ? $"A cancelled copy leaves its placeholder locked ('create') — it cannot start, and only root can unlock it. Remove it by hand {by}"
+                            : $"Remove it by hand {by}",
+                    }, statusCode: 409);
+                }
                 j.CleanupDone = true; await db.SaveChangesAsync();
                 await Audit(d, ctx, "fleet.migrate.cleanup", j.Id, new { j.TargetNode, j.TargetVmid });
-                return Results.Ok(new { ok = true, message = $"removed {j.GuestType} {j.TargetVmid} from {j.TargetNode}" });
+                return Results.Ok(new { ok = true, message = $"removed {j.GuestType} {j.TargetVmid} from {j.TargetNode} (Proxmox task OK)" });
             }
             catch (PveException ex)
             {
-                return Results.Json(new { error = ex.Message, hint = $"if it is locked: on {j.TargetNode} run 'qm unlock {j.TargetVmid}' (or pct) and retry, or destroy it by hand" }, statusCode: 502);
+                return Results.Json(new { error = ex.Message, hint = $"if it is locked: on {j.TargetNode} as root run qm unlock {j.TargetVmid}, then retry — or destroy it by hand" }, statusCode: 502);
             }
         });
 
@@ -635,7 +662,7 @@ public sealed class Deps(IServiceScopeFactory scopes, VMentoryDbContext db, Flee
 }
 
 public record MoveDto(string HostId, string Type, int Vmid, string? TargetHostId, string? Storage = null, MigrationMode? Mode = null,
-                      bool? DryRun = true, string? Confirm = null, bool? AcknowledgeWarnings = null, bool? ForceStopOnTimeout = null);
+                      bool? DryRun = true, string? Confirm = null, bool? AcknowledgeWarnings = null, bool? ForceStopOnTimeout = null, bool? RemoveSourceOnSuccess = null);
 public record MaintenanceDto(bool On, string? Reason = null, DateTimeOffset? Until = null);
 public record DrainCreateDto(string? ActionId = null);
 public record RowDto(DrainRowAction? Action = null, string? TargetHostId = null, string? Storage = null, MigrationMode? Mode = null, int? Seq = null);

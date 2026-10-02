@@ -182,9 +182,11 @@ public sealed class MigrationRunner(IServiceScopeFactory scopes, FleetState flee
             };
             if (job.Mode == MigrationMode.Online) form.Add(new("online", "1"));
             if (job.Mode == MigrationMode.Restart) form.Add(new("restart", "1"));
-            // delete stays 0: Proxmox keeps the source copy stopped and locked (lock=migrate), so it
-            // cannot be started by accident — the "never two runnable copies" guarantee — and it is
-            // the rollback until the operator removes it.
+            if (job.RemoveSourceOnSuccess) form.Add(new("delete", "1"));
+            // By default delete stays 0: Proxmox keeps the source copy stopped and locked (lock=migrate), so it
+            // cannot be started by accident — the "never two runnable copies" guarantee — and it is the
+            // rollback. Unlocking or removing it later needs root, so the operator can instead ask Proxmox to
+            // delete it at the end of a successful move (delete=1, run by Proxmox's own worker).
 
             await Save("starting remote migration");
             var upid = await srcW.PostAsync($"/nodes/{sn}/{job.GuestType}/{job.Vmid}/remote_migrate", form, ct);
@@ -341,7 +343,31 @@ public sealed class MigrationRunner(IServiceScopeFactory scopes, FleetState flee
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException) { job.Error += $" (cleanup check failed: {ex.Message})"; }
+        try { job.Error += await ResidueReportAsync(job, ct); } catch (Exception ex) when (ex is not OperationCanceledException) { job.Error += $" (residue check failed: {ex.Message})"; }
     }
+
+    // After an interrupted copy, re-probe both nodes and say exactly what was left behind and how to remove
+    // it — the API cannot remove any of it without root (2026-10-02 campaign, T5).
+    private async Task<string> ResidueReportAsync(MigrationJobEntity job, CancellationToken ct)
+    {
+        if (job.TransferStartedAt == null) return "";
+        for (var i = 0; i < 5 && !await collector.CollectOnceAsync(ct, forceProbe: true); i++) await Task.Delay(3000, ct);
+        var srcSlot = fleet.For(job.SourceHostId); var tgtSlot = job.TargetHostId != null ? fleet.For(job.TargetHostId) : null;
+        var guest = srcSlot.LastGood?.Guests.FirstOrDefault(g => g.Vmid == job.Vmid && g.Type == job.GuestType);
+        var vols = guest?.Disks.Select(d => d.Volume[(d.Volume.IndexOf(':') + 1)..]).ToList() ?? [];
+        var left = new List<string>();
+        foreach (var sn in srcSlot.LastGoodProbe?.MigrationSnapshots.Where(x => vols.Any(v => x.Contains("/" + v + "@"))) ?? [])
+            left.Add($"snapshot {sn} on {job.SourceNode} — zfs destroy {sn}");
+        if (tgtSlot?.LastGoodProbe is { } tp && job.TargetVmid is int tv && job.TargetVmidWasFree)
+        {
+            var cfg = tgtSlot.LastGood?.Guests.FirstOrDefault(g => g.Vmid == tv);
+            if (cfg != null) left.Add($"placeholder {job.GuestType} {tv} on {job.TargetNode} (lock={cfg.Lock ?? "none"}, cannot start while locked) — qm unlock {tv}; qm destroy {tv} --purge");
+            foreach (var k in tp.Allocated.Keys.Where(k => Regex.IsMatch(k, $@"^(zfs|lvm):.*/vm-{tv}-disk-\d+$")))
+                left.Add($"volume {k[4..]} on {job.TargetNode} — {(k.StartsWith("zfs:") ? "zfs destroy" : "lvremove")} {k[4..]}");
+        }
+        return left.Count == 0 ? " · re-probed both nodes: nothing left behind" : " · LEFT BEHIND (remove as root): " + string.Join(" | ", left);
+    }
+
 
     private static async Task WaitTaskAsync(PveClient r, string node, string upid, TimeSpan max, CancellationToken ct)
     {
