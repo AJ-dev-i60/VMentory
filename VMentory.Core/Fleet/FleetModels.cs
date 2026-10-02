@@ -53,7 +53,11 @@ public sealed class ProbeReading
     public int AllocatedEntries => Allocated.Count;
     // /etc/pve/storage.cfg facts per storage id: pool, vgname, path, sparse, thinpool, type
     [JsonIgnore] public Dictionary<string, Dictionary<string, string>> StorageCfg { get; set; } = new(StringComparer.Ordinal);
+    // physical disks under each guest store, as the kernel sees them
+    [JsonIgnore] public Dictionary<string, List<ProbeDisk>> Media { get; set; } = new(StringComparer.Ordinal);
 }
+
+public sealed record ProbeDisk(string Name, bool? Rotational, string Model, string Transport);
 
 public sealed class GuestReading
 {
@@ -68,6 +72,14 @@ public sealed class GuestReading
     public long? MaxMem { get; set; }
     public long? Mem { get; set; }
     public long? UptimeSeconds { get; set; }
+    public double? CpuBusy { get; set; }               // fraction of its own vCPUs in use, as PVE reports
+    public string? OsType { get; set; }                // config ostype: win11, l26, ubuntu, debian ...
+    public string? OsName { get; set; }                // guest agent pretty-name; null without an agent
+    public bool AgentEnabled { get; set; }
+    public List<string> Ips { get; set; } = [];        // live, from the guest agent / LXC interfaces; empty = unknown
+    public string? IpSource { get; set; }              // "guest agent" | "container" | null
+    public string? IpError { get; set; }               // why there are no IPs, when we know
+    public string? Description { get; set; }
     public bool? Onboot { get; set; }                  // null only when the config could not be read
     public string? CpuType { get; set; }               // qemu "cpu:" type; null = not set in config
     public List<string> Tags { get; set; } = [];
@@ -112,6 +124,8 @@ public sealed class StorageReading
     public long? VirtualProvisioned { get; set; }
     public int? Volumes { get; set; }
     public int VirtualUnknown { get; set; }            // disks on this store whose size the config does not state
+    public string? Media { get; set; }                 // ssd | nvme | hdd | mixed | unknown — null = not probed
+    public string? MediaNote { get; set; }             // models / why unknown
 
     [JsonIgnore] public bool HoldsGuests => Content.Contains("images") || Content.Contains("rootdir");
 }

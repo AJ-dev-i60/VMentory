@@ -41,6 +41,19 @@ command -v lvs >/dev/null 2>&1 && lvs --noheadings --nosuffix --units b --separa
 awk '/^[a-z]+:/{s=($1=="dir:");next} s&&$1=="path"{print $2;s=0}' /etc/pve/storage.cfg 2>/dev/null | while read -r p; do
   [ -d "$p/images" ] && find "$p/images" -type f \( -name '*.raw' -o -name '*.qcow2' -o -name '*.vmdk' \) -exec du -B1 {} + 2>/dev/null | awk -F'\t' '{print "file\t"$2"\t"$1}'
 done
+# disk media under each guest store: one line per (store, physical disk) — kernel rotational flag + model.
+# A RAID controller's virtual disk reports its own model (e.g. PERC_H730P) and hides the real media.
+media() { for d in "$@"; do lsblk -nsPo NAME,TYPE,ROTA,MODEL,TRAN "$d" 2>/dev/null | grep 'TYPE="disk"'; done | sort -u | sed "s/^/media\t$S\t/"; }
+awk '/^[a-z]+:/{t=$1; sub(":","",t); id=$2; print id, t; next}' /etc/pve/storage.cfg 2>/dev/null | while read -r S T; do
+  case "$T" in
+    zfspool) P=$(awk -v s="$S" '/^[a-z]+:/{c=($2==s);next} c&&$1=="pool"{print $2}' /etc/pve/storage.cfg); P=${P%%/*}
+             media $(zpool list -vHPL "$P" 2>/dev/null | awk '$1 ~ /^\/dev\//{print $1}') ;;
+    lvmthin|lvm) V=$(awk -v s="$S" '/^[a-z]+:/{c=($2==s);next} c&&$1=="vgname"{print $2}' /etc/pve/storage.cfg)
+             media $(pvs --noheadings -o pv_name -S vg_name="$V" 2>/dev/null) ;;
+    dir)     D=$(awk -v s="$S" '/^[a-z]+:/{c=($2==s);next} c&&$1=="path"{print $2}' /etc/pve/storage.cfg)
+             media $(findmnt -nvo SOURCE --target "$D" 2>/dev/null) ;;
+  esac
+done
 exit 0
 P
 

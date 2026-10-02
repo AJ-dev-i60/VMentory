@@ -120,6 +120,15 @@ public sealed class FleetOptions
                 {
                     if (tab[0] is "zfs" or "lvm" or "file" && long.TryParse(tab[2], out var bytes))
                         r.Allocated[$"{tab[0]}:{tab[1]}"] = bytes;
+                    else if (tab[0] == "media")
+                    {
+                        var kv = System.Text.RegularExpressions.Regex.Matches(tab[2], "(\\w+)=\"([^\"]*)\"")
+                            .ToDictionary(m => m.Groups[1].Value, m => m.Groups[2].Value);
+                        if (!r.Media.TryGetValue(tab[1], out var list)) r.Media[tab[1]] = list = [];
+                        list.Add(new VMentory.Core.Fleet.ProbeDisk(kv.GetValueOrDefault("NAME", ""),
+                            kv.GetValueOrDefault("ROTA") switch { "1" => true, "0" => false, _ => null },
+                            kv.GetValueOrDefault("MODEL", "").Trim(), kv.GetValueOrDefault("TRAN", "")));
+                    }
                     else if (tab[0] == "cfg" && tab[2].IndexOf('=') is var e and > 0)
                     {
                         if (!r.StorageCfg.TryGetValue(tab[1], out var kv)) r.StorageCfg[tab[1]] = kv = new(StringComparer.Ordinal);

@@ -1031,6 +1031,7 @@ app.MapPost("/api/scan", async (HttpContext ctx, Store s, EventHub h, AppConfig 
 app.MapEstateEndpoints();
 // Proxmox fleet (ENG-0016) — see Fleet/FleetEndpoints.cs.
 app.MapFleetEndpoints();
+app.MapInventoryEndpoints();
 
 // SSE: cookies are sent automatically by the browser on same-origin GET requests — no ?token= needed.
 app.MapGet("/api/events", async (HttpContext ctx, IHostApplicationLifetime lifetime) =>

@@ -234,6 +234,10 @@ public sealed class FleetCollector(FleetOptions opt, FleetState state, Store sto
                 st.Path = cfg.GetValueOrDefault("path");
                 if (st.Type == "zfspool") st.Sparse = cfg.GetValueOrDefault("sparse") is "1" or "true";
             }
+        if (probe != null)
+            foreach (var st in r.Storages)
+                if (probe.Media.TryGetValue(st.Id, out var disks) && disks.Count > 0)
+                    (st.Media, st.MediaNote) = ClassifyMedia(disks);
         foreach (var d in r.Guests.SelectMany(g => g.Disks))
         {
             if (probe == null || !byId.TryGetValue(d.Storage, out var st)) continue;
@@ -256,7 +260,59 @@ public sealed class FleetCollector(FleetOptions opt, FleetState state, Store sto
         }
     }
 
-    private static async Task ReadGuestsAsync(PveClient pve, string n, NodeReading r, CancellationToken ct)
+    // What the kernel says about the physical disks under a store. A RAID controller's virtual disk
+    // (PERC, "Virtual Disk", LSI MR) reports the controller as its model and a meaningless rotational
+    // flag — that is "unknown", never a guess.
+    public static (string Media, string Note) ClassifyMedia(List<ProbeDisk> disks)
+    {
+        var models = string.Join(", ", disks.Select(d => d.Model).Where(m => m != "").Distinct());
+        bool Virtual(ProbeDisk d) => System.Text.RegularExpressions.Regex.IsMatch(d.Model, @"PERC|Virtual Disk|LSI|MR9|RAID|Logical", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (disks.Any(Virtual))
+            return ("unknown", $"behind a RAID controller ({models}) — the controller hides the media type");
+        if (disks.Any(d => d.Rotational == null)) return ("unknown", $"rotational flag not reported ({models})");
+        if (disks.All(d => d.Transport == "nvme")) return ("nvme", models);
+        if (disks.All(d => d.Rotational == false)) return ("ssd", models);
+        if (disks.All(d => d.Rotational == true)) return ("hdd", models);
+        return ("mixed", models);
+    }
+
+    private async Task ReadGuestDetailAsync(PveClient pve, string n, GuestReading g, CancellationToken ct)
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(TimeSpan.FromSeconds(8));
+        try
+        {
+            if (g.Type == "lxc")
+            {
+                var ifs = await pve.GetAsync($"/nodes/{n}/lxc/{g.Vmid}/interfaces", cts.Token);
+                g.Ips = Pj.Arr(ifs).Where(i => Pj.Str(i, "name") != "lo")
+                    .SelectMany(i => i.TryGetProperty("ip-addresses", out var a) ? Pj.Arr(a).Select(x => Pj.Str(x, "ip-address")) : [])
+                    .OfType<string>().Where(UsefulIp).Distinct().ToList();
+                g.IpSource = "container";
+                return;
+            }
+            if (!g.AgentEnabled) { g.IpError = "no QEMU guest agent configured"; return; }
+            var net = await pve.GetAsync($"/nodes/{n}/qemu/{g.Vmid}/agent/network-get-interfaces", cts.Token);
+            var res = net.ValueKind == JsonValueKind.Object && net.TryGetProperty("result", out var rr) ? rr : default;
+            g.Ips = Pj.Arr(res).Where(i => !(Pj.Str(i, "name") ?? "").StartsWith("lo"))
+                .SelectMany(i => i.TryGetProperty("ip-addresses", out var a) ? Pj.Arr(a).Select(x => Pj.Str(x, "ip-address")) : [])
+                .OfType<string>().Where(UsefulIp).Distinct().ToList();
+            g.IpSource = "guest agent";
+            var os = await pve.GetAsync($"/nodes/{n}/qemu/{g.Vmid}/agent/get-osinfo", cts.Token);
+            if (os.ValueKind == JsonValueKind.Object && os.TryGetProperty("result", out var o)) g.OsName = Pj.Str(o, "pretty-name") ?? Pj.Str(o, "name");
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested) { g.IpError = "guest agent did not answer in 8 s"; }
+        catch (PveException ex) { g.IpError = ex.Message.Contains("not running") ? "guest agent is not running in the guest" : ex.Message; }
+    }
+
+    // loopback and link-local addresses say nothing about where a guest is reachable
+    private static bool UsefulIp(string ip)
+    {
+        var a = ip.Split('%')[0];
+        return a != "127.0.0.1" && a != "::1" && !a.StartsWith("fe80:", StringComparison.OrdinalIgnoreCase) && !a.StartsWith("169.254.");
+    }
+
+    private async Task ReadGuestsAsync(PveClient pve, string n, NodeReading r, CancellationToken ct)
     {
         foreach (var type in new[] { "qemu", "lxc" })
         {
@@ -274,6 +330,7 @@ public sealed class FleetCollector(FleetOptions opt, FleetState state, Store sto
                     MaxMem = Pj.Long(g, "maxmem"),
                     Mem = Pj.Long(g, "mem"),
                     UptimeSeconds = Pj.Long(g, "uptime"),
+                    CpuBusy = Pj.Dbl(g, "cpu"),
                     Vcpus = type == "qemu" ? Pj.Int(g, "cpus") : null,
                 };
                 if (guest.Name == "") guest.Name = $"{type}-{guest.Vmid}";
@@ -286,6 +343,13 @@ public sealed class FleetCollector(FleetOptions opt, FleetState state, Store sto
                 r.Guests.Add(guest);
             }
         }
+        // live addresses + OS name for running guests; a few at a time so one hung agent does not stall the node
+        using var sem = new SemaphoreSlim(6);
+        await Task.WhenAll(r.Guests.Where(g => g.Running && !g.Template).Select(async g =>
+        {
+            await sem.WaitAsync(ct);
+            try { await ReadGuestDetailAsync(pve, n, g, ct); } finally { sem.Release(); }
+        }));
     }
 
     private static readonly Regex QemuDiskKey = new(@"^(scsi|sata|ide|virtio|efidisk|tpmstate|unused)\d+$", RegexOptions.Compiled);
@@ -294,6 +358,9 @@ public sealed class FleetCollector(FleetOptions opt, FleetState state, Store sto
     public static void ApplyConfig(GuestReading g, JsonElement cfg)
     {
         g.Onboot = Pj.Flag(cfg, "onboot");
+        g.OsType = Pj.Str(cfg, "ostype");
+        g.Description = Pj.Str(cfg, "description");
+        g.AgentEnabled = (Pj.Str(cfg, "agent") ?? "").Split(',')[0] is "1" or "enabled=1";
         g.Tags = (Pj.Str(cfg, "tags") ?? "").Split([';', ',', ' '], StringSplitOptions.RemoveEmptyEntries).ToList();
         if (g.Type == "qemu")
         {

@@ -90,7 +90,7 @@ _**Phase-2 layout (2.0 slice 1):** the solution `VMentory.sln` has two projects 
 | `EventHub.cs` | SSE broadcast via `System.Threading.Channels` |
 | `MockData.cs` | 5 fake hosts for `--mock` mode |
 | `Exporter.cs` | CSV zip + JSON export |
-| `wwwroot/index.html` | Entire SPA (CSS + JS inline; login + change-password walls, RBAC-aware UI). **ENG-0015:** default view is now the Estate dashboard; `vEstate`/`vMachine`/`vActions` + the action modal live under the `// ── Estate dashboard + action tracker` marker |
+| `wwwroot/index.html` | Entire SPA. **UI v4 (2026-10-02): the Guest Browser** from the claude.ai/design project `81945b7d` — one screen, fleet → node → guest tree, side panel ≥ 900px / inline expansion + bottom sheet < 900px, Actions ▾ (start/shutdown/stop/reboot/migrate/console; clone disabled). Reads `/api/inventory`. Everything from the previous UI (estate, action tracker, drains, rules, findings, host management) is **parked**: APIs still run, no UI — see `docs/ui-v4-gaps.md`. Previous SPA: git `b21ac22` |
 | `VMentory.Core/Estate/EstateModels.cs` | ENG-0015 domain: `HardwareSnapshot`/`HardwareDevice`/`HardwareFault`, `StaticVm`, `ActionPriority`/`ActionClass`/`ActionStatus`, computed `ActionImpact` |
 | `VMentory.Core/Persistence/EstateEntities.cs` | ENG-0015 tables: `MachineEntity`, `ActionItemEntity` (+`Notes`, `BlockedBy`/`Blocks`), `ActionDependencyEntity`, `ActionNoteEntity`, `HardwareSnapshotEntity` (`AddEstate` migration) |
 | `OmeClient.cs` | Dell OpenManage Enterprise REST reader → `HardwareSnapshot` (devices, subsystem roll-ups, disks, PSUs, RAID controllers) |
@@ -99,6 +99,8 @@ _**Phase-2 layout (2.0 slice 1):** the solution `VMentory.sln` has two projects 
 | `EstateEndpoints.cs` | `/api/estate`, `/api/estate/refresh`, `/api/actions` CRUD + `/status` `/notes` `/deps`; blast-radius computation; `ManageActions` gate |
 | `Fleet/` | **ENG-0016 Proxmox fleet.** `FleetOptions` (env + the forced-command SSH probe), `PveClient` (REST, `Pj` null-safe JSON readers), `FleetCollector` (polls every node in parallel; `FleetState` keeps last good reading per node), `FleetAnalysis` (capacity, score, vetoes, findings — pure), `FleetPreflight` (live checks before a move), `MigrationRunner` (one move at a time, UPID tracking, cancel, failure cleanup, audit), `FleetEndpoints` (API + drain planner), `FleetSeed` (multi-node env seed, first-run rules) |
 | `VMentory.Core/Fleet/FleetModels.cs` / `Persistence/FleetEntities.cs` | Readings (nullable = unknown, never 0) / `FleetRuleEntity`, `NodeMaintenanceEntity`, `MigrationJobEntity`, `DrainPlanEntity` (`AddFleet` migration) |
+| `Fleet/InventoryEndpoints.cs` | UI v4 API: `/api/inventory` (tree with per-guest shares of node/pool, live IPs/OS, disk media), guest power verbs, task status |
+| `docs/ui-v4-gaps.md` | What the v4 design asks for that is not built yet, and what was parked |
 | `ops/provision-fleet-nodes.sh` | Per node: read-only `vmentory@pve!monitor`, write `vmentory-ops@pve!migrate` (role `VMentoryMigrate`), probe key + `/usr/local/sbin/vmentory-probe`. Idempotent; secrets to `~/.vmentory-pve-<node>-*token` |
 | `VMentory.Web.csproj` | SDK Web project (the exe); `AssemblyName=VMentory`; `Version` defaults to `1.0.0`; references `VMentory.Core` |
 | `VMentory.Core/VMentory.Core.csproj` | Classlib SDK project; domain model |
@@ -203,6 +205,9 @@ runs `dotnet restore` + `dotnet build VMentory.sln -c Release` on every push/PR 
 | POST | `/api/fleet/nodes/{hostId}/maintenance` · `/drain` | Maintenance on/off (reason + future expiry required); create a draft drain plan (`DrainHost`) |
 | GET / PATCH / POST | `/api/fleet/drains/{id}` · `/rows/{jobId}` · `/execute` · `/abort` · `/discard` · `/reverse` | Plan with cost; edit rows (draft only); execute needs `confirm:"drain <node>"`; abort `{now}`; reverse = new draft moving guests back |
 | POST / PATCH / DELETE | `/api/fleet/rules[/{id}]` | Placement rules (`DrainHost`) |
+| GET | `/api/inventory` | **UI v4.** `{fleet, nodes[] (capacity, storages with media), guests[] (os, ips + source/reason, services from tags, cpu/ram/disk with share + othersShare, rules, consoleUrl)}` |
+| POST | `/api/inventory/guests/{hostId}/{type}/{vmid}/power` | `{action: start\|shutdown\|stop\|reboot, confirm}` — node's write token; state-checked (409), `confirm:true` required except start; Start/Stop need `ProviderCapability.Start/Stop` (Admin, VmOperator), reboot needs `Reset` (Admin). Audited `guest.*` |
+| GET | `/api/inventory/nodes/{hostId}/tasks/{upid}` | Task status (read token) |
 
 All `/api/*` routes (except `/api/auth/*`) require the `vmentory_session` cookie set by `/api/auth/login`.
 In `--mock` mode the two estate GETs answer empty and the estate write routes are not mapped (no DbContext).
@@ -311,6 +316,11 @@ root). `VMENTORY_FLEET_INTERVAL` (s, default 60), `VMENTORY_FLEET_PROBE_INTERVAL
     a node did not report stays `null` and the UI shows `—` with the reason. Do not add fallbacks like `?? 0` in
     `Fleet/` for anything displayed, do not reintroduce a "typical" transfer rate (ETA comes only from this
     deployment's measured moves), and do not copy example figures from a brief into code or seeds.
+
+20. **UI v4 data sources.** IPs/OS names come from the QEMU guest agent (`agent/network-get-interfaces`,
+    `agent/get-osinfo` — readable by PVEAuditor) and `lxc/{id}/interfaces`; a guest without a running agent has
+    no IP and the UI says why. Disk media comes from the probe's `media` lines (kernel rotational flag + model);
+    a PERC/RAID virtual disk is reported as `unknown`, never guessed. Service icons only from Proxmox tags.
 
 19. **The PVEAuditor role cannot read per-volume usage, store listings or storage config.** Verified live on vega14
     2026-10-02: `/nodes/{n}/storage/{s}/content[/{vol}]` → 403 `VM.Config.Disk`; `/storage/{id}` → 403
