@@ -18,7 +18,16 @@ nodes as root. No numbers below are estimates unless they say so.
 | T4 | Live across CPU groups | wazuh132 → titan21 | ✅ refused | "different CPU models … would fail or crash the guest". |
 | T5 | Cancel mid-copy | wazuh131 titan21 → atlas19 | ✅ after fixes | First run: cleanup claimed success but removed nothing; a `@__migration__` snapshot left on the source made the **next move fail in 16 s**. After fixes: residue report matched ground truth item for item; next preflight blocked with the exact command. |
 | T6 | VMentory killed 60 s into a 94 GB copy, down 60 s, restarted | wazuh131 titan21 → atlas19 | ✅ 108.6 MB/s | Proxmox kept copying; the runner re-attached by UPID and finished the move. |
-| T8+T9 | Two moves queued at the same instant | iis104 titan21 → sagan25, arcserveprimary sagan25 → atlas19 | (running) | iis104: agent configured but not running — the retry logic judged by "configured", skipped the second ACPI press. |
+| T7 | Move with "remove the source copy on success" | ome200 atlas19 → titan21 (35.6 GB) | ✅ 5 min 49 s, 107.9 MB/s | Nothing left on atlas19 — no config, no volume, no snapshot. |
+| T8+T9 | Two moves queued at the same instant | iis104 titan21 → sagan25 (83.7 GB), arcserveprimary sagan25 → atlas19 (111 GB) | ✅ never overlapped; 105.6 and 114.3 MB/s; iis104 copy 842 s vs ETA 813 s (+3.5 %) | iis104: agent configured but **not running** — retry logic judged by "configured", skipped the second ACPI press → fell to the operator-allowed force-off. Fixed. arcserveprimary (pinned, iSCSI LUN) shut down cleanly on the **second** ACPI press; source copy stopped + locked — it can never run twice. |
+| T10 | Long copy to a non-default pool | lifetime137 titan21 → atlas19 `tank` (826 GB allocated) | (running) | Ignored **both** ACPI presses → operator-allowed force-off. |
+
+### Windows guests without a working agent
+
+Of the four tested, two honoured the **second** ACPI press (i60dc2, arcserveprimary) and two ignored both
+(iis104, lifetime137). The automatic second press recovers half; for the rest the per-move "force it off"
+opt-in is the only reliable path — or install/start the QEMU guest agent in those guests (21 of 48
+running guests have no working agent today).
 
 ## Fixes made from the findings
 
@@ -42,6 +51,8 @@ nodes as root. No numbers below are estimates unless they say so.
 9. **Opt-in "remove the source copy on success"** (`delete=1`): clearing a migrate lock later is root-only,
    so this is the only non-root way not to accumulate locked copies.
 10. **Self-host hard block** (earlier today): the VM that runs VMentory can only move live.
+11. **OLD COPY label:** the stopped, migrate-locked copy a move leaves on the old node is dimmed and tagged in
+    the tree, so it cannot be mistaken for the live guest.
 
 ## Still not covered / known limits
 
