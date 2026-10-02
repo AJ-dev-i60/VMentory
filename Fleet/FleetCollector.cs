@@ -25,6 +25,9 @@ public sealed class FleetState
     public Slot For(string hostId) => _slots.GetOrAdd(hostId, _ => new Slot());
     public IReadOnlyDictionary<string, Slot> All => _slots;
     public void Forget(string hostId) => _slots.TryRemove(hostId, out _);
+
+    // guests whose agent did not answer: skip re-asking until the time given, keep the reason
+    public ConcurrentDictionary<string, (DateTimeOffset Until, string Reason)> AgentBackoff { get; } = new();
 }
 
 public sealed class FleetCollector(FleetOptions opt, FleetState state, Store store, EventHub hub, AppConfig config) : BackgroundService
@@ -292,17 +295,27 @@ public sealed class FleetCollector(FleetOptions opt, FleetState state, Store sto
                 return;
             }
             if (!g.AgentEnabled) { g.IpError = "no QEMU guest agent configured"; return; }
+            var bk = $"{n}|{g.Vmid}";
+            if (state.AgentBackoff.TryGetValue(bk, out var off) && off.Until > DateTimeOffset.UtcNow)
+            { g.IpError = $"{off.Reason} (re-checked every 10 min)"; return; }
             var net = await pve.GetAsync($"/nodes/{n}/qemu/{g.Vmid}/agent/network-get-interfaces", cts.Token);
             var res = net.ValueKind == JsonValueKind.Object && net.TryGetProperty("result", out var rr) ? rr : default;
             g.Ips = Pj.Arr(res).Where(i => !(Pj.Str(i, "name") ?? "").StartsWith("lo"))
                 .SelectMany(i => i.TryGetProperty("ip-addresses", out var a) ? Pj.Arr(a).Select(x => Pj.Str(x, "ip-address")) : [])
                 .OfType<string>().Where(UsefulIp).Distinct().ToList();
             g.IpSource = "guest agent";
+            state.AgentBackoff.TryRemove(bk, out _);
             var os = await pve.GetAsync($"/nodes/{n}/qemu/{g.Vmid}/agent/get-osinfo", cts.Token);
             if (os.ValueKind == JsonValueKind.Object && os.TryGetProperty("result", out var o)) g.OsName = Pj.Str(o, "pretty-name") ?? Pj.Str(o, "name");
         }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested) { g.IpError = "guest agent did not answer in 8 s"; }
-        catch (PveException ex) { g.IpError = ex.Message.Contains("not running") ? "guest agent is not running in the guest" : ex.Message; }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested) { g.IpError = "guest agent did not answer in 8 s"; Backoff(n, g); }
+        catch (PveException ex) { g.IpError = ex.Message.Contains("not running") ? "guest agent is not running in the guest" : ex.Message; Backoff(n, g); }
+    }
+
+    private void Backoff(string n, GuestReading g)
+    {
+        if (g.Type == "qemu" && g.IpError != null)
+            state.AgentBackoff[$"{n}|{g.Vmid}"] = (DateTimeOffset.UtcNow.AddMinutes(10), g.IpError);
     }
 
     // loopback and link-local addresses say nothing about where a guest is reachable
