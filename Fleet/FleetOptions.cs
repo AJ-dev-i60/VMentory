@@ -112,8 +112,22 @@ public sealed class FleetOptions
             await proc.WaitForExitAsync(timeout.Token);
             var output = await stdout;
             if (proc.ExitCode != 0) { r.Error = $"ssh exit {proc.ExitCode}: {(await stderr).Trim()}"; return r; }
-            foreach (var line in output.Split('\n', StringSplitOptions.TrimEntries))
+            foreach (var raw in output.Split('\n'))
             {
+                var line = raw.TrimEnd('\r');
+                var tab = line.Split('\t');
+                if (tab.Length == 3)
+                {
+                    if (tab[0] is "zfs" or "lvm" or "file" && long.TryParse(tab[2], out var bytes))
+                        r.Allocated[$"{tab[0]}:{tab[1]}"] = bytes;
+                    else if (tab[0] == "cfg" && tab[2].IndexOf('=') is var e and > 0)
+                    {
+                        if (!r.StorageCfg.TryGetValue(tab[1], out var kv)) r.StorageCfg[tab[1]] = kv = new(StringComparer.Ordinal);
+                        kv[tab[2][..e]] = tab[2][(e + 1)..];
+                    }
+                    continue;
+                }
+                line = line.Trim();
                 var eq = line.IndexOf('=');
                 if (eq <= 0) continue;
                 var key = line[..eq]; var val = line[(eq + 1)..].Trim();

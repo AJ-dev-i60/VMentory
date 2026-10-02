@@ -448,8 +448,10 @@ public static class FleetEndpoints
                                         .OrderByDescending(s => s.Avail!.Value - diskUse.GetValueOrDefault((o.HostId, s.Storage))).FirstOrDefault();
                     if (fit != null) { pick = o; store = fit.Storage; break; }
                 }
-                if (pick == null)
-                    notes.Add("cannot be placed: " + string.Join(" | ", options.Select(o => $"{o.Node}: {(o.Vetoes.Count > 0 ? string.Join("; ", o.Vetoes) : "no store with room after the plan's other moves")}")));
+                if (pick == null && options.Count == 0)
+                    notes.Add("cannot be placed: no other Proxmox node is registered");
+                else if (pick == null)
+                    notes.Add("cannot be placed: " +string.Join(" | ", options.Select(o => $"{o.Node}: {(o.Vetoes.Count > 0 ? string.Join("; ", o.Vetoes) : "no store with room after the plan's other moves")}")));
                 else
                 {
                     row.TargetHostId = pick.HostId; row.TargetNode = pick.Node; row.TargetStorage = store; row.Mode = pick.Mode;

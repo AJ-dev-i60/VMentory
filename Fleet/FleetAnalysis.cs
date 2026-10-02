@@ -164,7 +164,7 @@ public static class FleetAnalysis
             storage = r.Storages.Where(s => s.Enabled).Select(s => new
             {
                 s.Id, s.Type, s.Content, s.Active, s.Shared, s.Total, s.Used, s.Avail, s.ZfsPool, s.Sparse,
-                s.VirtualProvisioned, s.Volumes,
+                s.VirtualProvisioned, s.Volumes, s.VirtualUnknown,
                 usedPct = s.Total > 0 && s.Used != null ? Math.Round(100.0 * s.Used.Value / s.Total.Value, 1) : (double?)null,
                 // brief §2: sum of guest virtual disk sizes against pool free space
                 thinRatio = s.VirtualProvisioned != null && s.Avail > 0 ? Math.Round((double)s.VirtualProvisioned.Value / s.Avail.Value, 2) : (double?)null,

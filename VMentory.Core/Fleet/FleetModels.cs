@@ -48,6 +48,11 @@ public sealed class ProbeReading
     public long? ArcMax { get; set; }                  // effective ARC cap (arcstats c_max), bytes
     public string? Serial { get; set; }                // DMI product_serial = Dell service tag
     public string? Product { get; set; }
+    // allocated bytes per volume, keyed "zfs:<dataset>", "lvm:<vg>/<lv>", "file:<absolute path>"
+    [JsonIgnore] public Dictionary<string, long> Allocated { get; set; } = new(StringComparer.Ordinal);
+    public int AllocatedEntries => Allocated.Count;
+    // /etc/pve/storage.cfg facts per storage id: pool, vgname, path, sparse, thinpool, type
+    [JsonIgnore] public Dictionary<string, Dictionary<string, string>> StorageCfg { get; set; } = new(StringComparer.Ordinal);
 }
 
 public sealed class GuestReading
@@ -98,9 +103,15 @@ public sealed class StorageReading
     public long? Used { get; set; }
     public long? Avail { get; set; }
     public string? ZfsPool { get; set; }               // the zpool behind a zfspool storage
+    public string? ZfsPath { get; set; }               // its dataset, e.g. rpool/data
+    public string? VgName { get; set; }                // lvm / lvmthin
+    public string? Path { get; set; }                  // dir
     public bool? Sparse { get; set; }                  // zfspool: thin zvols? null = not read
-    public long? VirtualProvisioned { get; set; }      // sum of volume sizes on this storage
+    // Sum of the configured (virtual) sizes of the guest disks on this store, from guest configs.
+    // The audit token cannot list a store's content, so orphaned volumes are not in this figure.
+    public long? VirtualProvisioned { get; set; }
     public int? Volumes { get; set; }
+    public int VirtualUnknown { get; set; }            // disks on this store whose size the config does not state
 
     [JsonIgnore] public bool HoldsGuests => Content.Contains("images") || Content.Contains("rootdir");
 }

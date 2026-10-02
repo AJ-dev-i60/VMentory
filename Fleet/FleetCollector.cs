@@ -25,14 +25,10 @@ public sealed class FleetState
     public Slot For(string hostId) => _slots.GetOrAdd(hostId, _ => new Slot());
     public IReadOnlyDictionary<string, Slot> All => _slots;
     public void Forget(string hostId) => _slots.TryRemove(hostId, out _);
-
-    // allocated-size cache: per-volume reads are the expensive part of a poll and move slowly
-    public ConcurrentDictionary<string, (long? Used, DateTimeOffset At)> VolumeCache { get; } = new();
 }
 
 public sealed class FleetCollector(FleetOptions opt, FleetState state, Store store, EventHub hub, AppConfig config) : BackgroundService
 {
-    private static readonly TimeSpan VolumeTtl = TimeSpan.FromMinutes(5);
     private readonly SemaphoreSlim _gate = new(1, 1);
     private DateTimeOffset _lastProbe = DateTimeOffset.MinValue;
 
@@ -70,15 +66,15 @@ public sealed class FleetCollector(FleetOptions opt, FleetState state, Store sto
             await Task.WhenAll(hosts.Select(async h =>
             {
                 var slot = state.For(h.Id);
-                var reading = await ReadNodeAsync(h, ct);
-                slot.Latest = reading;
-                if (reading.Ok) slot.LastGood = reading;
                 if (probeDue)
                 {
                     var p = await opt.ProbeAsync(h.Address, ct);
                     slot.Probe = p;
                     if (p.Ok) slot.LastGoodProbe = p;
                 }
+                var reading = await ReadNodeAsync(h, slot.LastGoodProbe, ct);
+                slot.Latest = reading;
+                if (reading.Ok) slot.LastGood = reading;
             }));
             if (probeDue) _lastProbe = DateTimeOffset.UtcNow;
             state.LastCycle = DateTimeOffset.UtcNow;
@@ -88,7 +84,7 @@ public sealed class FleetCollector(FleetOptions opt, FleetState state, Store sto
         finally { _gate.Release(); }
     }
 
-    private async Task<NodeReading> ReadNodeAsync(Host host, CancellationToken ct)
+    private async Task<NodeReading> ReadNodeAsync(Host host, ProbeReading? probe, CancellationToken ct)
     {
         var r = new NodeReading { HostId = host.Id, Address = host.Address, TakenAt = DateTimeOffset.UtcNow };
         var token = ReadToken(store, host);
@@ -141,7 +137,8 @@ public sealed class FleetCollector(FleetOptions opt, FleetState state, Store sto
 
             await Soft(r, "storage", async () => await ReadStorageAsync(pve, n, r, ct));
             await Soft(r, "ZFS pools", async () => await ReadZpoolsAsync(pve, n, r, ct));
-            await ReadGuestsAsync(pve, host.Id, n, r, ct);
+            await ReadGuestsAsync(pve, n, r, ct);
+            ApplyAllocations(r, probe);
 
             r.Ok = true;
         }
@@ -176,28 +173,8 @@ public sealed class FleetCollector(FleetOptions opt, FleetState state, Store sto
                 Used = Pj.Long(s, "used"),
                 Avail = Pj.Long(s, "avail"),
             };
-            if (!st.Active || !st.Enabled) { r.Storages.Add(st); continue; }
-            if (st.Type == "zfspool")
-            {
-                try
-                {
-                    var cfg = await pve.GetAsync($"/storage/{PveClient.Enc(st.Id)}", ct);
-                    st.ZfsPool = Pj.Str(cfg, "pool")?.Split('/')[0];
-                    st.Sparse = Pj.Flag(cfg, "sparse");
-                }
-                catch (Exception ex) when (ex is not OperationCanceledException) { r.Warnings.Add($"storage {st.Id} config: {ex.Message}"); }
-            }
-            if (st.HoldsGuests)
-            {
-                try
-                {
-                    var content = await pve.GetAsync($"/nodes/{n}/storage/{PveClient.Enc(st.Id)}/content", ct);
-                    var vols = Pj.Arr(content).Where(v => Pj.Str(v, "content") is "images" or "rootdir").ToList();
-                    st.Volumes = vols.Count;
-                    st.VirtualProvisioned = vols.Sum(v => Pj.Long(v, "size") ?? 0);
-                }
-                catch (Exception ex) when (ex is not OperationCanceledException) { r.Warnings.Add($"storage {st.Id} content: {ex.Message}"); }
-            }
+            // pool / vgname / path / sparse come from the probe (ApplyProbe): /storage/{id} needs
+            // Datastore.Allocate, which the audit role deliberately does not have.
             r.Storages.Add(st);
         }
     }
@@ -241,7 +218,45 @@ public sealed class FleetCollector(FleetOptions opt, FleetState state, Store sto
         }
     }
 
-    private async Task ReadGuestsAsync(PveClient pve, string hostId, string n, NodeReading r, CancellationToken ct)
+    // Allocated bytes come from the probe (the audit token cannot read per-volume usage). Each disk
+    // is matched to the probe line for its backing object; no line → stays null, i.e. "unknown".
+    // Virtual provisioning per store is the sum of configured sizes from the guest configs.
+    private static void ApplyAllocations(NodeReading r, ProbeReading? probe)
+    {
+        var byId = r.Storages.ToDictionary(s => s.Id);
+        if (probe != null)
+            foreach (var st in r.Storages)
+            {
+                if (!probe.StorageCfg.TryGetValue(st.Id, out var cfg)) continue;
+                st.ZfsPath = cfg.GetValueOrDefault("pool");
+                st.ZfsPool = st.ZfsPath?.Split('/')[0];
+                st.VgName = cfg.GetValueOrDefault("vgname");
+                st.Path = cfg.GetValueOrDefault("path");
+                if (st.Type == "zfspool") st.Sparse = cfg.GetValueOrDefault("sparse") is "1" or "true";
+            }
+        foreach (var d in r.Guests.SelectMany(g => g.Disks))
+        {
+            if (probe == null || !byId.TryGetValue(d.Storage, out var st)) continue;
+            var name = d.Volume[(d.Volume.IndexOf(':') + 1)..];
+            string? key = st.Type switch
+            {
+                "zfspool" when st.ZfsPath != null => $"zfs:{st.ZfsPath}/{name}",
+                "lvmthin" or "lvm" when st.VgName != null => $"lvm:{st.VgName}/{name}",
+                "dir" when st.Path != null => $"file:{st.Path.TrimEnd('/')}/images/{name}",
+                _ => null,
+            };
+            if (key != null && probe.Allocated.TryGetValue(key, out var bytes)) { d.AllocatedBytes = bytes; d.AllocatedReadAt = probe.TakenAt; }
+        }
+        foreach (var st in r.Storages.Where(s => s.HoldsGuests))
+        {
+            var disks = r.Guests.SelectMany(g => g.Disks).Where(d => d.Storage == st.Id).ToList();
+            st.Volumes = disks.Count;
+            st.VirtualUnknown = disks.Count(d => d.VirtualBytes == null);
+            st.VirtualProvisioned = disks.Sum(d => d.VirtualBytes ?? 0);
+        }
+    }
+
+    private static async Task ReadGuestsAsync(PveClient pve, string n, NodeReading r, CancellationToken ct)
     {
         foreach (var type in new[] { "qemu", "lxc" })
         {
@@ -271,27 +286,6 @@ public sealed class FleetCollector(FleetOptions opt, FleetState state, Store sto
                 r.Guests.Add(guest);
             }
         }
-
-        // allocated sizes — one call per volume, cached
-        using var sem = new SemaphoreSlim(4);
-        var now = DateTimeOffset.UtcNow;
-        await Task.WhenAll(r.Guests.SelectMany(g => g.Disks).Select(async d =>
-        {
-            var key = $"{hostId}|{d.Volume}";
-            if (state.VolumeCache.TryGetValue(key, out var hit) && now - hit.At < VolumeTtl)
-            { d.AllocatedBytes = hit.Used; d.AllocatedReadAt = hit.At; return; }
-            await sem.WaitAsync(ct);
-            try
-            {
-                var v = await pve.GetAsync($"/nodes/{n}/storage/{PveClient.Enc(d.Storage)}/content/{PveClient.Enc(d.Volume)}", ct);
-                d.AllocatedBytes = Pj.Long(v, "used");
-                d.VirtualBytes ??= Pj.Long(v, "size");
-                d.AllocatedReadAt = DateTimeOffset.UtcNow;
-                state.VolumeCache[key] = (d.AllocatedBytes, d.AllocatedReadAt.Value);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException) { r.Warnings.Add($"volume {d.Volume}: {ex.Message}"); }
-            finally { sem.Release(); }
-        }));
     }
 
     private static readonly Regex QemuDiskKey = new(@"^(scsi|sata|ide|virtio|efidisk|tpmstate|unused)\d+$", RegexOptions.Compiled);
