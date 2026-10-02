@@ -97,6 +97,7 @@ public sealed class MigrationRunner(IServiceScopeFactory scopes, FleetState flee
         // ── resume: the copy was already handed to Proxmox before a restart
         if (job.Status == MigrationJobStatus.Running && job.Upid != null)
         {
+            _rate = (await BuildCtxAsync(db, ct)).RateFor(job.Mode).Rate;
             await TrackAsync(job, srcR, srcW, sn, Save, ct);
             await CompleteAsync(job, db, scope, srcR, tgtR, tgtW, Save, Fail, ct);
             return;
@@ -115,6 +116,7 @@ public sealed class MigrationRunner(IServiceScopeFactory scopes, FleetState flee
         // ── fresh preflight at execution time: the plan may be hours old
         await collector.CollectOnceAsync(ct);
         var ctx = await BuildCtxAsync(db, ct);
+        _rate = ctx.RateFor(job.Mode).Rate;
         var srcCtx = ctx.ById(src.Id); var tgtCtx = ctx.ById(tgt.Id);
         var guest = srcCtx?.Reading?.Guests.FirstOrDefault(g => g.Vmid == job.Vmid && g.Type == job.GuestType);
         if (srcCtx == null || tgtCtx == null || guest == null) { await Fail($"{job.GuestType} {job.Vmid} is no longer on {job.SourceNode}", false); return; }
@@ -124,6 +126,7 @@ public sealed class MigrationRunner(IServiceScopeFactory scopes, FleetState flee
         if (!pf.CanExecute) { await Fail("preflight failed at execution time: " + string.Join("; ", pf.Blockers), false); return; }
         job.TargetVmid = pf.TargetVmid; job.TargetVmidWasFree = pf.TargetVmidWasFree; job.TargetStorage = pf.TargetStorage;
         job.BytesPlanned = pf.BytesAllocated; job.WasRunning = guest.Running; job.Mode = pf.Mode;
+        _rate = ctx.RateFor(job.Mode).Rate;
         await Save("preflight passed");
 
         try
@@ -131,14 +134,35 @@ public sealed class MigrationRunner(IServiceScopeFactory scopes, FleetState flee
             // ── offline move of a running VM: shut it down cleanly first. Never force.
             if (job.GuestType == "qemu" && job.WasRunning && job.Mode == MigrationMode.Offline)
             {
-                await Save("shutting the guest down (clean ACPI shutdown, 180 s)");
+                // Proxmox uses the guest agent for this when one is configured and running, ACPI otherwise.
+                await Save(guest.AgentEnabled ? "shutting the guest down (guest agent, 180 s)" : "shutting the guest down (ACPI power button, 180 s)");
                 var up = await srcW.PostAsync($"/nodes/{sn}/qemu/{job.Vmid}/status/shutdown", [new("timeout", "180")], ct);
                 await WaitTaskAsync(srcR, sn, up.GetString()!, TimeSpan.FromSeconds(240), ct);
                 var cur = await srcR.GetAsync($"/nodes/{sn}/qemu/{job.Vmid}/status/current", ct);
+                if (Pj.Str(cur, "status") != "stopped" && !guest.AgentEnabled)
+                {
+                    // Windows often ignores the first ACPI press while its console is asleep and honours the
+                    // second (i60dc2, 2026-10-02: first press timed out, second shut it down in ~70 s).
+                    await Save("clean shutdown timed out — pressing the ACPI power button once more (180 s)");
+                    up = await srcW.PostAsync($"/nodes/{sn}/qemu/{job.Vmid}/status/shutdown", [new("timeout", "180")], ct);
+                    await WaitTaskAsync(srcR, sn, up.GetString()!, TimeSpan.FromSeconds(240), ct);
+                    cur = await srcR.GetAsync($"/nodes/{sn}/qemu/{job.Vmid}/status/current", ct);
+                }
                 if (Pj.Str(cur, "status") != "stopped")
                 {
-                    await Fail("the guest did not shut down within 180 s; it was not forced off. Shut it down in the guest and run the move again.", afterCopyStarted: false);
-                    return;
+                    if (!job.ForceStopOnTimeout)
+                    {
+                        await Fail("the guest did not shut down cleanly (two attempts of 180 s without an agent, one with) and was NOT forced off (the operator did not allow it). " +
+                                   (guest.AgentEnabled ? "Its guest agent did not complete the shutdown." : "It has no guest agent and ignored the ACPI power button — common for Windows guests; install the QEMU guest agent, or allow a forced power-off for this move.") +
+                                   " The guest is still running on the source.", afterCopyStarted: false);
+                        return;
+                    }
+                    await Save("clean shutdown timed out — forcing it off (operator allowed this)");
+                    await Audit(scope, job, "forced-off", "clean shutdown timed out after 180 s");
+                    var stop = await srcW.PostAsync($"/nodes/{sn}/qemu/{job.Vmid}/status/stop", null, ct);
+                    await WaitTaskAsync(srcR, sn, stop.GetString()!, TimeSpan.FromSeconds(120), ct);
+                    cur = await srcR.GetAsync($"/nodes/{sn}/qemu/{job.Vmid}/status/current", ct);
+                    if (Pj.Str(cur, "status") != "stopped") { await Fail("the guest could not be stopped, even forced", afterCopyStarted: false); return; }
                 }
             }
             if (job.CancelRequested) { await Fail("cancelled before the copy started", afterCopyStarted: true); return; }
@@ -182,6 +206,7 @@ public sealed class MigrationRunner(IServiceScopeFactory scopes, FleetState flee
         var upid = PveClient.Enc(job.Upid!);
         var start = 0; var tail = new List<string>((job.LogTail ?? "").Split('\n', StringSplitOptions.RemoveEmptyEntries));
         var cancelSent = false;
+        string? lastProgress = null;
         while (true)
         {
             var st = await srcR.GetAsync($"/nodes/{sn}/tasks/{upid}/status", ct);
@@ -191,9 +216,10 @@ public sealed class MigrationRunner(IServiceScopeFactory scopes, FleetState flee
                 start = Math.Max(start, (Pj.Int(line, "n") ?? start) );
                 var t = Pj.Str(line, "t") ?? "";
                 tail.Add(t);
-                if (Progress.IsMatch(t)) job.Phase = "copying — " + t.Trim();
+                if (Progress.IsMatch(t)) lastProgress = Clean(t);
             }
             if (tail.Count > 40) tail = tail[^40..];
+            job.Phase = ProgressPhase(job, lastProgress);
             job.LogTail = string.Join('\n', tail);
 
             if (job.CancelRequested && !cancelSent)
@@ -212,6 +238,35 @@ public sealed class MigrationRunner(IServiceScopeFactory scopes, FleetState flee
             // pick up a cancel request written by the API between polls
             job.CancelRequested |= await CancelFlagAsync(job.Id, ct);
         }
+    }
+
+    // Proxmox logs no progress while it copies a stopped guest's disks (zfs send / pvesm export over the
+    // tunnel), so the phase shows elapsed time and — when this deployment has measured moves — an estimate,
+    // labelled as one. A real progress line (live drive-mirror "transferred X of Y") wins when there is one.
+    private double? _rate;
+    private string ProgressPhase(MigrationJobEntity job, string? line)
+    {
+        if (line != null && line.Contains("transferred")) return "copying — " + line;
+        var el = job.TransferStartedAt is { } t0 ? (DateTimeOffset.UtcNow - t0).TotalSeconds : 0;
+        var s = $"copying — {Dur(el)} elapsed";
+        if (line != null) s += $" · {line}";
+        if (_rate > 0 && job.BytesPlanned > 0)
+        {
+            var est = Math.Min(0.99, el * _rate.Value / job.BytesPlanned.Value);
+            var left = Math.Max(0, job.BytesPlanned.Value / _rate.Value - el);
+            s += $" · est. {est:P0}, ~{Dur(left)} left (estimated from the measured {_rate.Value / 1e6:0} MB/s — Proxmox reports no progress for this copy)";
+        }
+        return s;
+    }
+
+    private static string Dur(double s) => s < 90 ? $"{s:0}s" : s < 5400 ? $"{s / 60:0}m" : $"{s / 3600:0.0}h";
+
+    // Proxmox task-log entries can carry several of zfs send's lines run together.
+    private static string Clean(string t)
+    {
+        var m = Regex.Match(t, @"send of (\S+?)@__migration__ estimated size is ([\d.]+[KMGT]?)");
+        if (m.Success) return $"sending {m.Groups[1].Value.Split('/').Last()} ({m.Groups[2].Value})";
+        return t.Split('\r').Last().Trim();
     }
 
     private async Task<bool> CancelFlagAsync(string id, CancellationToken ct)

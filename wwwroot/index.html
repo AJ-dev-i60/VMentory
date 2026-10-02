@@ -29,7 +29,7 @@ button{font:inherit;color:inherit}
 
 /* header */
 .hdr{display:flex;align-items:center;gap:10px;padding:0 16px;height:52px;background:var(--bg-card);border-bottom:1px solid var(--border);flex-shrink:0}
-.hdr .logo{font-weight:700;display:flex;align-items:center;gap:8px;white-space:nowrap}
+.hdr .logo{color:var(--text);text-decoration:none;cursor:pointer;font-weight:700;display:flex;align-items:center;gap:8px;white-space:nowrap}
 .hdr .logo svg{color:var(--blue)}
 .hdr .meta{font-size:12px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .hdr .sp{flex:1}
@@ -200,7 +200,7 @@ pre.log{background:var(--bg);border:1px solid var(--border);border-radius:6px;pa
 <body>
 <div class="app" id="app" style="display:none">
   <header class="hdr">
-    <div class="logo"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="5" rx="1"/><rect x="2" y="10" width="20" height="5" rx="1"/><rect x="2" y="17" width="20" height="5" rx="1"/></svg>VMentory</div>
+    <a class="logo" href="#" onclick="goHome();return false" title="Inventory (home)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="5" rx="1"/><rect x="2" y="10" width="20" height="5" rx="1"/><rect x="2" y="17" width="20" height="5" rx="1"/></svg>VMentory</a>
     <span class="meta" id="hmeta"></span>
     <span class="sp"></span>
     <button class="ibtn" id="act-nav" onclick="goActions()" title="Moves and power actions — underway and recent">Actions<span class="badge" id="act-badge" style="display:none"></span></button>
@@ -544,17 +544,21 @@ async function runPreflight(){const mv=st.move,g=mv.g;mv.busy=true;renderMove();
   if(!st.move)return;mv.busy=false;renderMove();}
 function pfView(p){const row=(k,v)=>`<tr><td class="faint" style="white-space:nowrap">${k}</td><td>${v}</td></tr>`;
   let h=`<div class="box pf" id="pf"><h2>Preflight — read live ${new Date(p.at).toLocaleTimeString()}</h2>`;
-  if(p.blockers.length)h+=`<div><b style="color:var(--red)">Cannot run until fixed</b><ul class="bad">${p.blockers.map(b=>`<li>${x(b)}</li>`).join('')}</ul></div>`;
+  const iso=p.blockers.some(b=>/ISO .* is mounted/.test(b));
+  if(p.blockers.length)h+=`<div><b style="color:var(--red)">Cannot run until fixed</b><ul class="bad">${p.blockers.map(b=>`<li>${x(b)}</li>`).join('')}</ul>${iso&&can('migrate')?`<button class="btn" id="eject-btn" onclick="ejectIsos()">Eject the mounted ISOs and re-check</button>`:''}</div>`;
   if(p.warnings.length)h+=`<div><b style="color:var(--yellow)">Warnings</b><ul class="wrn">${p.warnings.map(b=>`<li>${x(b)}</li>`).join('')}</ul></div>`;
   h+=`<table class="ntbl">${row('VMID',x(p.targetVmidNote||'—'))}${row('Storage',p.storageMap.map(s=>`${x(s.disk)}: ${x(s.from)} → ${x(s.to)} · ${fb(s.allocatedBytes)} allocated`).join('<br>')||'—')}${row('Network',x(p.bridgeMap))}
     ${row('Mode',`<b>${x(p.mode)}</b> — ${x(p.modeReason)}`)}${row('To copy',p.bytesAllocated!=null?`<b>${fb(p.bytesAllocated)}</b> allocated`:`unknown (${p.disksUnknown} disk(s) without an allocated size)`)}
     ${row('ETA',p.etaSeconds!=null?`${fdur(p.etaSeconds)} at the measured ${fb(p.rateBytesPerSec)}/s`:'— no transfer rate measured on this deployment yet')}${row('Downtime',x(p.downtime))}
     ${row('Depends on',p.dependsOn.length?p.dependsOn.map(x).join('<br>'):'<span class="faint">nothing recorded</span>')}</table><ul class="inf">${p.info.map(b=>`<li>${x(b)}</li>`).join('')}</ul>`;
-  if(!p.blockers.length)h+=`${p.warnings.length?`<label class="frow"><input type="checkbox" ${st.move.ack?'checked':''} onchange="st.move.ack=this.checked"> I have read the warnings and want to proceed</label>`:''}
+  const offlineVm=p.guestType==='qemu'&&p.wasRunning&&p.mode==='Offline';
+  if(!p.blockers.length)h+=`${offlineVm?`<label class="frow"><input type="checkbox" id="mv-force" ${st.move.force?'checked':''} onchange="st.move.force=this.checked"> If it does not shut down cleanly within 180 s, force it off (a power cut — only for guests that can take one)</label>`:''}${p.warnings.length?`<label class="frow"><input type="checkbox" ${st.move.ack?'checked':''} onchange="st.move.ack=this.checked"> I have read the warnings and want to proceed</label>`:''}
     <div class="frow"><span>Type <b class="mono">${x(p.confirmPhrase)}</b> to execute:</span><input class="inp" id="mv-c" value="${x(st.move.confirm)}" oninput="st.move.confirm=this.value"><button class="btn btn-danger" onclick="execMove()">Execute move</button></div>`;
   return h+'</div>';}
+async function ejectIsos(){const g=st.move.g;const b=document.getElementById('eject-btn');if(b){b.disabled=true;b.textContent='Ejecting…';}
+  try{const r=await api('POST',`/api/fleet/guests/${g.hostId}/${g.type}/${g.vmid}/eject-isos`);toast(r.message,'ok');await load();await runPreflight();}catch(e){toast(e.message,'err');if(b){b.disabled=false;b.textContent='Eject the mounted ISOs and re-check';}}}
 async function execMove(){const mv=st.move,g=mv.g;
-  try{const r=await api('POST','/api/fleet/migrations',{hostId:g.hostId,type:g.type,vmid:g.vmid,targetHostId:mv.sel,storage:mv.storage,mode:mv.mode,dryRun:false,confirm:mv.confirm,acknowledgeWarnings:mv.ack});
+  try{const r=await api('POST','/api/fleet/migrations',{hostId:g.hostId,type:g.type,vmid:g.vmid,targetHostId:mv.sel,storage:mv.storage,mode:mv.mode,dryRun:false,confirm:mv.confirm,acknowledgeWarnings:mv.ack,forceStopOnTimeout:!!mv.force});
     closeModal();toast('Move queued — following it on the Actions page','ok');await loadActivity();location.hash='actions/migrate/'+r.job.id;}
   catch(e){toast(e.message,'err');if(e.body?.preflight){mv.pf=e.body.preflight;renderMove();}}}
 
@@ -565,6 +569,7 @@ async function loadActivity(){try{st.act=await api('GET','/api/activity');}catch
   renderStrip();if(st.view==='actions')renderActions();else if(st.inv){renderTree();renderPanel();}}
 function activityLoop(){loadActivity().finally(()=>setTimeout(activityLoop,(st.act?.active||st.view==='actions')?4000:15000));}
 function goActions(){location.hash='actions';}
+function goHome(){closeMenu();if(document.getElementById('modal-root').innerHTML)closeModal();st.sel={kind:'fleet'};st.open=null;history.pushState(null,'',location.pathname);readHash();renderAll();}
 function stIcon(stt){return stt==='running'||stt==='aborting'?'<span class="spin"></span>':stt==='queued'?'<span class="st-ic st-queued">⧗</span>':stt==='ok'?'<span class="st-ic st-ok">✓</span>':'<span class="st-ic st-failed">✕</span>';}
 function since(iso){if(!iso)return'';const s=(Date.now()-new Date(iso))/1000;return s<60?'just now':ago(s);}
 function renderStrip(){

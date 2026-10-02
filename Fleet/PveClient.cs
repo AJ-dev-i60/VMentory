@@ -32,6 +32,9 @@ public sealed class PveClient : IDisposable
     public Task<JsonElement> PostAsync(string path, IEnumerable<KeyValuePair<string, string>>? form, CancellationToken ct) =>
         SendAsync(HttpMethod.Post, path, form, ct);
 
+    public Task<JsonElement> PutAsync(string path, IEnumerable<KeyValuePair<string, string>> form, CancellationToken ct) =>
+        SendAsync(HttpMethod.Put, path, form, ct);
+
     public Task<JsonElement> DeleteAsync(string path, CancellationToken ct) => SendAsync(HttpMethod.Delete, path, null, ct);
 
     private async Task<JsonElement> SendAsync(HttpMethod method, string path, IEnumerable<KeyValuePair<string, string>>? form, CancellationToken ct)

@@ -56,8 +56,11 @@ public sealed class FleetCtx
 {
     public required List<NodeCtx> Nodes { get; init; }
     public required List<FleetRuleEntity> Rules { get; init; }
-    public double? RateBytesPerSec { get; init; }
+    public double? RateBytesPerSec { get; init; }      // offline / restart copies
     public int RateSamples { get; init; }
+    public double? OnlineRateBytesPerSec { get; init; } // live moves — allocated bytes ÷ whole move time
+    public int OnlineRateSamples { get; init; }
+    public (double? Rate, int Samples) RateFor(MigrationMode m) => m == MigrationMode.Online ? (OnlineRateBytesPerSec, OnlineRateSamples) : (RateBytesPerSec, RateSamples);
     public DateTimeOffset Now { get; init; } = DateTimeOffset.UtcNow;
     public NodeCtx? ById(string hostId) => Nodes.FirstOrDefault(n => n.Host.Id == hostId);
 }
@@ -106,16 +109,16 @@ public static class FleetAnalysis
             };
         }).OrderBy(n => n.Name).ToList();
 
-        var samples = doneJobs.Where(j => j.Status == MigrationJobStatus.Succeeded && j.BytesPlanned > 0
-                                          && j.TransferStartedAt != null && j.TransferEndedAt > j.TransferStartedAt)
-                              .OrderByDescending(j => j.FinishedAt).Take(FleetPolicy.RateSampleJobs).ToList();
-        double? rate = null;
-        if (samples.Count > 0)
+        (double? Rate, int N) Measure(bool online)
         {
+            var samples = doneJobs.Where(j => j.Status == MigrationJobStatus.Succeeded && j.BytesPlanned > 0 && (j.Mode == MigrationMode.Online) == online
+                                              && j.TransferStartedAt != null && j.TransferEndedAt > j.TransferStartedAt)
+                                  .OrderByDescending(j => j.FinishedAt).Take(FleetPolicy.RateSampleJobs).ToList();
             var secs = samples.Sum(j => (j.TransferEndedAt!.Value - j.TransferStartedAt!.Value).TotalSeconds);
-            if (secs > 0) rate = samples.Sum(j => (double)j.BytesPlanned!.Value) / secs;
+            return (samples.Count > 0 && secs > 0 ? samples.Sum(j => (double)j.BytesPlanned!.Value) / secs : null, samples.Count);
         }
-        return new FleetCtx { Nodes = nodes, Rules = rules, RateBytesPerSec = rate, RateSamples = samples.Count, Now = now };
+        var off = Measure(false); var on = Measure(true);
+        return new FleetCtx { Nodes = nodes, Rules = rules, RateBytesPerSec = off.Rate, RateSamples = off.N, OnlineRateBytesPerSec = on.Rate, OnlineRateSamples = on.N, Now = now };
     }
 
     // ── Capacity ─────────────────────────────────────────────────────────────
@@ -245,7 +248,8 @@ public static class FleetAnalysis
                 storages.Add(fit);
             }
             best = storages.Where(s => s.Fits && s.Avail != null && s.Total > 0)
-                           .OrderByDescending(s => (double)(s.Avail!.Value - (s.Need ?? 0)) / s.Total!.Value).FirstOrDefault();
+                           .OrderBy(s => StoreRank(s.Type))
+                           .ThenByDescending(s => (double)(s.Avail!.Value - (s.Need ?? 0)) / s.Total!.Value).FirstOrDefault();
             var forScore = best ?? storages.Where(s => s.Avail != null && s.Total > 0).OrderByDescending(s => (double)s.Avail!.Value / s.Total!.Value).FirstOrDefault();
             if (forScore != null)
                 parts.Add(new("storage", FleetPolicy.WSto, Clamp((double)(forScore.Avail!.Value - (add != null ? forScore.Need ?? 0 : 0)) / forScore.Total!.Value),
@@ -318,6 +322,11 @@ public static class FleetAnalysis
             ? new(s.Id, s.Type, s.Avail, s.Total, need, usedVirtual, true, $"needs {Gib(need)} ({basis}), leaves {Gib(left)}")
             : new(s.Id, s.Type, s.Avail, s.Total, need, usedVirtual, false, $"needs {Gib(need)} ({basis}), would leave {Gib(left)} — under the 10% floor of {Gib(floor)}");
     }
+
+    // Guest disks belong on a thin-capable block store; a directory store (e.g. vega14's `dblogs`, a SQL
+    // log disk) only when nothing else fits. Found in the 2026-10-02 campaign: "most free space" alone
+    // sent a domain controller to dblogs.
+    public static int StoreRank(string type) => type switch { "zfspool" or "lvmthin" => 0, "lvm" => 1, _ => 2 };
 
     public static long GuestMemImpact(GuestReading g) => g.Running || g.Onboot == true ? g.MaxMem ?? 0 : 0;
 

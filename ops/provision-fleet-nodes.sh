@@ -3,7 +3,9 @@
 #
 # Per node:
 #   1. read-only  vmentory@pve!monitor      -> PVEAuditor on /       (the poller; never writes)
-#   2. write      vmentory-ops@pve!migrate  -> VMentoryMigrate on /  (move/drain verbs ONLY, never the poller)
+#   2. write      vmentory-ops@pve!migrate  -> VMentoryMigrate on /  (move/drain/power verbs ONLY, never the poller)
+#                 Sys.Modify is in the role because a guest with a `startup:` (boot order) setting cannot be
+#                 written on the target without it — a move of i60dc2 died at its last step over this (2026-10-02).
 #   3. probe key  root, `restrict` + forced command /usr/local/sbin/vmentory-probe — read-only; prints the
 #                 ZFS ARC cap, DMI serial/product and each volume's allocated bytes, which the PVE REST API
 #                 does not expose to an audit-only token.
@@ -20,7 +22,7 @@ S=(ssh -o BatchMode=yes -i "$ADMIN_KEY")
 KEY=${PROBE_KEY:-$HOME/.vmentory-pve-probe-key}
 [ -f "$KEY" ] || ssh-keygen -q -t ed25519 -N '' -C 'vmentory-fleet-probe' -f "$KEY"
 PUB=$(cat "$KEY.pub")
-PRIVS="VM.Allocate VM.Migrate VM.Audit VM.Config.Disk VM.Config.CPU VM.Config.Memory VM.Config.Network VM.Config.Options VM.Config.HWType VM.Config.CDROM VM.Config.Cloudinit VM.PowerMgmt Datastore.AllocateSpace Datastore.Audit SDN.Use Sys.Incoming Sys.Audit"
+PRIVS="Sys.Modify VM.Allocate VM.Migrate VM.Audit VM.Config.Disk VM.Config.CPU VM.Config.Memory VM.Config.Network VM.Config.Options VM.Config.HWType VM.Config.CDROM VM.Config.Cloudinit VM.PowerMgmt Datastore.AllocateSpace Datastore.Audit SDN.Use Sys.Incoming Sys.Audit"
 
 read -r -d '' PROBE <<'P' || true
 #!/bin/sh
@@ -68,7 +70,7 @@ grep -q 'vmentory-fleet-probe' /root/.ssh/authorized_keys || echo "restrict,comm
 pveum user list --output-format json | grep -q '"vmentory@pve"' || pveum user add vmentory@pve --comment "VMentory read-only poller"
 pveum acl modify / --users vmentory@pve --roles PVEAuditor
 pveum user token list vmentory@pve --output-format json | grep -q '"monitor"' || pveum user token add vmentory@pve monitor --privsep 0 --comment "VMentory estate dashboard" --output-format json
-pveum role list --output-format json | grep -q '"VMentoryMigrate"' || pveum role add VMentoryMigrate --privs "$PRIVS"
+if pveum role list --output-format json | grep -q '"VMentoryMigrate"'; then pveum role modify VMentoryMigrate --privs "$PRIVS"; else pveum role add VMentoryMigrate --privs "$PRIVS"; fi
 pveum user list --output-format json | grep -q '"vmentory-ops@pve"' || pveum user add vmentory-ops@pve --comment "VMentory migrate/drain verbs only"
 pveum acl modify / --users vmentory-ops@pve --roles VMentoryMigrate
 pveum user token list vmentory-ops@pve --output-format json | grep -q '"migrate"' || pveum user token add vmentory-ops@pve migrate --privsep 0 --comment "VMentory move/drain" --output-format json

@@ -86,6 +86,9 @@ public sealed class GuestReading
     public List<GuestDisk> Disks { get; set; } = [];
     public List<string> Bridges { get; set; } = [];
     public bool HasIdeCloudInit { get; set; }
+    public List<string> IsoMounts { get; set; } = [];
+    public bool HasStartup { get; set; }               // `startup:` — writing it needs Sys.Modify on / (PVE: "changes host behaviour")
+    public bool HasHookscript { get; set; }            // `hookscript:` — root@pam only  // config keys with an ISO in a CD drive (ide2, sata0 …)
     public List<string> MigrationBlockers { get; set; } = [];   // passthrough, bind mounts, local ISO
     public string? ConfigError { get; set; }
 

@@ -83,6 +83,8 @@ public class MigrationJobEntity
     public bool CleanupDone { get; set; }
     public bool SourceRestarted { get; set; }
     public bool CancelRequested { get; set; }
+    // operator's explicit choice: if a clean shutdown times out, power the guest off instead of failing
+    public bool ForceStopOnTimeout { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }
     public string? CreatedBy { get; set; }

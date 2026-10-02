@@ -372,6 +372,8 @@ public sealed class FleetCollector(FleetOptions opt, FleetState state, Store sto
     {
         g.Onboot = Pj.Flag(cfg, "onboot");
         g.OsType = Pj.Str(cfg, "ostype");
+        g.HasStartup = Pj.Has(cfg, "startup");
+        g.HasHookscript = Pj.Has(cfg, "hookscript");
         g.Description = Pj.Str(cfg, "description");
         g.AgentEnabled = (Pj.Str(cfg, "agent") ?? "").Split(',')[0] is "1" or "enabled=1";
         g.Tags = (Pj.Str(cfg, "tags") ?? "").Split([';', ',', ' '], StringSplitOptions.RemoveEmptyEntries).ToList();
@@ -422,6 +424,7 @@ public sealed class FleetCollector(FleetOptions opt, FleetState state, Store sto
                 else if (first.Contains(":iso/"))
                 {
                     g.MigrationBlockers.Add($"{key}: ISO {first} is mounted — eject it before moving");
+                    g.IsoMounts.Add(key);
                     continue;
                 }
                 else continue;   // physical/empty cdrom

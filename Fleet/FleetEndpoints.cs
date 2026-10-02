@@ -106,6 +106,7 @@ public static class FleetEndpoints
                 SourceHostId = src.Host.Id, SourceNode = src.Name, TargetHostId = tgt.Host.Id, TargetNode = tgt.Name,
                 TargetVmid = pf.TargetVmid, TargetStorage = pf.TargetStorage, Mode = pf.Mode, BytesPlanned = pf.BytesAllocated,
                 Status = MigrationJobStatus.Queued, Phase = "queued", PreflightJson = JsonSerializer.Serialize(pf, J),
+                ForceStopOnTimeout = b.ForceStopOnTimeout == true,
                 CreatedAt = now, QueuedAt = now, CreatedBy = User(ctx),
             };
             db.MigrationJobs.Add(job);
@@ -113,6 +114,29 @@ public static class FleetEndpoints
             await Audit(d, ctx, "fleet.migrate.requested", job.Id, new { job.GuestName, job.Vmid, from = job.SourceNode, to = job.TargetNode, mode = job.Mode.ToString(), bytes = job.BytesPlanned, warnings = pf.Warnings });
             d.Hub.Broadcast("fleetJob", new { job.Id, job.Status });
             return Results.Json(new { ok = true, job = JobDto(job) }, J);
+        });
+
+        // Fix for the commonest preflight blocker: empty every CD drive that holds an ISO (the drive stays,
+        // the media goes — a hot change Proxmox allows on a running guest). Write token, audited.
+        app.MapPost("/api/fleet/guests/{hostId}/{type}/{vmid:int}/eject-isos", async (string hostId, string type, int vmid, Deps d, HttpContext ctx) =>
+        {
+            if (!RbacCatalog.Can(ctx.User, ConsolePermission.MigrateGuest)) return Forbid("changing guests");
+            var (_, f) = await d.ContextAsync();
+            var (n, g) = Find(f, hostId, type, vmid);
+            if (n == null || g == null) return Results.NotFound(new { error = "guest not in the latest reading" });
+            if (g.IsoMounts.Count == 0) return Results.Ok(new { ok = true, message = "no ISO is mounted" });
+            var tok = d.Opt.MigrateTokenFor(n.Host.Address);
+            if (tok == null) return Results.Json(new { error = $"no write token for {n.Name}" }, statusCode: 409);
+            using var pve = new PveClient(n.Host.Address, tok, n.Host.SkipTlsVerification);
+            try
+            {
+                await pve.PutAsync($"/nodes/{PveClient.Enc(n.Name)}/qemu/{vmid}/config",
+                    g.IsoMounts.Select(k => new KeyValuePair<string, string>(k, "none,media=cdrom")), ctx.RequestAborted);
+            }
+            catch (PveException ex) { return Results.Json(new { error = ex.Message }, statusCode: 502); }
+            await Audit(d, ctx, "guest.eject-isos", $"{n.Name}/{vmid}", new { guest = g.Name, drives = g.IsoMounts });
+            await d.Collector.CollectOnceAsync(ctx.RequestAborted);
+            return Results.Ok(new { ok = true, message = $"ejected {g.IsoMounts.Count} ISO(s) from {g.Name}: {string.Join(", ", g.IsoMounts)}" });
         });
 
         app.MapGet("/api/fleet/jobs/{id}", async (string id, Deps d) =>
@@ -475,7 +499,10 @@ public static class FleetEndpoints
         var moves = rows.Where(r => r.RowAction == DrainRowAction.Move).ToList();
         var bytesKnown = moves.Sum(r => r.BytesPlanned ?? 0);
         var bytesUnknown = moves.Count(r => r.BytesPlanned == null);
-        double? eta = f.RateBytesPerSec > 0 && bytesUnknown == 0 ? bytesKnown / f.RateBytesPerSec : null;
+        // per row by its mode — live and offline moves have separate measured rates
+        double? RowEta(MigrationJobEntity r) => r.BytesPlanned != null && f.RateFor(r.Mode).Rate is > 0 and var rt ? r.BytesPlanned / rt : null;
+        var rowEtas = moves.Select(RowEta).ToList();
+        double? eta = rowEtas.Count > 0 && rowEtas.All(e => e != null) ? rowEtas.Sum() : null;
         return new
         {
             plan = new { plan.Id, plan.SourceHostId, plan.SourceNode, plan.Status, plan.ReverseOfPlanId, plan.ActionId, plan.MaintenanceUntil, plan.MaintenanceReason, plan.AbortRequested, plan.CreatedAt, plan.CreatedBy, plan.ApprovedAt, plan.ApprovedBy, plan.FinishedAt,
@@ -490,7 +517,7 @@ public static class FleetEndpoints
                     targets = src != null && g != null && plan.Status == DrainPlanStatus.Draft
                         ? FleetAnalysis.RankTargets(f, src, g).Select(o => new { o.HostId, o.Node, o.Score, o.Vetoed, o.Vetoes, o.SuggestedStorage, o.Storages, mode = o.Mode.ToString() }).ToList<object>()
                         : null,
-                    etaSeconds = r.BytesPlanned != null && f.RateBytesPerSec > 0 ? r.BytesPlanned / f.RateBytesPerSec : null,
+                    etaSeconds = RowEta(r),
                     downtime = r.RowAction == DrainRowAction.Stay ? "stays" : r.Mode == MigrationMode.Online ? "live" : r.WasRunning ? "down for the copy" : "already stopped",
                 };
             }).ToList(),
@@ -500,7 +527,7 @@ public static class FleetEndpoints
                 unplaced = moves.Count(r => r.TargetHostId == null),
                 bytesKnown, bytesUnknownGuests = bytesUnknown,
                 etaSeconds = eta,
-                etaBasis = f.RateBytesPerSec == null ? "no measured transfer rate yet" : $"{f.RateSamples} measured move(s)",
+                etaBasis = $"measured: {f.RateSamples} offline, {f.OnlineRateSamples} live move(s)",
                 downtimeGuests = moves.Count(r => r.WasRunning && r.Mode != MigrationMode.Online),
                 liveGuests = moves.Count(r => r.Mode == MigrationMode.Online),
             },
@@ -608,7 +635,7 @@ public sealed class Deps(IServiceScopeFactory scopes, VMentoryDbContext db, Flee
 }
 
 public record MoveDto(string HostId, string Type, int Vmid, string? TargetHostId, string? Storage = null, MigrationMode? Mode = null,
-                      bool? DryRun = true, string? Confirm = null, bool? AcknowledgeWarnings = null);
+                      bool? DryRun = true, string? Confirm = null, bool? AcknowledgeWarnings = null, bool? ForceStopOnTimeout = null);
 public record MaintenanceDto(bool On, string? Reason = null, DateTimeOffset? Until = null);
 public record DrainCreateDto(string? ActionId = null);
 public record RowDto(DrainRowAction? Action = null, string? TargetHostId = null, string? Storage = null, MigrationMode? Mode = null, int? Seq = null);

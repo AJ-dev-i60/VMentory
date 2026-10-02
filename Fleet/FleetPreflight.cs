@@ -53,7 +53,7 @@ public static class FleetPreflight
         {
             Guest = g.Name, GuestType = g.Type, Vmid = g.Vmid, SourceHostId = src.Host.Id, SourceNode = src.Name,
             TargetHostId = tgt.Host.Id, TargetNode = tgt.Name, WasRunning = g.Running,
-            RateBytesPerSec = f.RateBytesPerSec, RateSamples = f.RateSamples,
+
         };
         if (src.Host.Id == tgt.Host.Id) { p.Blockers.Add("source and target are the same node"); return p; }
         if (g.Template) p.Blockers.Add("templates are not moved by this tool");
@@ -86,7 +86,8 @@ public static class FleetPreflight
         var stores = tgt.Reading?.Storages.Where(s => s.Active && s.Enabled && s.Content.Contains(content)).ToList() ?? [];
         var chosen = storage != null ? stores.FirstOrDefault(s => s.Id == storage)
                                      : stores.Select(s => (s, fit: FleetAnalysis.Fit(s, g))).Where(x => x.fit.Fits)
-                                             .OrderByDescending(x => (double)(x.s.Avail!.Value - (x.fit.Need ?? 0)) / x.s.Total!.Value).Select(x => x.s).FirstOrDefault();
+                                             .OrderBy(x => FleetAnalysis.StoreRank(x.s.Type))
+                                             .ThenByDescending(x => (double)(x.s.Avail!.Value - (x.fit.Need ?? 0)) / x.s.Total!.Value).Select(x => x.s).FirstOrDefault();
         if (chosen == null)
             p.Blockers.Add(storage != null ? $"store '{storage}' does not exist on {tgt.Name} or does not accept {content}"
                                            : $"no store on {tgt.Name} has room for this guest");
@@ -97,8 +98,14 @@ public static class FleetPreflight
             if (!fit.Fits) p.Warnings.Add($"space: {chosen.Id} — {fit.Note}");
             p.StorageMap = g.Disks.Select(d => (object)new { disk = d.Key, from = d.Storage, to = chosen.Id, virtualBytes = d.VirtualBytes, allocatedBytes = d.AllocatedBytes }).ToList();
             p.Info.Add($"storage: every disk lands on {chosen.Id} ({chosen.Type}) — {fit.Note}");
+            // Live: the IDE cloud-init drive cannot be hot-removed (seen in this estate, Sept 2026). Offline: under test.
             if (g.HasIdeCloudInit && chosen.Type == "zfspool")
-                p.Blockers.Add("an IDE cloud-init drive cannot be hot-removed and will not import to a ZFS pool — remove it (needs a guest restart) before moving");
+            {
+                if (p.Mode == MigrationMode.Online)
+                    p.Blockers.Add("an IDE cloud-init drive cannot be hot-removed during a live move — remove it (needs a guest restart) or move offline");
+                else
+                    p.Warnings.Add("the guest has an IDE cloud-init drive; Proxmox regenerates it on the target for an offline move");
+            }
         }
 
         // bridges
@@ -111,8 +118,9 @@ public static class FleetPreflight
         p.DisksUnknown = g.Disks.Count(d => d.AllocatedBytes == null);
         p.BytesAllocated = p.DisksUnknown == 0 ? p.BytesAllocatedKnown : null;
         p.BytesVirtual = g.Disks.All(d => d.VirtualBytes != null) ? g.Disks.Sum(d => d.VirtualBytes!.Value) : null;
-        if (p.BytesAllocated != null && f.RateBytesPerSec > 0) p.EtaSeconds = p.BytesAllocated.Value / f.RateBytesPerSec.Value;
-        if (f.RateBytesPerSec == null) p.Info.Add("ETA: no move has completed on this deployment yet, so there is no measured transfer rate to estimate from");
+        (p.RateBytesPerSec, p.RateSamples) = f.RateFor(p.Mode);
+        if (p.BytesAllocated != null && p.RateBytesPerSec > 0) p.EtaSeconds = p.BytesAllocated.Value / p.RateBytesPerSec.Value;
+        if (p.RateBytesPerSec == null) p.Info.Add($"ETA: no {(p.Mode == MigrationMode.Online ? "live" : "offline")} move has completed on this deployment yet, so there is no measured rate for this kind of move");
         p.Downtime = p.Mode switch
         {
             MigrationMode.Online => "live — a brief pause at switchover (not measured here)",
@@ -176,6 +184,7 @@ public static class FleetPreflight
 
             await BackupJobs(t, tgt.Name, g, p, ct);
         }
+        await CheckWritePrivilegesAsync(src, tgt, g, p, opt, ct);
         if (srcTok != null)
         {
             using var s = new PveClient(src.Host.Address, srcTok, src.Host.SkipTlsVerification);
@@ -189,6 +198,33 @@ public static class FleetPreflight
             await BackupJobs(s, src.Name, g, p, ct);
         }
         return p;
+    }
+
+    // The write tokens' actual privileges, read live from each node, against what this guest's move needs.
+    // Found the hard way (2026-10-02): i60dc2 carries `startup:`, the target's final `config` step needs
+    // Sys.Modify on / for that, and the move died after a full 6.5-minute copy.
+    private static async Task CheckWritePrivilegesAsync(NodeCtx src, NodeCtx tgt, GuestReading g, PreflightResult p, FleetOptions opt, CancellationToken ct)
+    {
+        if (g.HasHookscript) p.Blockers.Add("the guest has a hookscript — only root@pam can set that on the target; remove it or move by hand");
+        var src_ = new[] { "VM.Migrate" };
+        var tgt_ = new List<string> { "VM.Allocate", "Sys.Incoming", "Datastore.AllocateSpace", "VM.Config.Disk", "VM.Config.Network", "VM.Config.Options", "VM.PowerMgmt" };
+        if (g.HasStartup) tgt_.Add("Sys.Modify");
+        foreach (var (node, need, label) in new[] { (src, (IEnumerable<string>)src_, "source"), (tgt, tgt_, "target") })
+        {
+            var tok = opt.MigrateTokenFor(node.Host.Address);
+            if (tok == null) continue;   // reported elsewhere
+            try
+            {
+                using var c = new PveClient(node.Host.Address, tok, node.Host.SkipTlsVerification);
+                var perms = await c.GetAsync("/access/permissions?path=/", ct);
+                var have = perms.TryGetProperty("/", out var root) ? root.EnumerateObject().Where(x => Pj.Str(root, x.Name) == "1").Select(x => x.Name).ToHashSet() : [];
+                var missing = need.Where(n => !have.Contains(n)).ToList();
+                if (missing.Count > 0)
+                    p.Blockers.Add($"the write token on the {label} {node.Name} lacks {string.Join(", ", missing)}" +
+                                   (missing.Contains("Sys.Modify") ? " — needed because the guest has a `startup:` (boot order) setting; re-run ops/provision-fleet-nodes.sh" : ""));
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException) { p.Warnings.Add($"could not read the {label} write token's privileges: {ex.Message}"); }
+        }
     }
 
     // Proxmox's own scheduled backup jobs (vzdump) that touch this guest, with their next run.
