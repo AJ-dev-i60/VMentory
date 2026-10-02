@@ -16,6 +16,7 @@ using VMentory.Core.Auth;
 using VMentory.Core.Persistence;
 using VMentory.Core.Secrets;
 using VMentory.Web;
+using VMentory.Web.Fleet;
 
 // ── Logging: errors only, no host/PII data ───────────────────────────────────
 // Write to a writable location: VMENTORY_LOG, else the data dir (the mounted /data volume in the
@@ -110,6 +111,16 @@ builder.Services.AddSingleton(omeOptions);
 builder.Services.AddSingleton(new EstateState { MonitorConfigured = omeOptions.Enabled });
 builder.Services.AddSingleton<EstateCollector>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<EstateCollector>());
+
+// ── Proxmox fleet: capacity, ranking, move, drain (ENG-0016) ──────────────────
+// Polls every registered Proxmox node (read-only tokens); move/drain use separate write tokens from
+// VMENTORY_PVE_MIGRATE_TOKENS and run one at a time. Env contract in Fleet/FleetOptions.cs.
+var fleetOptions = FleetOptions.FromEnvironment(dataDir);
+builder.Services.AddSingleton(fleetOptions);
+builder.Services.AddSingleton<FleetState>();
+builder.Services.AddSingleton<FleetCollector>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<FleetCollector>());
+builder.Services.AddHostedService<MigrationRunner>();
 
 // ── Auth: cookie-based session (ENG-0008, slice 2) + SSO (ENG-0014) ───────────
 // HttpOnly + Secure (when HTTPS). EventSource (GET, same-origin) sends cookies automatically — no
@@ -271,6 +282,7 @@ if (config.Persist)
     builder.Services.AddDbContext<VMentoryDbContext>(o => o.UseSqlite($"Data Source={config.DbPath}"));
     builder.Services.AddScoped<IInventoryStore, EfInventoryStore>();
     builder.Services.AddScoped<IUserStore, EfUserStore>();
+    builder.Services.AddScoped<Deps>();
 }
 
 // ── Secret store (ENG-0002, slice 3) ─────────────────────────────────────────
@@ -330,6 +342,10 @@ if (config.Persist)
     await EstateSeeder.SeedAsync(db, estateState);
     await estateState.LoadLatestAsync(db);
     await SeedProxmoxHostFromEnvAsync(store, invStore, secretStore);
+
+    // ENG-0016: fleet nodes from env (many), and the first-run placement rules.
+    await FleetSeed.SeedHostsAsync(store, invStore, secretStore, fleetOptions);
+    await FleetSeed.SeedRulesAsync(db, fleetOptions);
 }
 
 // ── Middleware pipeline ────────────────────────────────────────────────────────
@@ -1013,6 +1029,8 @@ app.MapPost("/api/scan", async (HttpContext ctx, Store s, EventHub h, AppConfig 
 
 // Estate dashboard + remediation tracker (ENG-0015) — see EstateEndpoints.cs.
 app.MapEstateEndpoints();
+// Proxmox fleet (ENG-0016) — see Fleet/FleetEndpoints.cs.
+app.MapFleetEndpoints();
 
 // SSE: cookies are sent automatically by the browser on same-origin GET requests — no ?token= needed.
 app.MapGet("/api/events", async (HttpContext ctx, IHostApplicationLifetime lifetime) =>

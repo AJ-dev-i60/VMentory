@@ -21,8 +21,36 @@ public class VMentoryDbContext(DbContextOptions<VMentoryDbContext> options) : Db
     public DbSet<ActionNoteEntity> ActionNotes => Set<ActionNoteEntity>();
     public DbSet<HardwareSnapshotEntity> HardwareSnapshots => Set<HardwareSnapshotEntity>();
 
+    // ENG-0016 — Proxmox fleet operations
+    public DbSet<FleetRuleEntity> FleetRules => Set<FleetRuleEntity>();
+    public DbSet<NodeMaintenanceEntity> NodeMaintenance => Set<NodeMaintenanceEntity>();
+    public DbSet<MigrationJobEntity> MigrationJobs => Set<MigrationJobEntity>();
+    public DbSet<DrainPlanEntity> DrainPlans => Set<DrainPlanEntity>();
+
     protected override void OnModelCreating(ModelBuilder b)
     {
+        // ── ENG-0016 ──
+        b.Entity<FleetRuleEntity>(e =>
+        {
+            e.HasKey(r => r.Id);
+            e.Property(r => r.Kind).HasConversion<string>();
+        });
+        b.Entity<NodeMaintenanceEntity>(e => e.HasKey(m => m.HostId));
+        b.Entity<MigrationJobEntity>(e =>
+        {
+            e.HasKey(j => j.Id);
+            e.HasIndex(j => j.Status);
+            e.HasIndex(j => j.DrainPlanId);
+            e.Property(j => j.Status).HasConversion<string>();
+            e.Property(j => j.Mode).HasConversion<string>();
+            e.Property(j => j.RowAction).HasConversion<string>();
+        });
+        b.Entity<DrainPlanEntity>(e =>
+        {
+            e.HasKey(p => p.Id);
+            e.Property(p => p.Status).HasConversion<string>();
+        });
+
         // ── ENG-0015 ──
         b.Entity<MachineEntity>(e =>
         {

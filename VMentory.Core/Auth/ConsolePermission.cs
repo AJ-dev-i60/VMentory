@@ -11,4 +11,8 @@ public enum ConsolePermission
     // ENG-0015: tick off, create, schedule and link remediation actions. Reading the estate and
     // the action list needs only an authenticated session.
     ManageActions     = 1 << 4,
+    // ENG-0016: move one guest between Proxmox nodes (remote-migrate). Admin only at first.
+    MigrateGuest      = 1 << 5,
+    // ENG-0016: plan/execute/abort a host drain, set maintenance, edit placement rules. Admin only.
+    DrainHost         = 1 << 6,
 }
