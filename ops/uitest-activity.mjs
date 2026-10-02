@@ -66,6 +66,10 @@ await shot('a3-actions-power');
 await ev(`location.hash=''`);
 check(await waitFor(`document.getElementById('layout').style.display==='flex'&&document.querySelectorAll('.row.guest').length>0`), 'back to the inventory');
 check(await ev(`document.getElementById('strip').style.display==='flex'`), 'strip persists on the inventory screen');
+await ev(`location.hash='actions/migrate/fakejob1'`);
+check(await waitFor(`document.getElementById('apage').style.display==='flex'`), 'on the Actions page again');
+await ev(`document.querySelector('.hdr .logo').click()`);
+check(await waitFor(`document.getElementById('layout').style.display==='flex'&&location.hash===''&&document.getElementById('panel').textContent.includes('Fleet overview')`), 'clicking the VMentory logo returns home (inventory + overview)');
 await ev(`document.getElementById('act-nav').click()`);
 check(await waitFor(`location.hash==='#actions'&&document.querySelector('.adetail').textContent.includes('Select an action')`), 'header Actions button opens the page');
 
@@ -84,7 +88,9 @@ console.log('— real feed (no injection)');
 inject = false; await vp(1440, 900, false); await send('Page.navigate', { url: base });
 await waitFor(`document.querySelectorAll('.row.guest').length>0`);
 await sleep(1500);
-check(await ev(`document.getElementById('strip').style.display==='none'`), 'strip hidden when nothing is underway (real /api/activity)');
+const realActive = await ev(`fetch('/api/activity',{credentials:'include'}).then(r=>r.json()).then(j=>j.active)`);
+if (realActive === 0) check(await ev(`document.getElementById('strip').style.display==='none'`), 'strip hidden when nothing is underway (real /api/activity)');
+else check(await waitFor(`document.getElementById('strip').style.display==='flex'&&document.getElementById('act-badge').textContent==='` + realActive + `'`), 'real feed has ' + realActive + ' underway → strip + badge show it');
 
 console.log(problems.length ? 'PROBLEMS:\n  ' + problems.join('\n  ') : 'no exceptions or console errors');
 ws.close(); chrome.kill(); process.exit(problems.length ? 1 : 0);

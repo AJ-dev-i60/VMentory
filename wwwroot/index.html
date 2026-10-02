@@ -383,8 +383,8 @@ function renderTree(){
     for(const g of gs){
       const k=gkey(g),open=!WIDE.matches&&st.open===k,sel=WIDE.matches&&st.sel.kind==='guest'&&st.sel.key===k;
       const ip=firstIp(g);
-      h+=`<div class="row guest ${sel||open?'sel':''}" onclick="selGuest('${k}')">
-        <span class="nm">${busyFor(g)?'<span class="spin" data-tip="'+x(busyFor(g).title+' — '+(busyFor(g).phase||''))+'"></span>':`<span class="dot ${g.running?'on':''}" data-tip="${x(g.status)}${g.lock?' · lock '+x(g.lock):''}"></span>`}<span class="vmid">${g.vmid}</span><span class="t">${open?'▾ ':''}${x(g.name)}</span>${g.type==='lxc'?'<span class="ctb">CT</span>':''}${g.lock?`<span class="ctb" style="color:var(--yellow)" data-tip="lock: ${x(g.lock)}">LOCK</span>`:''}</span>
+      h+=`<div class="row guest ${sel||open?'sel':''}" ${g.lock==='migrate'&&!g.running?'style="opacity:.55"':''} onclick="selGuest('${k}')">
+        <span class="nm">${busyFor(g)?'<span class="spin" data-tip="'+x(busyFor(g).title+' — '+(busyFor(g).phase||''))+'"></span>':`<span class="dot ${g.running?'on':''}" data-tip="${x(g.status)}${g.lock?' · lock '+x(g.lock):''}"></span>`}<span class="vmid">${g.vmid}</span><span class="t">${open?'▾ ':''}${x(g.name)}</span>${g.type==='lxc'?'<span class="ctb">CT</span>':''}${g.lock==='migrate'&&!g.running?`<span class="ctb" style="color:var(--yellow)" data-tip="the stopped copy a move left behind (lock=migrate) — it cannot start; the live guest is on another node. Only root can remove it.">OLD COPY</span>`:g.lock?`<span class="ctb" style="color:var(--yellow)" data-tip="lock: ${x(g.lock)}">LOCK</span>`:''}</span>
         <span class="ics">${osIc(g)}${svcIcs(g)}</span>
         <span class="ip" data-tip="${x(ip?g.ips.join(' · ')+' ('+g.ipSource+')':ipWhy(g))}">${ip?x(ip)+(g.ips.length>1?' <span class="faint">+'+(g.ips.length-1)+'</span>':''):'—'}</span></div>`;
       if(open)h+=`<div class="inl">${inlineBody(g)}</div>`;

@@ -2,10 +2,11 @@
 // menu items are opened to their confirm step and cancelled; migrate runs a DRY-RUN preflight only.
 // usage: node uitest.mjs <cookie> <outdir>
 import { spawn } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { writeFileSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 const [cookie, out] = process.argv.slice(2);
-const port = 9334, base = 'http://localhost:18080/';
-const chrome = spawn('google-chrome', ['--headless=new', `--remote-debugging-port=${port}`, '--no-first-run', '--user-data-dir=/tmp/claude-1000/-home-armandt/25156685-719e-4bdb-a4f3-661a42eb93d5/scratchpad/chrome-prof2', 'about:blank'], { stdio: 'ignore' });
+const port = 9334, base = process.argv[4] || 'http://localhost:18080/';
+const chrome = spawn('google-chrome', ['--headless=new', `--remote-debugging-port=${port}`, '--no-first-run', `--user-data-dir=${mkdtempSync(tmpdir() + '/vmui-')}`, 'about:blank'], { stdio: 'ignore' });
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 let tabs; for (let i = 0; i < 40; i++) { try { tabs = await (await fetch(`http://127.0.0.1:${port}/json`)).json(); if (tabs.length) break; } catch {} await sleep(250); }
 const ws = new WebSocket(tabs.find(t => t.type === 'page').webSocketDebuggerUrl); await new Promise(r => ws.onopen = r);
@@ -33,7 +34,7 @@ check(await ev(`document.getElementById('panel').textContent.includes('Fleet ove
 await shot('d1-overview');
 // search + filters
 await ev(`(()=>{const q=document.getElementById('q');q.value='isxdc';q.dispatchEvent(new Event('input'));})()`);
-check(await ev(`document.querySelectorAll('.row.guest').length`) === 2, 'search "isxdc" → 2 guests');
+check(await ev(`[...document.querySelectorAll('.row.guest')].filter(r=>!r.textContent.includes('OLD COPY')).length`) === 2, 'search "isxdc" → the 2 live DCs (old locked copies are labelled OLD COPY)');
 await ev(`(()=>{const q=document.getElementById('q');q.value='172.0.0.101';q.dispatchEvent(new Event('input'));})()`);
 check((await ev(`[...document.querySelectorAll('.row.guest')].map(r=>r.textContent).join()`)).includes('isxdc1'), 'search by IP finds isxdc1');
 await ev(`(()=>{const q=document.getElementById('q');q.value='';q.dispatchEvent(new Event('input'));})()`);
@@ -47,7 +48,7 @@ await ev(`[...document.querySelectorAll('.row.group')].find(r=>r.textContent.inc
 check(await ev(`document.querySelectorAll('.row.guest').length`) < before, 'caret collapses a node');
 await ev(`[...document.querySelectorAll('.row.group')].find(r=>r.textContent.includes('vega14')).querySelector('.caret').click()`);
 // select guest
-await ev(`[...document.querySelectorAll('.row.guest')].find(r=>r.textContent.includes('isxdc1')).click()`);
+await ev(`[...document.querySelectorAll('.row.guest')].find(r=>r.textContent.includes('isxdc1')&&!r.textContent.includes('OLD COPY')).click()`);
 check(await waitFor(`document.querySelector('#panel h1')?.textContent==='isxdc1'`), 'clicking a guest opens its side panel');
 check(await ev(`location.hash.startsWith('#g/')`), 'selection is in the URL');
 check(await ev(`document.getElementById('panel').textContent.includes('172.0.0.101')`), 'panel shows the live IP');
@@ -98,7 +99,7 @@ await shot('m1-list');
 await ev(`(()=>{const el=document.querySelector('.row.guest .ic');el.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,pointerType:'touch'}));el.click();})()`);
 check(await ev(`getComputedStyle(document.getElementById('tip')).display==='block'`), 'tapping an icon shows its tooltip (touch)');
 check(await ev(`!document.querySelector('.inl')`), 'tapping an icon does not expand the row');
-await ev(`[...document.querySelectorAll('.row.guest')].find(r=>r.textContent.includes('isxdc1')).click()`);
+await ev(`[...document.querySelectorAll('.row.guest')].find(r=>r.textContent.includes('isxdc1')&&!r.textContent.includes('OLD COPY')).click()`);
 check(await waitFor(`!!document.querySelector('.inl')`), 'tapping a row expands it inline');
 await ev(`document.querySelector('.inl').scrollIntoView()`);
 await shot('m2-inline');
