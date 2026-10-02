@@ -391,6 +391,49 @@ textarea.finp{resize:vertical;min-height:80px}
 .warnbox{background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.4);border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:16px;line-height:1.5}
 .bring{background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:13px}
 .bring h5{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin:0 0 6px;font-weight:700}
+/* ── Proxmox fleet (ENG-0016) ── */
+.fl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(400px,1fr));gap:14px;margin-bottom:24px}
+@media(max-width:520px){.fl-grid{grid-template-columns:1fr}}
+.fl-card{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+.fl-card.stale{border-style:dashed;opacity:.85}.fl-card.vetoed{border-left:3px solid var(--yellow)}.fl-card.down{border-left:3px solid var(--red)}
+.fl-head{display:flex;align-items:flex-start;gap:12px}
+.fl-name{font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.fl-sub{font-size:11.5px;color:var(--text3);margin-top:2px}
+.fl-score{margin-left:auto;text-align:right;flex-shrink:0}
+.fl-score .n{font-size:28px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums}
+.fl-score .l{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em}
+.fl-why{font-size:12px;color:var(--text2);line-height:1.45}
+.fl-sec{font-size:10.5px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px}
+.fl-bar{position:relative;height:12px;background:var(--bg);border-radius:4px;overflow:hidden;display:flex}
+.fl-bar>i{display:block;height:100%}
+.fl-bar .g{background:var(--blue)}.fl-bar .a{background:var(--purple)}.fl-bar .u{background:repeating-linear-gradient(45deg,var(--border) 0 4px,transparent 4px 8px)}
+.fl-bar .phys{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--text)}
+.fl-bar2{height:6px;background:var(--bg);border-radius:3px;overflow:hidden;margin-top:4px}
+.fl-bar2>i{display:block;height:100%;background:var(--green)}
+.fl-leg{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:11.5px;color:var(--text2);margin-top:5px}
+.fl-leg .sq{width:8px;height:8px;border-radius:2px;display:inline-block;margin-right:4px}
+.fl-num{font-variant-numeric:tabular-nums;color:var(--text);font-weight:600}
+.fl-unk{color:var(--text3);font-style:italic}
+.fl-sto{display:grid;grid-template-columns:1fr 1.4fr;gap:3px 10px;font-size:12px;align-items:center}
+.fl-sto .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fl-mini{height:5px;background:var(--bg);border-radius:3px;overflow:hidden}.fl-mini>i{display:block;height:100%;background:var(--cyan)}
+.fl-foot{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--text2);border-top:1px solid var(--border);padding-top:8px;align-items:center}
+.fl-foot b{color:var(--text)}
+.fl-find{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-bottom:20px}
+.fl-fcard{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:12px 14px;font-size:12.5px;line-height:1.5}
+.fl-fcard.bad{border-left:3px solid var(--red)}.fl-fcard.warn{border-left:3px solid var(--yellow)}.fl-fcard.ok{border-left:3px solid var(--green)}
+.fl-fcard h4{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--text2);margin:0 0 6px}
+.fl-tabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
+.modal.wide{width:980px}
+.tgt{display:grid;grid-template-columns:22px 1fr auto;gap:8px;align-items:start;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;cursor:pointer}
+.tgt:hover{background:var(--bg-hover)}.tgt.sel{border-color:var(--blue);background:rgba(59,130,246,.08)}.tgt.veto{opacity:.75}
+.tgt .sc{font-size:20px;font-weight:800;font-variant-numeric:tabular-nums}
+.pf-list{margin:4px 0 10px;padding-left:18px;font-size:12.5px;line-height:1.5}
+.pf-list.bad li{color:var(--red)}.pf-list.warn li{color:var(--yellow)}.pf-list.info li{color:var(--text2)}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px}
+pre.log{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px;max-height:260px;overflow:auto;font-size:11px;white-space:pre-wrap;margin-top:6px}
+.dplan td,.dplan th{font-size:12px}
+.dplan select.finp{padding:4px 6px;font-size:12px;width:auto;max-width:200px}
 </style>
 </head>
 <body>
@@ -450,6 +493,10 @@ textarea.finp{resize:vertical;min-height:80px}
         <div class="nav-item" data-view="actions" onclick="switchView('actions')">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
           <span>Actions</span><span class="chip-count" id="nav-actions-count" style="margin-left:auto;display:none"></span>
+        </div>
+        <div class="nav-item" data-view="fleet" onclick="switchView('fleet')">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="5" rx="1"/><rect x="2" y="10" width="20" height="5" rx="1"/><rect x="2" y="17" width="20" height="5" rx="1"/><path d="M6 5.5h.01M6 12.5h.01M6 19.5h.01"/></svg>
+          <span>Proxmox fleet</span><span class="chip-count" id="nav-fleet-count" style="margin-left:auto;display:none"></span>
         </div>
         <div class="nav-item" data-view="overview" onclick="switchView('overview')">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
@@ -701,6 +748,8 @@ const st={
   user:null,  // {username, role} from /api/auth/me
   // ENG-0015
   estate:null,actions:[],actF:'open',actSearch:'',actOpen:new Set(),actModal:null,
+  // ENG-0016
+  fleet:null,fleetTab:'nodes',fleetQ:'',fleetBoot:false,move:null,drain:null,jobOpen:new Set(),jobLogs:{},
 };
 function canAct(){return st.user&&(st.user.role==='Admin'||st.user.role==='VmOperator');}
 
@@ -806,6 +855,8 @@ async function afterLogin(me){
   // rework). HV hosts can still use per-host creds via the add-host modal; Proxmox uses API tokens.
   setInterval(loadState,5000);
   setInterval(loadEstate,60000);
+  loadFleet();
+  setInterval(()=>{if(st.view==='fleet'||st.drain||st.move)loadFleet();},15000);
 }
 async function loadEstate(){try{st.estate=await api('GET','/api/estate');if(st.view==='estate'||st.view==='machine')renderView(st.view,false);}catch{}}
 async function loadActions(){
@@ -879,6 +930,8 @@ function setupSSE(){
   on('credentialsSet',()=>{st.credSet=true;document.getElementById('creds-ov').style.display='none';toast('Credentials saved (memory only)','success');});
   on('estateUpdated',d=>{loadEstate();if(d.ok===false)toast('Hardware monitor read failed: '+(d.error||'unknown'),'error');else if(d.raised)toast(`Monitor raised ${d.raised} new action${d.raised!==1?'s':''}`,'info');});
   on('actionsChanged',()=>{loadActions();});
+  on('fleetUpdated',()=>{if(st.view==='fleet')loadFleet();});
+  on('fleetJob',()=>{if(st.view==='fleet'||st.drain)loadFleet();});
 }
 
 // ── Strip ─────────────────────────────────────────────────────────────────────
@@ -899,13 +952,14 @@ function switchView(v,arg=null){
   document.querySelectorAll('.nav-item[data-view]').forEach(el=>el.classList.toggle('active',el.dataset.view===navFor));
   if(v==='host'&&arg)location.hash='#host/'+arg;
   else if(v==='machine'&&arg)location.hash='#machine/'+arg;
-  else if(v==='actions'||v==='estate')location.hash='#'+v;
+  else if(v==='actions'||v==='estate'||v==='fleet')location.hash='#'+v;
+  if(v==='fleet')loadFleet();
   else history.replaceState(null,'',location.pathname+location.search);
   renderView(v,true);
 }
 function readHash(){
   const h=location.hash;
-  if(h==='#actions'||h==='#estate'){const v=h.slice(1);if(st.view!==v){st.view=v;st.viewArg=null;document.querySelectorAll('.nav-item[data-view]').forEach(el=>el.classList.toggle('active',el.dataset.view===v));renderView(v,true);}return;}
+  if(h==='#actions'||h==='#estate'||h==='#fleet'){const v=h.slice(1);if(v==='fleet')loadFleet();if(st.view!==v){st.view=v;st.viewArg=null;document.querySelectorAll('.nav-item[data-view]').forEach(el=>el.classList.toggle('active',el.dataset.view===v));renderView(v,true);}return;}
   const mm=h.match(/^#machine\/(.+)$/);
   if(mm){const key=decodeURIComponent(mm[1]);if(st.view==='machine'&&st.viewArg===key)return;st.view='machine';st.viewArg=key;document.querySelectorAll('.nav-item[data-view]').forEach(el=>el.classList.toggle('active',el.dataset.view==='estate'));renderView('machine',true);return;}
   const m=h.match(/^#host\/(.+)$/);
@@ -925,6 +979,7 @@ function renderView(v,scroll=false){
     case'estate':el.innerHTML=vEstate();break;
     case'machine':el.innerHTML=vMachine(st.viewArg);break;
     case'actions':el.innerHTML=vActions();break;
+    case'fleet':el.innerHTML=vFleet();break;
     case'overview':el.innerHTML=vOverview();break;
     case'host':el.innerHTML=vHost(st.viewArg);break;
     case'ram':el.innerHTML=vRam();break;
@@ -939,6 +994,325 @@ function renderView(v,scroll=false){
   if(v==='cluster')drawClusterCharts();
 }
 
+
+// ── Proxmox fleet: see, rank, move, drain (ENG-0016) ─────────────────────────
+// Rule for this whole section: every number shown comes from /api/fleet, which reads it live
+// from the nodes or computes it from such readings. A missing value renders as "—" with its
+// reason; nothing here invents, defaults or rounds a figure into existence.
+function isAdmin(){return st.user&&st.user.role==='Admin';}
+function fb(b){if(b==null)return'—';const a=Math.abs(b);if(a>=2**40)return(b/2**40).toFixed(2)+' TiB';if(a>=2**30)return(b/2**30).toFixed(1)+' GiB';if(a>=2**20)return(b/2**20).toFixed(0)+' MiB';return b+' B';}
+function fdur(s){if(s==null)return'—';s=Math.round(s);if(s<90)return s+' s';if(s<5400)return Math.round(s/60)+' min';if(s<172800)return(s/3600).toFixed(1)+' h';return(s/86400).toFixed(1)+' d';}
+function fage(s){return s==null?'never':fdur(s)+' ago';}
+function unk(why){return`<span class="fl-unk" title="${x(why||'')}">—</span>`;}
+function scoreCol(n){return n==null?'var(--text3)':n>=70?'var(--green)':n>=40?'var(--blue)':'var(--yellow)';}
+async function loadFleet(){
+  try{st.fleet=await api('GET','/api/fleet');}catch{return;}
+  const f=st.fleet.findings||{};const bad=(f.bootSafetyTotal||0)+(f.antiAffinityViolations||0);
+  const c=document.getElementById('nav-fleet-count');if(c){c.textContent=bad;c.style.display=bad?'':'none';c.title='boot-safety + anti-affinity findings';}
+  if(st.view==='fleet')renderView('fleet',false);
+  if(st.drain?.data?.plan.status==='Running')reloadDrain();
+}
+async function fleetRefresh(btn){btn.disabled=true;btn.textContent='Reading…';try{const r=await api('POST','/api/fleet/refresh');toast(r.message,r.ok?'success':'info');await loadFleet();}catch(e){toast('Refresh failed: '+e.message,'error');}finally{btn.disabled=false;btn.textContent='Re-read nodes';}}
+function setFleetTab(t){st.fleetTab=t;renderView('fleet',false);}
+
+function vFleet(){
+  const d=st.fleet;
+  if(!d)return`<div class="empty"><div class="empty-ico">🗄️</div><div class="empty-ttl">Reading the fleet…</div></div>`;
+  if(d.mock)return`<div class="empty"><div class="empty-ttl">The fleet view needs real mode</div><div class="empty-txt">--mock has no Proxmox nodes and no database.</div></div>`;
+  const cfg=d.config,f=d.findings;
+  let h=`<div class="page-hdr"><div><div class="page-ttl">Proxmox fleet</div>
+    <div class="page-sub">${d.nodes.length} node${d.nodes.length!==1?'s':''} · polled every ${cfg.intervalSeconds}s · last cycle ${d.lastCycle?fmtWhen(d.lastCycle):'not yet'} · transfer rate ${d.rate.bytesPerSec?fb(d.rate.bytesPerSec)+'/s measured over '+d.rate.samples+' move'+(d.rate.samples!==1?'s':''):'not measured yet (no completed move)'}</div></div>
+    <div style="display:flex;gap:8px"><button class="btn btn-ghost btn-sm" onclick="fleetRefresh(this)">Re-read nodes</button></div></div>`;
+  const warns=[];
+  if(!cfg.probeEnabled)warns.push('The node probe is not configured (<code>VMENTORY_PVE_PROBE_KEY</code>), so the ZFS ARC cap, the service tag and every disk\'s allocated size are shown as unknown. The REST API does not expose them to a read-only token.');
+  if(cfg.writeTokens<d.nodes.length)warns.push(`${cfg.writeTokens} of ${d.nodes.length} nodes have a write token (<code>VMENTORY_PVE_MIGRATE_TOKENS</code>). A node without one cannot be a move source or target.`);
+  if(!cfg.hardwareMonitor)warns.push('No hardware monitor is configured, so hardware health is left out of every score.');
+  if(warns.length)h+=`<div class="warnbox">${warns.map(w=>'• '+w).join('<br>')}</div>`;
+  h+=fleetFindings(d);
+  const tabs=[['nodes','Nodes',d.nodes.length],['guests','Guests',d.guests.length],['jobs','Moves & drains',d.jobs.filter(j=>j.status==='Queued'||j.status==='Running').length||''],['rules','Placement rules',d.rules.length]];
+  h+=`<div class="fl-tabs">${tabs.map(([k,l,n])=>`<span class="chip ${st.fleetTab===k?'active':''}" onclick="setFleetTab('${k}')">${l}${n!==''?` <span class="chip-count">${n}</span>`:''}</span>`).join('')}</div>`;
+  if(st.fleetTab==='nodes')h+=`<div class="fl-grid">${d.nodes.map(flCard).join('')}</div>`;
+  else if(st.fleetTab==='guests')h+=flGuests(d);
+  else if(st.fleetTab==='jobs')h+=flJobs(d);
+  else h+=flRules(d);
+  return h;
+}
+
+function fleetFindings(d){
+  const f=d.findings;const out=[];
+  const bs=f.bootSafety||[];
+  out.push(`<div class="fl-fcard ${f.bootSafetyTotal?'bad':'ok'}"><h4>Boot safety</h4>${f.bootSafetyTotal
+    ?`<b>${f.bootSafetyTotal}</b> running guest${f.bootSafetyTotal!==1?'s':''} would stay down after a host reboot (onboot=0):<br>${bs.map(b=>`<b>${x(b.node)}</b> ${b.guests.length} of ${b.running}: ${b.guests.map(g=>x(g.name)).join(', ')}${b.stale?' <span class="tag warn">stale read</span>':''}`).join('<br>')}`
+    :'Every running guest is set to start on boot.'}</div>`);
+  const aa=f.antiAffinity||[];
+  out.push(`<div class="fl-fcard ${f.antiAffinityViolations?'bad':'ok'}"><h4>Anti-affinity</h4>${aa.length?aa.map(a=>a.violated
+      ?`<span style="color:var(--red)">✗ <b>${x(a.rule)}</b>: ${a.clashes.map(c=>`${c.guests.map(x).join(' + ')} share <b>${x(c.node)}</b>`).join('; ')}</span>`
+      :`${a.placement.length>=2?'✓':'<span title="fewer than two members seen — nothing to compare">–</span>'} <b>${x(a.rule)}</b>: ${a.placement.length?a.placement.map(p=>`${x(p.guest)} on ${x(p.node)}`).join(', '):'no member seen'}${a.notInFleet.length?` <span style="color:var(--text3)">(not in the fleet: ${a.notInFleet.map(x).join(', ')})</span>`:''}`).join('<br>')
+    :'No anti-affinity rules.'}</div>`);
+  const sp=f.spares||[];const noSpare=sp.filter(s=>s.spares===0);
+  out.push(`<div class="fl-fcard ${noSpare.length?'warn':sp.length?'ok':''}"><h4>Pool spares</h4>${sp.length?sp.map(s=>`<b>${x(s.node)}</b> ${x(s.pool)}: ${s.spares===0?'<span style="color:var(--yellow)">no hot spare</span>':s.spares+' spare'+(s.spares!==1?'s':'')}${s.sharedWith.length?` (shared with ${s.sharedWith.map(x).join(', ')})`:''}${s.health&&s.health!=='ONLINE'?` <span style="color:var(--red)">${x(s.health)}</span>`:''}`).join('<br>'):'No ZFS pool layout read yet.'}</div>`);
+  const cg=f.cpuGroups||[];
+  out.push(`<div class="fl-fcard"><h4>CPU groups (live migration)</h4>${cg.length?cg.map(g=>`<b>${x(g.model.replace(/Intel\(R\) |\(R\)| CPU/g,'').replace(/\s+@.*$/,''))}</b>: ${g.nodes.map(x).join(', ')}${g.livePairs?' — <span style="color:var(--green)">live moves possible inside this group</span>':''}`).join('<br>'):'No CPU model read yet.'}</div>`);
+  const probs=f.nodeProblems||[];
+  if(probs.length)out.push(`<div class="fl-fcard warn"><h4>Read problems</h4>${probs.map(p=>`<b>${x(p.node)}</b>: ${[p.unreachable?'unreachable — '+x(p.unreachable):'',p.stale&&!p.unreachable?'stale ('+fage(p.age)+')':'',p.probe?'probe: '+x(p.probe):'',p.warnings.length?p.warnings.length+' partial-read warning'+(p.warnings.length!==1?'s':''):'',p.configErrors.length?p.configErrors.length+' guest config(s) unreadable':''].filter(Boolean).join(' · ')}`).join('<br>')}</div>`);
+  const eph=f.ephemeral||[],pin=f.pinned||[];
+  if(eph.length||pin.length)out.push(`<div class="fl-fcard"><h4>Rule-bound guests</h4>${pin.map(p=>`📌 <b>${x(p.guest)}</b> on ${x(p.node)} — pinned (${x(p.rule)})`).join('<br>')}${pin.length&&eph.length?'<br>':''}${eph.map(p=>`🗑 <b>${x(p.guest)}</b> on ${x(p.node)} (${x(p.status)}) — ephemeral, deletion candidate`).join('<br>')}</div>`);
+  return`<div class="fl-find">${out.join('')}</div>`;
+}
+
+function flCard(n){
+  const c=n.capacity||{};const m=c.memory||{};const cpu=c.cpu||{};
+  const down=n.reachable===false;const drain=(st.fleet.drains||[]).find(p=>p.sourceHostId===n.hostId&&(p.status==='Draft'||p.status==='Running'));
+  const maint=n.maintenance&&n.maintenance.active;
+  let h=`<div class="fl-card ${down?'down':''} ${n.stale?'stale':''} ${n.vetoed&&!down?'vetoed':''}">
+   <div class="fl-head"><div style="min-width:0">
+     <div class="fl-name"><span class="health ${down?'bad':n.stale?'warn':'ok'}"></span>${x(n.node)}
+       ${maint?`<span class="tag warn" title="${x(n.maintenance.reason)}">maintenance until ${fmtWhen(n.maintenance.until)}</span>`:''}
+       ${n.hardware.status?`<span class="sev ${sevOf(n.hardware.status)}" title="OpenManage, service tag ${x(n.hardware.serviceTag)} (${x(n.hardware.tagSource)})">${x(n.hardware.status)}</span>`:`<span class="sev unk" title="${x(n.hardware.serviceTag?'tag '+n.hardware.serviceTag+' not in the monitor reading':'service tag unknown')}">health unknown</span>`}</div>
+     <div class="fl-sub">${x(n.address)} · ${n.cpuModel?x(n.cpuModel.replace(/Intel\(R\) |\(R\)| CPU/g,'').replace(/\s+@.*$/,'')):'CPU —'}${cpu.sockets?` · ${cpu.sockets}×${cpu.cores/cpu.sockets}c / ${cpu.threads}T`:''} · ${n.pveVersion?x(n.pveVersion.split('/')[1]||n.pveVersion):'PVE —'} · up ${n.uptimeSeconds!=null?fdur(n.uptimeSeconds):'—'}</div>
+     <div class="fl-sub">read ${fage(n.ageSeconds)}${down?` · <span style="color:var(--red)">now unreachable: ${x(n.error)}</span>`:''}${n.stale&&!down?' · <span style="color:var(--yellow)">stale</span>':''}</div>
+   </div>
+   <div class="fl-score"><div class="n" style="color:${scoreCol(n.score)}">${n.score??'—'}</div><div class="l">score</div></div></div>`;
+  if(n.vetoes.length)h+=`<div style="font-size:12px;color:var(--yellow)">Not offered as a target: ${n.vetoes.map(x).join('; ')}</div>`;
+  h+=`<div class="fl-why">${x(n.reasoning)}</div>`;
+  if(!c.known)return h+`<div class="fl-unk">No successful read of this node yet.</div>${flCardFoot(n,drain)}</div>`;
+  // memory: physical, allocated (guests + ARC cap), available — three numbers, one bar
+  const P=m.physical,G=m.guestsAllocated,A=m.arcCap;
+  if(P){
+    const scale=Math.max(P,G+(A||0));const w=v=>(100*v/scale).toFixed(2)+'%';
+    h+=`<div><div class="fl-sec">Memory</div><div class="fl-bar"><i class="g" style="width:${w(G)}" title="running guests' configured memory"></i>${A!=null?`<i class="a" style="width:${w(A)}" title="ZFS ARC cap"></i>`:''}<span class="phys" style="left:calc(${w(P)} - 1px)" title="physical"></span></div>
+      <div class="fl-bar2" title="MemAvailable / physical"><i style="width:${m.availablePct??0}%"></i></div>
+      <div class="fl-leg"><span>Physical <span class="fl-num">${fb(P)}</span></span>
+        <span><span class="sq" style="background:var(--blue)"></span>Guests <span class="fl-num">${fb(G)}</span> (${m.guestsAllocatedPct}%)${m.guestsAllocatedUnknown?` +${m.guestsAllocatedUnknown} unknown`:''}</span>
+        <span><span class="sq" style="background:var(--purple)"></span>ARC cap ${A!=null?`<span class="fl-num">${fb(A)}</span>`:unk(m.arcCapMissing)}</span>
+        <span>Allocated ${m.allocated!=null?`<span class="fl-num" style="${m.allocatedPct>100?'color:var(--yellow)':''}">${fb(m.allocated)} (${m.allocatedPct}%)</span>`:unk('needs the ARC cap')}</span>
+        <span><span class="sq" style="background:var(--green)"></span>Available <span class="fl-num">${fb(m.available)}</span>${m.availablePct!=null?` (${m.availablePct}%)`:''}</span>
+        <span title="current ARC size from the node's RRD">ARC now ${fb(m.arcCurrent)}</span></div></div>`;
+  }
+  // cpu
+  h+=`<div><div class="fl-sec">CPU</div><div style="font-size:12.5px"><span class="fl-num">${cpu.vcpuCommitted}</span> vCPU on <span class="fl-num">${cpu.threads??'—'}</span> threads = <span class="fl-num">${cpu.ratio!=null?cpu.ratio+':1':'—'}</span>
+    · load <span class="fl-num">${cpu.load1??'—'} / ${cpu.load5??'—'} / ${cpu.load15??'—'}</span>${cpu.loadPerThread!=null?` (${cpu.loadPerThread} per thread)`:''}
+    ${cpu.unlimitedContainers?`<br><span style="color:var(--text3)">${cpu.unlimitedContainers} running container${cpu.unlimitedContainers!==1?'s':''} without a core limit — not counted in the ratio</span>`:''}</div></div>`;
+  // storage
+  const stos=(c.storage||[]).filter(s=>s.holdsGuests&&s.active);
+  if(stos.length)h+=`<div><div class="fl-sec">Storage</div><div class="fl-sto">${stos.map(s=>`
+     <div class="nm" title="${x(s.type)}${s.zfsPool?' · pool '+x(s.zfsPool):''}${s.sparse!=null?' · '+(s.sparse?'sparse':'thick')+' zvols':''}"><b>${x(s.id)}</b> <span style="color:var(--text3)">${x(s.type)}</span></div>
+     <div><div class="fl-mini"><i style="width:${s.usedPct??0}%"></i></div>
+       <div style="font-size:11px;color:var(--text2)">${fb(s.avail)} free of ${fb(s.total)}${s.usedPct!=null?` (${s.usedPct}% used)`:''}${s.thinRatio!=null?` · thin <b title="configured guest disk sizes on this store ÷ free space${s.virtualUnknown?' — '+s.virtualUnknown+' disk size(s) not stated':''}">${s.thinRatio}×</b>`:''}</div></div>`).join('')}</div>
+     ${(c.zpools||[]).length?`<div style="font-size:11.5px;color:var(--text2);margin-top:4px">${c.zpools.map(z=>`${x(z.name)}: ${z.layout?x(z.layout):'layout not read'}${z.sharedSpares.length?' (spare shared with '+z.sharedSpares.map(x).join(', ')+')':''} · ${x(z.health||'?')}`).join('<br>')}</div>`:''}</div>`;
+  return h+flCardFoot(n,drain)+'</div>';
+}
+function flCardFoot(n,drain){
+  return`<div class="fl-foot"><span><b>${n.guestsRunning??'—'}</b>/${n.guestsTotal??'—'} guests running</span>
+    ${n.bootUnsafe?`<span style="color:var(--red)"><b style="color:var(--red)">${n.bootUnsafe}</b> onboot=0</span>`:''}
+    ${n.warnings.length?`<span style="color:var(--yellow)" title="${x(n.warnings.slice(0,8).join('\n'))}">${n.warnings.length} read warning${n.warnings.length!==1?'s':''}</span>`:''}
+    <span style="margin-left:auto;display:flex;gap:6px">
+      ${drain?`<button class="btn btn-ghost btn-sm" onclick="openDrain('${drain.id}')">Drain plan · ${drain.status}</button>`:isAdmin()?`<button class="btn btn-ghost btn-sm" onclick="newDrain('${n.hostId}')">Clear host…</button>`:''}
+      ${isAdmin()?`<button class="btn btn-ghost btn-sm" onclick="openMaint('${n.hostId}')">Maintenance…</button>`:''}
+    </span></div>`;
+}
+
+function flGuests(d){
+  const q=st.fleetQ.toLowerCase();
+  let gs=d.guests.filter(g=>!q||(g.name+' '+g.node+' '+g.vmid+' '+(g.tags||[]).join(' ')).toLowerCase().includes(q));
+  if(st.fleetBoot)gs=gs.filter(g=>g.bootUnsafe);
+  gs.sort((a,b)=>a.node.localeCompare(b.node)||a.vmid-b.vmid);
+  return`<div class="toolbar"><input class="search" id="fl-q" placeholder="Filter guests…" value="${x(st.fleetQ)}" oninput="st.fleetQ=this.value;renderView('fleet',false);const e=document.getElementById('fl-q');e.focus();e.setSelectionRange(e.value.length,e.value.length)">
+    <span class="chip ${st.fleetBoot?'active':''}" onclick="st.fleetBoot=!st.fleetBoot;renderView('fleet',false)">running with onboot=0 only</span></div>
+  <div class="twrap"><table class="dt"><thead><tr><th>Node</th><th>VMID</th><th>Name</th><th>Type</th><th>State</th><th>Boot</th><th>vCPU</th><th>Memory</th><th title="allocated = what a copy moves (from the node probe); virtual = configured size">Disk alloc / virtual</th><th>CPU type</th><th>Rules</th><th></th></tr></thead><tbody>
+  ${gs.map(g=>`<tr><td>${x(g.node)}${g.stale?' <span class="tag warn">stale</span>':''}</td><td class="mono">${g.vmid}</td><td><b>${x(g.name)}</b>${g.lock?` <span class="tag red">lock=${x(g.lock)}</span>`:''}${(g.blockers||[]).length?` <span class="tag warn" title="${x(g.blockers.join('\n'))}">blocked</span>`:''}</td>
+    <td>${g.type==='lxc'?'CT':'VM'}</td><td><span class="vmst ${g.status==='running'?'running':'off'}">${x(g.status)}</span></td>
+    <td>${g.onboot==null?unk('config not read'):g.onboot?'<span style="color:var(--green)">on</span>':(g.status==='running'?'<span style="color:var(--red);font-weight:600">OFF</span>':'off')}</td>
+    <td>${g.vcpus??(g.cpuUnlimited?'<span title="no core limit">all</span>':'—')}</td><td>${fb(g.maxMem)}</td>
+    <td>${g.allocatedBytes!=null?fb(g.allocatedBytes):unk('allocated size needs the node probe')} / ${fb(g.virtualBytes)}</td>
+    <td class="mono">${g.type==='lxc'?'—':x(g.cpuType||'(default)')}</td>
+    <td>${(g.rules||[]).map(r=>`<span class="tag ${r.kind==='AntiAffinity'?'blue':r.kind==='Pinned'?'red':''}" title="${x(r.kind)}">${x(r.name)}</span>`).join(' ')}</td>
+    <td>${isAdmin()?`<button class="btn btn-ghost btn-sm" onclick="openMove('${g.hostId}','${g.type}',${g.vmid})">Move…</button>`:''}</td></tr>`).join('')}
+  </tbody></table></div>`;
+}
+
+function jobState(j){const c={Succeeded:'green',Failed:'red',Cancelled:'',Running:'blue',Queued:'',Skipped:''}[j.status]||'';return`<span class="tag ${c}">${j.status}</span>`;}
+function flJobs(d){
+  let h='';
+  const plans=d.drains||[];
+  if(plans.length)h+=`<div class="sec-ttl" style="font-size:14px">Drain plans</div><div class="twrap" style="margin-bottom:18px"><table class="dt"><thead><tr><th>Node</th><th>Status</th><th>Created</th><th>Finished</th><th></th></tr></thead><tbody>${plans.map(p=>`<tr><td><b>${x(p.sourceNode)}</b>${p.reverseOfPlanId?' <span class="tag blue">return to service</span>':''}</td><td>${x(p.status)}</td><td>${fmtWhen(p.createdAt)} · ${x(p.createdBy||'')}</td><td>${p.finishedAt?fmtWhen(p.finishedAt):'—'}</td><td><button class="btn btn-ghost btn-sm" onclick="openDrain('${p.id}')">Open</button></td></tr>`).join('')}</tbody></table></div>`;
+  h+=`<div class="sec-ttl" style="font-size:14px">Moves</div>`;
+  if(!d.jobs.length)return h+`<div class="empty" style="padding:30px"><div class="empty-txt">No moves yet. Start one from the Guests tab.</div></div>`;
+  h+=d.jobs.map(j=>`<div class="arow ${j.status==='Running'?'open':''}"><div class="ahead" style="grid-template-columns:1fr auto" onclick="toggleJob('${j.id}')">
+     <div><div class="atitle">${x(j.guestName)} <span style="color:var(--text3);font-weight:500">${j.guestType} ${j.vmid}</span> · ${x(j.sourceNode)} → ${x(j.targetNode||'?')}${j.targetVmid&&j.targetVmid!==j.vmid?' as '+j.targetVmid:''}</div>
+       <div style="font-size:12px;color:var(--text2)">${x(j.mode)} · ${j.bytesPlanned!=null?fb(j.bytesPlanned):'size unknown'}${j.measuredBytesPerSec?' · measured '+fb(j.measuredBytesPerSec)+'/s':''} · ${x(j.phase||'')}${j.error?` · <span style="color:var(--red)">${x(j.error)}</span>`:''}</div></div>
+     <div class="abadges">${jobState(j)}${j.drainPlanId?'<span class="tag">drain</span>':''}</div></div>
+   ${st.jobOpen.has(j.id)?`<div style="padding:8px 14px 12px;font-size:12.5px">
+     <div>Created ${fmtWhen(j.createdAt)} by ${x(j.createdBy||'?')}${j.startedAt?' · started '+fmtWhen(j.startedAt):''}${j.finishedAt?' · finished '+fmtWhen(j.finishedAt)+' ('+fdur((new Date(j.finishedAt)-new Date(j.startedAt||j.createdAt))/1000)+')':''}${j.upid?` · <span class="mono">${x(j.upid)}</span>`:''}</div>
+     ${j.partialOnTarget&&!j.cleanupDone?`<div class="warnbox" style="margin-top:6px">A partial copy is on ${x(j.targetNode)} as ${j.targetVmid} (created by this job). ${isAdmin()?`<button class="btn btn-danger btn-sm" onclick="jobCleanup('${j.id}')">Remove it</button>`:''}</div>`:''}
+     ${j.sourceRestarted?'<div style="color:var(--green)">The guest was started again on the source after the failure.</div>':''}
+     <div class="abtns">${isAdmin()&&(j.status==='Queued'||j.status==='Running')?`<button class="btn btn-danger btn-sm" onclick="jobCancel('${j.id}')">${j.status==='Running'?'Cancel the copy':'Cancel'}</button>`:''}</div>
+     <pre class="log">${x(st.jobLogs[j.id]||'loading log…')}</pre></div>`:''}</div>`).join('');
+  return h;
+}
+async function toggleJob(id){if(st.jobOpen.has(id))st.jobOpen.delete(id);else{st.jobOpen.add(id);try{const r=await api('GET','/api/fleet/jobs/'+id);st.jobLogs[id]=r.log||'(no task log yet)';}catch(e){st.jobLogs[id]='could not load: '+e.message;}}renderView('fleet',false);}
+async function jobCancel(id){try{const r=await api('POST','/api/fleet/jobs/'+id+'/cancel');toast('Cancel: '+r.status,'info');loadFleet();}catch(e){toast(e.message,'error');}}
+async function jobCleanup(id){if(!confirm('Remove the partial copy this job left on the target?'))return;try{const r=await fpost('/api/fleet/jobs/'+id+'/cleanup',{});toast(r.message||r.error,r.ok?'success':'error');loadFleet();}catch(e){toast(e.message,'error');}}
+
+function flRules(d){
+  const kinds={AntiAffinity:'never share a host',Pinned:'never two copies · offline moves only',Ephemeral:'deletion candidate',SelfHost:'runs this console · moved last'};
+  return`<div class="twrap"><table class="dt"><thead><tr><th>Kind</th><th>Name</th><th>Members (guest names)</th><th>Note</th><th>Source</th><th></th></tr></thead><tbody>
+   ${d.rules.map(r=>`<tr><td><b>${x(r.kind)}</b><div style="font-size:11px;color:var(--text3)">${kinds[r.kind]||''}</div></td><td>${x(r.name)}</td><td>${r.members.map(m=>`<span class="tag">${x(m)}</span>`).join(' ')}</td><td style="font-size:12px;color:var(--text2)">${x(r.note||'')}</td><td>${x(r.source)}</td>
+     <td>${isAdmin()?`<button class="btn btn-ghost btn-sm" onclick="ruleDel(${r.id})">Delete</button>`:''}</td></tr>`).join('')}
+  </tbody></table></div>
+  ${isAdmin()?`<div class="inline-form" style="margin-top:12px"><select class="finp" id="rk">${Object.keys(kinds).map(k=>`<option>${k}</option>`).join('')}</select>
+    <input class="finp" id="rn" placeholder="Rule name"><input class="finp" id="rm" placeholder="Members, comma separated (guest names)"><input class="finp" id="rnote" placeholder="Note (optional)">
+    <button class="btn btn-primary btn-sm" onclick="ruleAdd()">Add rule</button></div>`:''}`;
+}
+async function ruleAdd(){const v=id=>document.getElementById(id).value.trim();try{await fpost('/api/fleet/rules',{kind:v('rk'),name:v('rn'),members:v('rm').split(',').map(s=>s.trim()).filter(Boolean),note:v('rnote')||null},true);toast('Rule added','success');loadFleet();}catch(e){toast(e.message,'error');}}
+async function ruleDel(id){if(!confirm('Delete this rule?'))return;try{await api('DELETE','/api/fleet/rules/'+id);loadFleet();}catch(e){toast(e.message,'error');}}
+
+// POST that returns the JSON body even on 4xx (the fleet API puts the preflight in its errors)
+async function fpost(path,body,throwOnError=false,method='POST'){
+  const r=await fetch(path,{method,credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const j=await r.json().catch(()=>({error:'HTTP '+r.status}));
+  if(!r.ok&&(throwOnError||!j.preflight))throw new Error(j.error||('HTTP '+r.status));
+  return j;
+}
+function flModal(html,wide=true){
+  let m=document.getElementById('fl-modal');
+  if(!m){m=document.createElement('div');m.id='fl-modal';m.className='moverlay show';document.body.appendChild(m);}
+  m.innerHTML=`<div class="modal ${wide?'wide':''}">${html}</div>`;
+}
+function flClose(){document.getElementById('fl-modal')?.remove();st.move=null;st.drain=null;}
+
+// ── move one guest ──
+async function openMove(hostId,type,vmid){
+  st.move={hostId,type,vmid,targets:null,sel:null,storage:null,mode:null,pf:null,busy:false,ack:false,confirm:''};
+  flModal('<div class="modal-ttl">Move guest</div><div class="fl-unk">Ranking targets…</div>');
+  try{const r=await api('GET',`/api/fleet/guests/${hostId}/${type}/${vmid}/targets`);st.move.guest=r.guest;st.move.targets=r.targets;
+      const first=r.targets.find(t=>!t.vetoed);if(first)pickTarget(first.hostId,false);}
+  catch(e){toast('Could not rank targets: '+e.message,'error');flClose();return;}
+  renderMove();
+}
+function pickTarget(id,render=true){const t=st.move.targets.find(t=>t.hostId===id);st.move.sel=id;st.move.storage=t.suggestedStorage||(t.storages[0]||{}).storage||null;st.move.mode=t.mode;st.move.pf=null;st.move.ack=false;if(render)renderMove();}
+function renderMove(){
+  const mv=st.move;if(!mv||!mv.guest)return;const g=mv.guest;
+  const t=mv.targets.find(t=>t.hostId===mv.sel);
+  let h=`<div class="modal-ttl">Move ${x(g.name)} <span style="color:var(--text3);font-weight:500;font-size:13px">${g.type} ${g.vmid} on ${x(g.node)} · ${x(g.status)} · ${fb(g.maxMem)} · alloc ${g.allocatedBytes!=null?fb(g.allocatedBytes):'unknown'}</span></div>
+   <div class="fl-sec">Targets, best first — any node can be chosen; vetoes are shown, not hidden</div>`;
+  h+=mv.targets.map(o=>`<div class="tgt ${o.hostId===mv.sel?'sel':''} ${o.vetoed?'veto':''}" onclick="pickTarget('${o.hostId}')">
+      <input type="radio" ${o.hostId===mv.sel?'checked':''}>
+      <div><b>${x(o.node)}</b> <span style="font-size:12px;color:var(--text2)">${x(o.reasoning)}</span>
+        <div style="font-size:12px;color:var(--text3)">${x(o.mode)} — ${x(o.modeReason)}</div>
+        ${o.vetoes.length?`<div style="font-size:12px;color:var(--yellow)">⚠ ${o.vetoes.map(x).join('<br>⚠ ')}</div>`:''}
+        ${o.unknown.length?`<div style="font-size:11.5px;color:var(--text3)">scored without: ${o.unknown.map(x).join('; ')}</div>`:''}</div>
+      <div class="sc" style="color:${scoreCol(o.score)}">${o.score??'—'}</div></div>`).join('');
+  if(t){
+    const modes=t.mode==='Online'?['Online','Offline']:[t.mode];
+    h+=`<div class="inline-form" style="margin:10px 0"><label class="flbl" style="margin:0">Store on ${x(t.node)}</label>
+      <select class="finp" onchange="st.move.storage=this.value;st.move.pf=null;renderMove()">${t.storages.map(s=>`<option value="${x(s.storage)}" ${s.storage===mv.storage?'selected':''}>${x(s.storage)} (${x(s.type)}) — ${s.fits?'fits':'does not fit'}: ${x(s.note)}</option>`).join('')}</select>
+      <label class="flbl" style="margin:0">Mode</label><select class="finp" onchange="st.move.mode=this.value;st.move.pf=null;renderMove()">${modes.map(m=>`<option ${m===mv.mode?'selected':''}>${m}</option>`).join('')}</select>
+      <button class="btn btn-primary btn-sm" ${mv.busy?'disabled':''} onclick="runPreflight()">${mv.pf?'Re-run preflight':'Run preflight (dry run)'}</button></div>`;
+  }
+  if(mv.pf)h+=pfView(mv.pf);
+  h+=`<div class="macts"><button class="btn btn-ghost" onclick="flClose()">Close</button></div>`;
+  flModal(h);
+}
+async function runPreflight(){
+  const mv=st.move;mv.busy=true;renderMove();
+  try{const r=await fpost('/api/fleet/migrations',{hostId:mv.hostId,type:mv.type,vmid:mv.vmid,targetHostId:mv.sel,storage:mv.storage,mode:mv.mode,dryRun:true},true);mv.pf=r.preflight;}
+  catch(e){toast('Preflight failed: '+e.message,'error');}
+  mv.busy=false;renderMove();
+}
+function pfView(p){
+  const row=(k,v)=>`<tr><td style="color:var(--text3);white-space:nowrap">${k}</td><td>${v}</td></tr>`;
+  let h=`<div class="card" style="padding:12px 14px;margin-top:8px"><div class="fl-sec">Preflight — read live ${fmtWhen(p.at)}</div>`;
+  if(p.blockers.length)h+=`<div style="font-weight:600;color:var(--red)">Cannot run until fixed</div><ul class="pf-list bad">${p.blockers.map(b=>`<li>${x(b)}</li>`).join('')}</ul>`;
+  if(p.warnings.length)h+=`<div style="font-weight:600;color:var(--yellow)">Warnings</div><ul class="pf-list warn">${p.warnings.map(b=>`<li>${x(b)}</li>`).join('')}</ul>`;
+  h+=`<table class="tbl">${row('VMID',`${x(p.targetVmidNote||'—')}`)}
+    ${row('Storage',p.storageMap.length?p.storageMap.map(s=>`${x(s.disk)}: ${x(s.from)} → ${x(s.to)} · alloc ${fb(s.allocatedBytes)} / virtual ${fb(s.virtualBytes)}`).join('<br>'):'—')}
+    ${row('Network',x(p.bridgeMap))}
+    ${row('Mode',`<b>${x(p.mode)}</b> — ${x(p.modeReason)}`)}
+    ${row('To copy',p.bytesAllocated!=null?`<b>${fb(p.bytesAllocated)}</b> allocated (virtual ${fb(p.bytesVirtual)})`:`unknown — ${p.disksUnknown} disk(s) have no allocated size${p.bytesAllocatedKnown?' (known part '+fb(p.bytesAllocatedKnown)+')':''}`)}
+    ${row('ETA',p.etaSeconds!=null?`<b>${fdur(p.etaSeconds)}</b> at the measured ${fb(p.rateBytesPerSec)}/s (${p.rateSamples} move${p.rateSamples!==1?'s':''})`:unk('no measured rate or unknown size')+' <span style="color:var(--text3)">no measured rate or size yet</span>')}
+    ${row('Downtime',x(p.downtime))}
+    ${row('Depends on',p.dependsOn.length?p.dependsOn.map(x).join('<br>'):'<span style="color:var(--text3)">nothing recorded</span>')}
+    ${row('Backups',p.backupJobs.length?p.backupJobs.map(b=>`${x(b.node)} ${x(b.id)} next ${b.nextRun?fmtWhen(b.nextRun):'—'}${b.inWindow?' <b style="color:var(--yellow)">in window</b>':''}`).join('<br>'):'no Proxmox backup job touches this guest')}
+    ${row('Score',p.score!=null?`${p.score} — ${x(p.reasoning||'')}`:'—')}</table>
+    <ul class="pf-list info">${p.info.map(b=>`<li>${x(b)}</li>`).join('')}</ul>`;
+  if(p.blockers.length===0&&isAdmin()){
+    h+=`${p.warnings.length?`<label class="fcheck"><input type="checkbox" ${st.move.ack?'checked':''} onchange="st.move.ack=this.checked">I have read the warnings and want to proceed</label>`:''}
+      <div class="inline-form"><span style="font-size:12.5px">Type <b class="mono">${x(p.confirmPhrase)}</b> to execute:</span>
+      <input class="finp" id="mv-confirm" value="${x(st.move.confirm)}" oninput="st.move.confirm=this.value">
+      <button class="btn btn-danger btn-sm" onclick="execMove()">Execute move</button></div>`;
+  }
+  return h+'</div>';
+}
+async function execMove(){
+  const mv=st.move;
+  try{const r=await fpost('/api/fleet/migrations',{hostId:mv.hostId,type:mv.type,vmid:mv.vmid,targetHostId:mv.sel,storage:mv.storage,mode:mv.mode,dryRun:false,confirm:mv.confirm,acknowledgeWarnings:mv.ack});
+    if(r.error){toast(r.error,'error');if(r.preflight){mv.pf=r.preflight;renderMove();}return;}
+    toast('Move queued — follow it under Moves & drains','success');flClose();st.fleetTab='jobs';loadFleet();}
+  catch(e){toast(e.message,'error');}
+}
+
+// ── maintenance ──
+function openMaint(hostId){
+  const n=st.fleet.nodes.find(n=>n.hostId===hostId);const m=n.maintenance;
+  flModal(`<div class="modal-ttl">Maintenance — ${x(n.node)}</div>
+   <p style="font-size:13px;color:var(--text2);margin-bottom:12px">A node in maintenance is removed from every target list and its hardware faults stop raising actions until the expiry.</p>
+   ${m?`<div class="warnbox">Active since ${fmtWhen(m.since)} until ${fmtWhen(m.until)} — ${x(m.reason)} (${x(m.by||'')})</div>`:''}
+   <div class="fgrp"><label class="flbl">Reason</label><input class="finp" id="mt-r" value="${x(m?.reason||'')}"></div>
+   <div class="fgrp"><label class="flbl">Until</label><input class="finp" type="datetime-local" id="mt-u" value="${m?toLocalInput(m.until):''}"></div>
+   <div class="macts">${m?`<button class="btn btn-ghost" onclick="setMaint('${hostId}',false)">End maintenance</button>`:''}<button class="btn btn-ghost" onclick="flClose()">Close</button><button class="btn btn-primary" onclick="setMaint('${hostId}',true)">Save</button></div>`,false);
+}
+async function setMaint(hostId,on){
+  const body=on?{on:true,reason:document.getElementById('mt-r').value,until:fromLocalInput(document.getElementById('mt-u').value)}:{on:false};
+  try{await fpost(`/api/fleet/nodes/${hostId}/maintenance`,body,true);toast(on?'Maintenance set':'Maintenance ended','success');flClose();loadFleet();}catch(e){toast(e.message,'error');}
+}
+
+// ── drain ──
+async function newDrain(hostId){
+  try{const r=await fpost(`/api/fleet/nodes/${hostId}/drain`,{},true);st.drain={id:r.plan.id,data:r,confirm:'',until:'',reason:''};renderDrain();loadFleet();}
+  catch(e){toast(e.message,'error');}
+}
+async function openDrain(id){st.drain={id,data:null,confirm:'',until:'',reason:''};await reloadDrain();}
+async function reloadDrain(){if(!st.drain)return;try{st.drain.data=await api('GET','/api/fleet/drains/'+st.drain.id);renderDrain();}catch(e){toast(e.message,'error');}}
+function renderDrain(){
+  const dr=st.drain;const d=dr.data;if(!d)return;const p=d.plan;const draft=p.status==='Draft';const c=d.cost;
+  let h=`<div class="modal-ttl">${p.reverseOfPlanId?'Return to service':'Clear host'} — ${x(p.sourceNode)} <span class="tag ${p.status==='Running'?'blue':p.status==='Completed'?'green':p.status==='Failed'?'red':''}">${x(p.status)}</span></div>`;
+  h+=`<div class="tiles" style="margin-bottom:12px">
+    <div class="tile"><div class="tile-lbl">Moves</div><div class="tile-val">${c.moves}</div><div class="tile-sub">${c.stays} stay · ${c.unplaced?`<span style="color:var(--red)">${c.unplaced} not placed</span>`:'all placed'}</div></div>
+    <div class="tile"><div class="tile-lbl">To copy</div><div class="tile-val">${fb(c.bytesKnown)}</div><div class="tile-sub">${c.bytesUnknownGuests?`<span style="color:var(--yellow)">+ ${c.bytesUnknownGuests} guest(s) of unknown size</span>`:'allocated bytes, all known'}</div></div>
+    <div class="tile"><div class="tile-lbl">ETA</div><div class="tile-val">${c.etaSeconds!=null?fdur(c.etaSeconds):'—'}</div><div class="tile-sub">${x(c.etaBasis)} · sequential, one at a time</div></div>
+    <div class="tile"><div class="tile-lbl">Downtime</div><div class="tile-val">${c.downtimeGuests}</div><div class="tile-sub">guests down for their copy · ${c.liveGuests} live</div></div></div>`;
+  h+=`<div class="twrap"><table class="dt dplan"><thead><tr><th>#</th><th>Guest</th><th>Action</th><th>Target</th><th>Store</th><th>Mode</th><th>Size</th><th>ETA</th><th>Status / note</th></tr></thead><tbody>
+   ${d.rows.map(r=>{const j=r.job;return`<tr><td>${j.seq+1}</td><td><b>${x(j.guestName)}</b><div style="font-size:11px;color:var(--text3)">${j.guestType} ${j.vmid} · ${j.wasRunning?'running':'stopped'}</div></td>
+     <td>${draft?`<select class="finp" onchange="drainRow('${j.id}',{action:this.value})"><option ${r.rowAction==='Move'?'selected':''}>Move</option><option ${r.rowAction==='Stay'?'selected':''}>Stay</option></select>`:x(r.rowAction)}</td>
+     <td>${draft&&r.rowAction==='Move'&&r.targets?`<select class="finp" onchange="drainRow('${j.id}',{targetHostId:this.value})"><option value="">— choose —</option>${r.targets.map(t=>`<option value="${t.hostId}" ${t.hostId===j.targetHostId?'selected':''}>${x(t.node)} · ${t.score??'—'}${t.vetoed?' ⚠':''}</option>`).join('')}</select>`:x(j.targetNode||'—')}</td>
+     <td>${draft&&r.rowAction==='Move'&&r.targets&&j.targetHostId?`<select class="finp" onchange="drainRow('${j.id}',{storage:this.value})">${(r.targets.find(t=>t.hostId===j.targetHostId)?.storages||[]).map(s=>`<option ${s.storage===j.targetStorage?'selected':''}>${x(s.storage)}</option>`).join('')}</select>`:x(j.targetStorage||'—')}</td>
+     <td>${x(r.rowAction==='Move'?j.mode:'—')}</td><td>${j.bytesPlanned!=null?fb(j.bytesPlanned):unk('needs the probe')}</td><td>${r.etaSeconds!=null?fdur(r.etaSeconds):'—'}</td>
+     <td style="font-size:12px">${draft?'':jobState(j)+' '}${x(draft?'':j.phase||'')}${j.error?`<div style="color:var(--red)">${x(j.error)}</div>`:''}${r.planNote?`<div style="color:${/cannot be placed|blocked/.test(r.planNote)?'var(--red)':'var(--text3)'}">${x(r.planNote)}</div>`:''}</td></tr>`;}).join('')}
+  </tbody></table></div>`;
+  if(draft&&isAdmin()){
+    h+=`<div class="card" style="padding:12px 14px;margin-top:12px">
+      ${p.reverseOfPlanId?'<p style="font-size:13px;color:var(--text2)">Executing this ends the maintenance of '+x(p.sourceNode)+' and moves the guests back, one at a time.</p>'
+      :`<div class="inline-form"><label class="flbl" style="margin:0">Maintenance reason</label><input class="finp" id="dr-r" value="${x(dr.reason)}" oninput="st.drain.reason=this.value" placeholder="e.g. replace bay-5 disk">
+        <label class="flbl" style="margin:0">until</label><input class="finp" type="datetime-local" id="dr-u" value="${x(dr.until)}" oninput="st.drain.until=this.value" style="flex:initial"></div>`}
+      <div class="inline-form" style="margin-top:8px"><span style="font-size:12.5px">Type <b class="mono">${x(d.confirmPhrase)}</b> to approve and execute:</span><input class="finp" value="${x(dr.confirm)}" oninput="st.drain.confirm=this.value">
+        <button class="btn btn-danger btn-sm" onclick="drainExec()">Approve &amp; execute</button><button class="btn btn-ghost btn-sm" onclick="drainDiscard()">Discard plan</button></div></div>`;
+  }
+  if(p.status==='Running'&&isAdmin())h+=`<div class="abtns" style="margin-top:12px">${p.abortRequested?'<span class="tag warn">abort requested</span>':`<button class="btn btn-ghost btn-sm" onclick="drainAbort(false)">Abort after the current move</button><button class="btn btn-danger btn-sm" onclick="drainAbort(true)">Abort now (cancel the running copy)</button>`}</div>`;
+  if(p.report){const r=p.report;h+=`<div class="card" style="padding:12px 14px;margin-top:12px;font-size:13px"><div class="fl-sec">Report</div>${r.moved} moved · ${r.failed} failed · ${r.cancelled} cancelled · ${fb(r.bytes)} copied${r.bytesUnknown?' (+'+r.bytesUnknown+' of unknown size)':''} · ${fdur(r.seconds)} of move time
+     ${!p.reverseOfPlanId&&r.moved&&isAdmin()?`<div style="margin-top:8px"><button class="btn btn-primary btn-sm" onclick="drainReverse('${p.id}')">Plan return to service…</button> <span style="font-size:12px;color:var(--text3)">creates a new draft that moves these ${r.moved} guest(s) back — it is not executed until you approve it</span></div>`:''}</div>`;}
+  h+=`<div class="macts"><button class="btn btn-ghost" onclick="flClose()">Close</button></div>`;
+  flModal(h);
+}
+async function drainRow(jobId,patch){try{st.drain.data=await fpost(`/api/fleet/drains/${st.drain.id}/rows/${jobId}`,patch,true,'PATCH');renderDrain();}catch(e){toast(e.message,'error');}}
+async function drainExec(){
+  const dr=st.drain;const isReturn=!!dr.data.plan.reverseOfPlanId;
+  try{const r=await fpost(`/api/fleet/drains/${dr.id}/execute`,{confirm:dr.confirm,maintenanceUntil:isReturn?null:fromLocalInput(dr.until),reason:isReturn?null:dr.reason},true);
+    toast(`Drain approved — ${r.queued} move(s) queued, one at a time`,'success');await reloadDrain();loadFleet();}catch(e){toast(e.message,'error');}
+}
+async function drainAbort(now){try{const r=await fpost(`/api/fleet/drains/${st.drain.id}/abort`,{now},true);toast(r.message,'info');reloadDrain();}catch(e){toast(e.message,'error');}}
+async function drainDiscard(){try{await fpost(`/api/fleet/drains/${st.drain.id}/discard`,{},true);toast('Plan discarded','info');flClose();loadFleet();}catch(e){toast(e.message,'error');}}
+async function drainReverse(id){try{const r=await fpost(`/api/fleet/drains/${id}/reverse`,{},true);st.drain={id:r.plan.id,data:r,confirm:'',until:'',reason:''};renderDrain();loadFleet();}catch(e){toast(e.message,'error');}}
 
 // ── Estate dashboard + action tracker (ENG-0015) ─────────────────────────────
 function sevOf(s){return s==='Ok'?'ok':s==='Warning'?'warn':s==='Critical'?'crit':'unk';}
@@ -975,7 +1349,7 @@ function vEstate(){
     <div class="tile link" onclick="setActF('open')"><div class="tile-lbl">Open actions</div><div class="tile-val">${open.length}</div><div class="tile-sub"><span class="pri Critical">${byP('Critical')} critical</span> <span class="pri High">${byP('High')} high</span> <span class="pri Medium">${byP('Medium')} med</span> <span class="pri Low">${byP('Low')} low</span></div></div>
     <div class="tile"><div class="tile-lbl">Guests</div><div class="tile-val">${s.vmsRunning}<span style="font-size:14px;color:var(--text3);font-weight:500"> / ${s.vms} running</span></div><div class="tile-sub">${s.vmsLive} from live inventory · ${s.vms-s.vmsLive} from the recorded register</div></div>
     <div class="tile link" onclick="setActF('visit')"><div class="tile-lbl">Next site visit</div><div class="tile-val">${visit.length}<span style="font-size:14px;color:var(--text3);font-weight:500"> items</span></div><div class="tile-sub">${purchases.length} part${purchases.length!==1?'s':''} to bring · ${next?`next window ${fmtWhen(next.scheduledStart)} (#${next.ref})`:'no window scheduled yet'}</div></div>
-    <div class="tile"><div class="tile-lbl">Backup coverage</div><div class="tile-val">${(f.backedUp||[]).length}<span style="font-size:14px;color:var(--text3);font-weight:500"> of ~50</span></div><div class="tile-sub">${x(f.backupNote||'')}</div></div>
+    <div class="tile"><div class="tile-lbl">Backup coverage</div><div class="tile-val">${(f.backedUp||[]).length}<span style="font-size:14px;color:var(--text3);font-weight:500"> recorded</span></div><div class="tile-sub">machines on the hand-recorded backup list (seed register — not read from Arcserve) · ${s.vms} guests visible to VMentory</div></div>
   </div>`;
   if(hw.configured&&hw.error)html+=`<div class="warnbox">The hardware monitor could not be read: ${x(hw.error)}. Showing the last good reading${hw.takenAt?' from '+fmtWhen(hw.takenAt):''}.</div>`;
   if(!hw.configured)html+=`<div class="warnbox">No hardware monitor is configured, so the cards show inventory and actions only. Set <code>VMENTORY_OME_URL</code>, <code>VMENTORY_OME_USER</code> and <code>VMENTORY_OME_PASSWORD</code> to read Dell OpenManage.</div>`;

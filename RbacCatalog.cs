@@ -13,8 +13,9 @@ public static class RbacCatalog
     {
         [AppRole.Admin]          = ConsolePermission.ViewAudit | ConsolePermission.ManageCredentials
                                    | ConsolePermission.ManageEnrollment | ConsolePermission.ManageUsers
-                                   | ConsolePermission.ManageActions,
-        [AppRole.VmOperator]     = ConsolePermission.ManageCredentials | ConsolePermission.ManageActions,
+                                   | ConsolePermission.ManageActions
+                                   | ConsolePermission.MigrateGuest | ConsolePermission.DrainHost,
+        [AppRole.VmOperator]    = ConsolePermission.ManageCredentials | ConsolePermission.ManageActions,
         [AppRole.BackupOperator] = ConsolePermission.None,
         [AppRole.Viewer]         = ConsolePermission.None,
     };

@@ -32,7 +32,7 @@ public sealed class EstateState
 // live between manual scans. Deliberately not on the 30 s reachability cadence: OME answers
 // slowly, and hardware faults do not change by the minute. Default 5 min, VMENTORY_OME_INTERVAL.
 public sealed class EstateCollector(OmeOptions opt, EstateState state, EventHub hub, IServiceScopeFactory scopes, AppConfig config,
-                                    Store store, ProviderRegistry registry) : BackgroundService
+                                    Store store, ProviderRegistry registry, Fleet.FleetState fleet) : BackgroundService
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly Dictionary<string, DateTimeOffset> _lastPersisted = new();
@@ -84,12 +84,32 @@ public sealed class EstateCollector(OmeOptions opt, EstateState state, EventHub 
 
             state.Hardware = snap;
             state.LastError = null;
-            var raised = await ActionSuggester.ApplyAsync(snap, db, ct);
+            var raised = await ActionSuggester.ApplyAsync(snap, db, ct, await SuppressedTagsAsync(db, ct));
             hub.Broadcast("estateUpdated", new { ok = true, takenAt = snap.TakenAt, devices = snap.Devices.Count, raised });
             if (raised > 0) hub.Broadcast("actionsChanged", new { reason = "collector", raised });
             return true;
         }
         finally { _gate.Release(); }
+    }
+
+    // ENG-0016: a node in maintenance (drained, or flagged by hand) does not raise hardware actions
+    // until its maintenance expires — pulled disks and powered-off PSUs are the point of the window.
+    // Service tag from the node's own DMI (fleet probe), else the estate machine at that address.
+    private async Task<HashSet<string>> SuppressedTagsAsync(VMentoryDbContext db, CancellationToken ct)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var active = (await db.NodeMaintenance.AsNoTracking().ToListAsync(ct)).Where(m => m.Until > now).ToList();
+        if (active.Count == 0) return [];
+        var machines = await db.Machines.AsNoTracking().ToListAsync(ct);
+        var tags = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var m in active)
+        {
+            var tag = fleet.For(m.HostId).LastGoodProbe?.Serial;
+            if (tag == null && store.GetHost(m.HostId) is { } h)
+                tag = machines.FirstOrDefault(x => string.Equals(x.Address, h.Address, StringComparison.OrdinalIgnoreCase))?.ServiceTag;
+            if (!string.IsNullOrWhiteSpace(tag)) tags.Add(tag.Trim());
+        }
+        return tags;
     }
 
     // Proxmox is a cheap REST read, so every Proxmox host with a token gets re-inventoried each
@@ -131,7 +151,7 @@ public sealed class EstateCollector(OmeOptions opt, EstateState state, EventHub 
 // reopens the action with a dated note — a replaced part that still flags is not done.
 public static class ActionSuggester
 {
-    public static async Task<int> ApplyAsync(HardwareSnapshot snap, VMentoryDbContext db, CancellationToken ct)
+    public static async Task<int> ApplyAsync(HardwareSnapshot snap, VMentoryDbContext db, CancellationToken ct, ISet<string>? suppressedTags = null)
     {
         var machines = await db.Machines.AsNoTracking().ToListAsync(ct);
         var byTag = machines.Where(m => !string.IsNullOrWhiteSpace(m.ServiceTag))
@@ -142,6 +162,7 @@ public static class ActionSuggester
 
         foreach (var dev in snap.Devices)
         {
+            if (suppressedTags?.Contains(dev.ServiceTag.Trim()) == true) continue;   // node in maintenance (ENG-0016)
             byTag.TryGetValue(dev.ServiceTag.Trim().ToUpperInvariant(), out var machine);
             var label = machine?.Name ?? dev.DeviceName;
 
