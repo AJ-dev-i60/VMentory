@@ -135,11 +135,17 @@ public sealed class MigrationRunner(IServiceScopeFactory scopes, FleetState flee
             if (job.GuestType == "qemu" && job.WasRunning && job.Mode == MigrationMode.Offline)
             {
                 // Proxmox uses the guest agent for this when one is configured and running, ACPI otherwise.
-                await Save(guest.AgentEnabled ? "shutting the guest down (guest agent, 180 s)" : "shutting the guest down (ACPI power button, 180 s)");
+                // "Agent configured" is not "agent working": iis104 has agent: 1 but no agent running, so Proxmox's
+                // agent shutdown went nowhere and the ACPI retry was skipped (campaign T8). Judge by whether the
+                // agent answered this poll.
+                var agentWorks = guest.AgentEnabled && guest.IpSource == "guest agent";
+                await Save(agentWorks ? "shutting the guest down (guest agent, 180 s)"
+                           : guest.AgentEnabled ? "shutting the guest down (agent configured but not answering — Proxmox falls back to ACPI, 180 s)"
+                           : "shutting the guest down (ACPI power button, 180 s)");
                 var up = await srcW.PostAsync($"/nodes/{sn}/qemu/{job.Vmid}/status/shutdown", [new("timeout", "180")], ct);
                 await WaitTaskAsync(srcR, sn, up.GetString()!, TimeSpan.FromSeconds(240), ct);
                 var cur = await srcR.GetAsync($"/nodes/{sn}/qemu/{job.Vmid}/status/current", ct);
-                if (Pj.Str(cur, "status") != "stopped" && !guest.AgentEnabled)
+                if (Pj.Str(cur, "status") != "stopped" && !agentWorks)
                 {
                     // Windows often ignores the first ACPI press while its console is asleep and honours the
                     // second (i60dc2, 2026-10-02: first press timed out, second shut it down in ~70 s).
@@ -153,7 +159,9 @@ public sealed class MigrationRunner(IServiceScopeFactory scopes, FleetState flee
                     if (!job.ForceStopOnTimeout)
                     {
                         await Fail("the guest did not shut down cleanly (two attempts of 180 s without an agent, one with) and was NOT forced off (the operator did not allow it). " +
-                                   (guest.AgentEnabled ? "Its guest agent did not complete the shutdown." : "It has no guest agent and ignored the ACPI power button — common for Windows guests; install the QEMU guest agent, or allow a forced power-off for this move.") +
+                                   (agentWorks ? "Its guest agent did not complete the shutdown."
+                                    : guest.AgentEnabled ? "Its guest agent is configured but not running, and the guest ignored the ACPI power button twice — start the agent in the guest, or allow a forced power-off for this move."
+                                    : "It has no guest agent and ignored the ACPI power button twice — common for Windows guests; install the QEMU guest agent, or allow a forced power-off for this move.") +
                                    " The guest is still running on the source.", afterCopyStarted: false);
                         return;
                     }
