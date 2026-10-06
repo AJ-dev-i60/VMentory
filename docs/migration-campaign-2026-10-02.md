@@ -60,3 +60,10 @@ running guests have no working agent today).
 * Cancelling an offline copy always leaves residue that only root can remove (Proxmox limitation); VMentory
   now names it exactly.
 * Old source copies from moves made without "remove source copy" stay locked until removed as root.
+
+## Cleanup — 2026-10-06
+
+All eight migrate-locked source copies left by the campaign (isxdc1 on sirius16; iis104, i60dc2, wazuh131,
+lifetime137 on titan21; arcserveprimary, wazuh132, ome200 on sagan25) were removed as root after checking each
+was stopped, `lock: migrate`, and its guest running live on another node. ~933 GiB (on-disk) freed; no configs,
+volumes or snapshots left. Every moved guest still running afterwards.
