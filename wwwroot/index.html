@@ -236,8 +236,14 @@ pre.log{background:var(--bg);border:1px solid var(--border);border-radius:6px;pa
   <div class="auth-box">
     <div class="auth-logo"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="5" rx="1"/><rect x="2" y="10" width="20" height="5" rx="1"/><rect x="2" y="17" width="20" height="5" rx="1"/></svg>VMentory</div>
     <div class="auth-title">Sign in</div>
-    <div class="auth-sub">Enter your console credentials to continue.</div>
+    <div class="auth-sub" id="login-sub">Enter your console credentials to continue.</div>
     <div class="auth-err" id="login-err"></div>
+    <div id="login-directory-form" style="display:none">
+      <div class="fgrp"><label class="flbl">Domain username</label><input type="text" id="login-dir-user" class="finp" autocomplete="username" onkeydown="if(event.key==='Enter')document.getElementById('login-dir-pass').focus()"></div>
+      <div class="fgrp"><label class="flbl">Domain password</label><input type="password" id="login-dir-pass" class="finp" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitDirectoryLogin()"></div>
+      <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:6px" onclick="submitDirectoryLogin()" id="login-dir-btn">Sign in</button>
+    </div>
+    <div id="login-dir-divider" style="display:none;align-items:center;gap:10px;margin:14px 0 10px;color:var(--text3);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase"><span style="flex:1;height:1px;background:var(--border)"></span>or a console account<span style="flex:1;height:1px;background:var(--border)"></span></div>
     <div id="login-password-form">
       <div class="fgrp"><label class="flbl">Username</label><input type="text" id="login-user" class="finp" autocomplete="username" onkeydown="if(event.key==='Enter')document.getElementById('login-pass').focus()"></div>
       <div class="fgrp"><label class="flbl">Password</label><input type="password" id="login-pass" class="finp" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitLogin()"></div>
@@ -299,9 +305,17 @@ async function api(m,path,body){
   if(!r.ok){const e=new Error(j.error||('HTTP '+r.status));e.body=j;throw e;}
   return j;
 }
-async function applyAuthConfig(){let c={oidcEnabled:false,passwordLogin:true,oidcName:'SSO'};try{c=await fetch('/api/auth/config',{credentials:'include'}).then(r=>r.json());}catch{}
+async function applyAuthConfig(){let c={oidcEnabled:false,passwordLogin:true,oidcName:'SSO',directoryEnabled:false};try{c=await fetch('/api/auth/config',{credentials:'include'}).then(r=>r.json());}catch{}
+  const dir=!!c.directoryEnabled;
+  document.getElementById('login-directory-form').style.display=dir?'':'none';
+  if(dir&&c.directoryDomain)document.getElementById('login-dir-user').placeholder='user@'+c.directoryDomain;
   document.getElementById('login-password-form').style.display=c.passwordLogin?'':'none';
-  document.getElementById('login-sso-divider').style.display=(c.oidcEnabled&&c.passwordLogin)?'flex':'none';
+  document.getElementById('login-dir-divider').style.display=(dir&&c.passwordLogin)?'flex':'none';
+  // When the domain is available it is the door nearly everyone should use, so the console-account
+  // button stops looking like the primary action.
+  document.getElementById('login-btn').className=dir?'btn':'btn btn-primary';
+  document.getElementById('login-sub').textContent=dir?('Sign in with your '+(c.directoryName||'domain')+' account.'):'Enter your console credentials to continue.';
+  document.getElementById('login-sso-divider').style.display=(c.oidcEnabled&&(c.passwordLogin||dir))?'flex':'none';
   const sb=document.getElementById('login-sso-btn');sb.style.display=c.oidcEnabled?'':'none';if(c.oidcEnabled)sb.textContent='Continue with '+(c.oidcName||'SSO');return c;}
 function showLogin(){document.getElementById('app').style.display='none';document.getElementById('auth-chpw').style.display='none';document.getElementById('auth-login').style.display='flex';
   applyAuthConfig().then(()=>{const e=new URLSearchParams(location.search).get('sso_error');if(e){showErr('login-err',e);history.replaceState({},'',location.pathname);}});}
@@ -310,6 +324,11 @@ function showErr(id,m){const e=document.getElementById(id);e.textContent=m;e.sty
 async function submitLogin(){const u=document.getElementById('login-user').value.trim(),p=document.getElementById('login-pass').value;if(!u||!p)return showErr('login-err','Username and password are required.');
   const r=await fetch('/api/auth/login',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})});const j=await r.json().catch(()=>({}));
   if(!r.ok)return showErr('login-err',j.error||'Invalid credentials.');if(j.mustChangePassword)return showChangePassword();start();}
+async function submitDirectoryLogin(){const u=document.getElementById('login-dir-user').value.trim(),p=document.getElementById('login-dir-pass').value;if(!u||!p)return showErr('login-err','Domain username and password are required.');
+  const b=document.getElementById('login-dir-btn');b.disabled=true;b.textContent='Checking with the domain…';
+  try{const r=await fetch('/api/auth/directory/login',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})});const j=await r.json().catch(()=>({}));
+    if(!r.ok)return showErr('login-err',j.error||'Sign-in failed.');start();}
+  finally{b.disabled=false;b.textContent='Sign in';}}
 async function submitChangePassword(){const a=document.getElementById('chpw-new').value,b=document.getElementById('chpw-confirm').value;if(a.length<8)return showErr('chpw-err','At least 8 characters.');if(a!==b)return showErr('chpw-err','Passwords do not match.');
   const r=await fetch('/api/auth/change-password',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({newPassword:a})});const j=await r.json().catch(()=>({}));if(!r.ok)return showErr('chpw-err',j.error||'Failed.');start();}
 async function logout(){await fetch('/api/auth/logout',{method:'POST',credentials:'include'}).catch(()=>{});location.reload();}
