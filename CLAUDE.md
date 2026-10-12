@@ -78,6 +78,8 @@ _**Phase-2 layout (2.0 slice 1):** the solution `VMentory.sln` has two projects 
 | `VMentory.Core/PlatformKind.cs` | `HyperV` / `Proxmox` discriminator |
 | `VMentory.Core/Persistence/` | EF Core SQLite layer: `VMentoryDbContext`, entities (`HostRegistrationEntity`, `InventorySnapshotEntity`, `AppUserEntity`, `AuditEventEntity`, `SecretEntity`, `DekEntity`), `IInventoryStore`/`EfInventoryStore`, `IUserStore`/`EfUserStore`, design-time factory |
 | `VMentory.Core/Auth/` | `AppRole` enum, `ConsolePermission` flags enum, `PasswordHasher` (PBKDF2-SHA256 BCL-only) |
+| `VMentory.Core/Auth/Ldap/` | **ENG-0017.** `Ber.cs` (minimal BER/DER codec), `LdapClient.cs` (simple bind, search, `LdapFilter` built as BER). Hand-written so the container needs no `libldap` and TLS trust is managed .NET code |
+| `VMentory.Core/Auth/DirectoryOptions.cs` / `DirectoryAuthenticator.cs` | **ENG-0017.** Env contract + validation / the LDAPS sign-in flow, AD group→role resolution, CA pinning |
 | `VMentory.Core/Secrets/` | `ISecretStore`, `AesGcmSecretStore` (AES-256-GCM SQLite, ENG-0002), `EphemeralSecretStore` (in-memory), `DekProvider` (KEK/DEK manager) |
 | `VMentory.Core/Migrations/` | EF Core migrations (`Initial`, `AddAuth`, `AddSecrets`); applied via `Database.Migrate()` at startup |
 | `RbacCatalog.cs` | Static role→capability mapping (Admin/VmOperator/BackupOperator/Viewer over `ProviderCapability`+`ConsolePermission`) |
@@ -151,6 +153,21 @@ Callback path is `/api/auth/oidc/callback` — register that exact URL with the 
 ⚠️ Enabling OIDC drops the session cookie from `SameSite=Strict` to `Lax`; see ENG-0014 for why the
 CSRF posture survives.
 
+**Windows-domain env contract (ENG-0017).** `VMENTORY_AD_HOSTS` (comma/semicolon list of
+`host[:port][|certificateName]`, tried in order) + `VMENTORY_AD_DOMAIN` (e.g. `i60.local`) — with
+**neither** set the door does not register; with one set and anything invalid, the door is **disabled and
+the reason printed in red at startup**. `VMENTORY_AD_CA_PEM` (path) or `VMENTORY_AD_CA_B64` (base64 PEM)
+— the domain's issuing CA, validated via `CustomRootTrust`, i.e. *instead of* the system store.
+`VMENTORY_AD_GROUP_ADMIN` / `_VMOPERATOR` / `_BACKUPOPERATOR` / `_VIEWER` (group `sAMAccountName`),
+`VMENTORY_AD_DEFAULT_ROLE` (**unset = refuse anyone in none of those groups**), `VMENTORY_AD_NAME`
+(form label, default `{domain} domain`), `VMENTORY_AD_BASE_DN` (else read from the rootDSE),
+`VMENTORY_AD_TRANSPORT` (`ldaps` default | `plain`, **StartTLS not implemented**),
+`VMENTORY_AD_ALLOW_CLEARTEXT=1` (required to accept `plain`), `VMENTORY_AD_TLS_INSECURE=1` (dev only),
+`VMENTORY_AD_TIMEOUT_SECONDS` (1–120, default 10).
+⚠️ **`|certificateName` is effectively required**: the DCs answer on addresses while their LDAPS certs
+are issued to hostnames, and `*.local` cannot be resolved from Linux — write `172.0.0.10|DC1.i60.local`.
+Contract test: `ops/authtest-directory.mjs` (needs a running instance + a real domain account).
+
 ## Release workflow
 
 ```powershell
@@ -172,11 +189,12 @@ runs `dotnet restore` + `dotnet build VMentory.sln -c Release` on every push/PR 
 | Method | Path | Description |
 |---|---|---|
 | GET | `/health` | Unauthenticated liveness probe — `{status, version, build}` |
-| GET | `/api/auth/config` | Unauthenticated — which sign-in doors exist: `{oidcEnabled, oidcName, passwordLogin}` |
+| GET | `/api/auth/config` | Unauthenticated — which sign-in doors exist: `{oidcEnabled, oidcName, passwordLogin, directoryEnabled, directoryName, directoryDomain}` |
+| POST | `/api/auth/directory/login` | **ENG-0017.** Windows-domain sign-in — `{username, password}` validated by an LDAPS bind. 404 unconfigured · 401 bad credentials · 403 no role / account unusable · **503 directory unreachable** |
 | POST | `/api/auth/login` | Cookie-based login — `{username, password}` → sets `vmentory_session` cookie. **403 when `VMENTORY_PASSWORD_LOGIN=0`** |
 | GET | `/api/auth/oidc/start` | Begins the OIDC authorization-code flow (404 when SSO is unconfigured) |
 | GET | `/api/auth/oidc/callback` | Owned by the OIDC handler; not a hand-written route |
-| GET | `/api/auth/me` | Current user — `{username, role, mustChangePassword, authMode}` (`authMode` = `password` \| `oidc`) |
+| GET | `/api/auth/me` | Current user — `{username, role, mustChangePassword, authMode}` (`authMode` = `password` \| `oidc` \| `directory`) |
 | POST | `/api/auth/logout` | Clears the session cookie |
 | POST | `/api/auth/change-password` | Change password (forced on first login) |
 | GET | `/api/state` | Full snapshot: `hosts, totals, diff, credentialsSet, mockMode, build` |
@@ -335,3 +353,34 @@ root). `VMENTORY_FLEET_INTERVAL` (s, default 60), `VMENTORY_FLEET_PROBE_INTERVAL
     `Datastore.Allocate`. Those facts (plus ARC cap and DMI serial) come from the forced-command probe
     (`ops/provision-fleet-nodes.sh`). Never "fix" a 403 here by widening the poller's role — the poller must stay
     unable to write.
+
+22. **An LDAP simple bind with an empty password is an *anonymous* bind, and the directory answers
+    success (ENG-0017).** Unguarded, a blank password authenticates anyone whose username exists — a
+    complete authentication bypass, and the most likely way to get domain sign-in catastrophically
+    wrong. Guarded twice: `DirectoryAuthenticator.AuthenticateAsync` refuses before connecting, and
+    `LdapClient.BindSimpleAsync` throws rather than trusting its caller. `ops/authtest-directory.mjs`
+    asserts `""`, `" "` and `"\t"` are all refused **and** that no session cookie is issued. Do not
+    remove either guard on the grounds that the other one covers it.
+
+23. **LDAP filters here are built as BER, so there is no escaping — and adding escaping is the bug
+    (ENG-0017).** A filter's structure lives in its BER tags and an assertion value is a raw octet
+    string the server never re-parses, so injection is impossible by construction and a username of
+    `*)(objectClass=*` is matched as that literal string. ⚠️ Applying RFC 4515 escaping would break
+    the group-membership query, because `\` and `(` are ordinary characters inside a distinguished
+    name — escaping the user's DN turns a correct query into one that silently matches nothing, and
+    every directory user loses their role. This was written, caught and removed during the ENG-0017
+    build. `LdapFilter` has no `Escape` method on purpose.
+
+24. **A directory account's role is re-stamped from AD on every sign-in — the opposite of the OIDC
+    path (ENG-0017).** ENG-0014 rule 5 keeps a hand-edited role so an operator's demotion is not
+    undone by the next login. For `auth_mode=directory` that rule is inverted on purpose: AD is the
+    authority, so removing someone from the admin group must demote them. Editing a directory
+    account's role in VMentory's own user list has no lasting effect; change the group in AD.
+
+25. **Report an unreachable directory as 503, never 401 (ENG-0017).** A dead DC, a TLS failure, a
+    timeout and a refused certificate all produce `DirectoryUnavailable`; only LDAP result 49
+    produces `BadCredentials`. Folding them together is the obvious implementation and it sends an
+    operator hunting a password problem that does not exist, during an outage. The audit trail keeps
+    them distinct too. Relatedly, on result 49 the authenticator **stops** instead of trying the next
+    DC — replaying a known-wrong password at every controller only multiplies the hit on the
+    account's lockout counter.

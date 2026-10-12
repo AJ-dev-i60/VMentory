@@ -148,6 +148,17 @@ var oidcRole = Enum.TryParse<AppRole>(EnvOr("VMENTORY_OIDC_ROLE", "Admin"), igno
 // is the break-glass in reverse: set it back to 1 and restart to get the local login returned.
 var passwordLoginEnabled = Environment.GetEnvironmentVariable("VMENTORY_PASSWORD_LOGIN") != "0";
 
+// ── Windows-domain sign-in (ENG-0017) ────────────────────────────────────────
+// A third door, independent of the other two: username + password validated by an LDAPS simple bind
+// against the domain's own DCs, with the console role read from AD group membership. Unconfigured it
+// does not register, exactly like OIDC. Env contract in VMentory.Core/Auth/DirectoryOptions.cs.
+var directoryOptions = DirectoryOptions.FromEnvironment();
+var directoryEnabled = directoryOptions.Enabled;
+var directoryAuth    = directoryEnabled
+    ? new DirectoryAuthenticator(directoryOptions, msg => logWriter.LogError(msg))
+    : null;
+builder.Services.AddSingleton(directoryOptions);
+
 var authBuilder = builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(o =>
     {
@@ -491,6 +502,11 @@ app.MapGet("/api/auth/config", () => Results.Ok(new
     oidcEnabled,
     oidcName,
     passwordLogin = passwordLoginEnabled,
+    // ENG-0017. directoryDomain is a hint for the form ("you want your i60.local account"), not a
+    // secret — it is already in every certificate and DNS answer on the network.
+    directoryEnabled,
+    directoryName   = directoryOptions.DisplayName,
+    directoryDomain = directoryOptions.Domain,
 }));
 
 // GET /api/auth/oidc/start — begins the authorization-code flow. The handler owns
@@ -500,6 +516,89 @@ app.MapGet("/api/auth/oidc/start", () => oidcEnabled
         new AuthenticationProperties { RedirectUri = "/" },
         [OpenIdConnectDefaults.AuthenticationScheme])
     : Results.Json(new { error = "SSO is not configured" }, statusCode: 404));
+
+// POST /api/auth/directory/login — Windows-domain sign-in (ENG-0017).
+// The password is checked by the domain, never by VMentory: it goes straight into an LDAPS simple
+// bind and is not stored, hashed or cached anywhere.
+app.MapPost("/api/auth/directory/login", async (HttpContext ctx, IServiceScopeFactory scopeFactory) =>
+{
+    if (!directoryEnabled || directoryAuth == null)
+        return Results.Json(new { error = "Windows domain sign-in is not configured on this deployment" }, statusCode: 404);
+
+    var body = await ctx.Request.ReadFromJsonAsync<LoginDto>();
+    if (body == null || string.IsNullOrWhiteSpace(body.Username) || string.IsNullOrWhiteSpace(body.Password))
+        return Results.BadRequest(new { error = "username and password required" });
+
+    var result = await directoryAuth.AuthenticateAsync(body.Username, body.Password, ctx.RequestAborted);
+
+    // Audit every attempt, including the ones that never reached a DC. The username is recorded as
+    // typed when the directory never resolved it, so a typo is visible in the trail.
+    await RecordDirectoryAudit(ctx, scopeFactory,
+        result.SamAccountName != null ? result.Upn! : body.Username.Trim(),
+        result.Succeeded, result.Outcome.ToString(), result.Detail);
+
+    if (!result.Succeeded)
+    {
+        // ⭐ A directory that cannot be reached is a 503, not a 401. Returning "invalid credentials"
+        // for a dead DC is the single most expensive lie this endpoint could tell.
+        var status = result.Outcome switch
+        {
+            DirectoryAuthOutcome.DirectoryUnavailable => 503,
+            DirectoryAuthOutcome.NoRole               => 403,
+            DirectoryAuthOutcome.AccountUnusable      => 403,
+            DirectoryAuthOutcome.Disabled             => 404,
+            _                                          => 401,
+        };
+        return Results.Json(new { error = result.Message, outcome = result.Outcome.ToString() }, statusCode: status);
+    }
+
+    var username = result.Upn!.ToLowerInvariant();
+    var role     = result.Role!.Value;
+
+    if (config.Persist)
+    {
+        using var scope = scopeFactory.CreateScope();
+        var userStore   = scope.ServiceProvider.GetRequiredService<IUserStore>();
+
+        var user = await userStore.FindByUsernameAsync(username);
+        if (user == null)
+        {
+            user = new AppUserEntity
+            {
+                Username = username,
+                // Deliberately not a hash, same construction as the OIDC path: PasswordHasher.Verify
+                // requires iterations:salt:hash and returns false for anything else, so a directory
+                // account is unreachable through /api/auth/login by design, not by a flag.
+                PasswordHash       = "",
+                Role               = role,
+                MustChangePassword = false,
+                CreatedAt          = DateTimeOffset.UtcNow,
+            };
+            await userStore.CreateAsync(user);
+        }
+
+        // ⚠️ Deliberately the OPPOSITE of the OIDC path, which keeps a hand-edited role. Here the
+        // directory is the authority: removing someone from the admin group in AD has to demote them
+        // at their next sign-in, or the group mapping is decoration.
+        user.Role        = role;
+        user.LastLoginAt = DateTimeOffset.UtcNow;
+        await userStore.UpdateAsync(user);
+    }
+
+    var claims = BuildClaims(username, role, mustChangePassword: false);
+    claims.Add(new Claim("auth_mode", "directory"));
+    await ctx.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme,
+        new ClaimsPrincipal(new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme)));
+
+    return Results.Ok(new
+    {
+        role          = role.ToString(),
+        mustChangePassword = false,
+        username,
+        displayName   = result.DisplayName,
+        matchedGroups = result.MatchedGroups ?? Array.Empty<string>(),
+    });
+});
 
 // POST /api/auth/logout
 app.MapPost("/api/auth/logout", async (HttpContext ctx) =>
@@ -1093,6 +1192,35 @@ if (config.VerboseMode)
 }
 Console.WriteLine($"\n  Bind    : {config.HttpAddr}:{config.Port}");
 Console.WriteLine($"  TLS     : {tlsSource}");
+
+// ENG-0017. Say the state of domain sign-in out loud at boot. A config error here must not wait to
+// be discovered by the first person who tries to sign in with it.
+if (directoryEnabled)
+{
+    var roleMap = directoryOptions.RoleGroups.Count > 0
+        ? string.Join(", ", directoryOptions.RoleGroups.Select(kv => $"{kv.Value}→{kv.Key}"))
+        : "no group mapping";
+    var fallback = directoryOptions.DefaultRole is { } dr ? $", others→{dr}" : ", others refused";
+    Console.WriteLine($"  Domain  : {directoryOptions.Domain} over "
+                    + $"{directoryOptions.Transport.ToString().ToLowerInvariant()} "
+                    + $"({string.Join(", ", directoryOptions.Servers.Select(s => $"{s.Host}:{s.Port}"))})");
+    Console.WriteLine($"            {roleMap}{fallback}");
+    if (directoryOptions.CaSource != null)
+        Console.WriteLine($"            CA pinned from {directoryOptions.CaSource}");
+}
+else if (directoryOptions.Errors.Count > 0)
+{
+    Console.ForegroundColor = ConsoleColor.Red;
+    Console.WriteLine("  Domain  : NOT ENABLED — configuration is invalid:");
+    foreach (var e in directoryOptions.Errors) Console.WriteLine($"            • {e}");
+    Console.ResetColor();
+}
+foreach (var w in directoryOptions.Warnings)
+{
+    Console.ForegroundColor = ConsoleColor.Yellow;
+    Console.WriteLine($"  [warn]  {w}");
+    Console.ResetColor();
+}
 if (config.Persist)
     Console.WriteLine($"  Secrets : {(kek != null ? "AES-256-GCM (persistent)" : "ephemeral — set VMENTORY_KEK (base64 32 bytes) to persist credentials across restarts")}");
 
@@ -1293,6 +1421,30 @@ static async Task RecordOidcAudit(HttpContext http, string username, bool allowe
             Verb          = "login_oidc",
             Allowed       = allowed,
             CorrelationId = http.TraceIdentifier,
+        });
+    }
+    catch { /* never break sign-in over an audit write */ }
+}
+
+// ENG-0017. Records the outcome name and the diagnostic in Detail, so the trail distinguishes a bad
+// password from a dead DC from an account with no role — three things that all look like "could not
+// sign in" to the person at the keyboard. Never carries the password.
+static async Task RecordDirectoryAudit(
+    HttpContext http, IServiceScopeFactory scopeFactory, string username, bool allowed, string outcome, string? detail)
+{
+    try
+    {
+        using var s = scopeFactory.CreateScope();
+        var us = s.ServiceProvider.GetService<IUserStore>();
+        if (us == null) return;
+        await us.WriteAuditAsync(new AuditEventEntity
+        {
+            Timestamp     = DateTimeOffset.UtcNow,
+            Username      = username,
+            Verb          = "login_directory",
+            Allowed       = allowed,
+            CorrelationId = http.TraceIdentifier,
+            Detail        = string.IsNullOrWhiteSpace(detail) ? outcome : $"{outcome}: {detail}",
         });
     }
     catch { /* never break sign-in over an audit write */ }
